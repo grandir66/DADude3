@@ -122,7 +122,13 @@ cd /opt/dadude-server/dadude-server
 
 # 10. Installazione systemd service
 log "Installazione servizio systemd..."
-cp dadude-server/dadude-server.service /etc/systemd/system/
+if [[ -f "dadude-server/dadude-server.service" ]]; then
+    cp dadude-server/dadude-server.service /etc/systemd/system/
+elif [[ -f "/opt/dadude-server/dadude-server/dadude-server.service" ]]; then
+    cp /opt/dadude-server/dadude-server/dadude-server.service /etc/systemd/system/
+else
+    error "File dadude-server.service non trovato!"
+fi
 systemctl daemon-reload
 systemctl enable dadude-server.service
 

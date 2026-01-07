@@ -104,7 +104,13 @@ log "Configurazione salvata in /opt/dadude-agent/dadude-agent/.env"
 
 # 8. Installazione systemd service
 log "Installazione servizio systemd..."
-cp dadude-agent/dadude-agent.service /etc/systemd/system/
+if [[ -f "dadude-agent/dadude-agent.service" ]]; then
+    cp dadude-agent/dadude-agent.service /etc/systemd/system/
+elif [[ -f "/opt/dadude-agent/dadude-agent/dadude-agent.service" ]]; then
+    cp /opt/dadude-agent/dadude-agent/dadude-agent.service /etc/systemd/system/
+else
+    error "File dadude-agent.service non trovato!"
+fi
 systemctl daemon-reload
 systemctl enable dadude-agent.service
 
