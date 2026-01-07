@@ -1,0 +1,1145 @@
+{% extends "base.html" %}
+
+{% block title %}{{ agent.name }} - MikroTik Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="/customers">Clienti</a></li>
+                    <li class="breadcrumb-item"><a href="/customers/{{ agent.customer_id }}">{{ customer.name }}</a></li>
+                    <li class="breadcrumb-item active">{{ agent.name }}</li>
+                </ol>
+            </nav>
+            <h2 class="mb-0">
+                <i class="bi bi-router text-primary"></i> {{ agent.name }}
+                <span id="routerStatus" class="badge bg-secondary ms-2">Connessione...</span>
+            </h2>
+            <small class="text-muted">{{ agent.address }}:{{ agent.port }}</small>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-outline-primary" onclick="refreshAll()">
+                <i class="bi bi-arrow-clockwise"></i> Aggiorna
+            </button>
+            <button class="btn btn-outline-secondary" onclick="openTerminal()">
+                <i class="bi bi-terminal"></i> Terminale
+            </button>
+        </div>
+    </div>
+
+    <!-- System Info Cards -->
+    <div class="row mb-4" id="systemInfoCards">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 opacity-75">Identity</h6>
+                    <h4 class="card-title mb-0" id="sysIdentity">-</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 opacity-75">RouterOS</h6>
+                    <h4 class="card-title mb-0" id="sysVersion">-</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 opacity-75">CPU Load</h6>
+                    <h4 class="card-title mb-0"><span id="sysCpuLoad">-</span>%</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 opacity-75">Uptime</h6>
+                    <h4 class="card-title mb-0" id="sysUptime">-</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="routerTabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview" type="button">
+                <i class="bi bi-speedometer2"></i> Overview
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#interfaces" type="button">
+                <i class="bi bi-ethernet"></i> Interfacce
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#netwatch" type="button">
+                <i class="bi bi-eye"></i> Netwatch
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#discovery" type="button">
+                <i class="bi bi-search"></i> Discovery
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#routing" type="button">
+                <i class="bi bi-signpost-split"></i> Routing
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#firewall" type="button">
+                <i class="bi bi-shield"></i> Firewall
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#lldp" type="button">
+                <i class="bi bi-diagram-3"></i> LLDP Neighbors
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dudeagent" type="button">
+                <i class="bi bi-plugin"></i> Dude Agent
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom p-4 bg-white">
+        <!-- Tab Overview -->
+        <div class="tab-pane fade show active" id="overview">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-header"><i class="bi bi-cpu"></i> Sistema</div>
+                        <div class="card-body">
+                            <table class="table table-sm mb-0">
+                                <tr><td class="text-muted" width="40%">Board</td><td id="sysBoard">-</td></tr>
+                                <tr><td class="text-muted">Platform</td><td id="sysPlatform">-</td></tr>
+                                <tr><td class="text-muted">Architecture</td><td id="sysArch">-</td></tr>
+                                <tr><td class="text-muted">CPU</td><td id="sysCpu">-</td></tr>
+                                <tr><td class="text-muted">CPU Cores</td><td id="sysCpuCount">-</td></tr>
+                                <tr><td class="text-muted">CPU Freq</td><td><span id="sysCpuFreq">-</span> MHz</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-header"><i class="bi bi-memory"></i> Risorse</div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>RAM</span>
+                                    <span><span id="sysMemUsed">-</span> / <span id="sysMemTotal">-</span> MB</span>
+                                </div>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar" id="memProgress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Storage</span>
+                                    <span><span id="sysHddUsed">-</span> / <span id="sysHddTotal">-</span> MB</span>
+                                </div>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-success" id="hddProgress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-header"><i class="bi bi-card-text"></i> Licenza</div>
+                        <div class="card-body">
+                            <table class="table table-sm mb-0">
+                                <tr><td class="text-muted" width="40%">Serial</td><td id="sysSerial">-</td></tr>
+                                <tr><td class="text-muted">Firmware</td><td id="sysFirmware">-</td></tr>
+                                <tr><td class="text-muted">License Level</td><td id="sysLicense">-</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Interfaces -->
+        <div class="tab-pane fade" id="interfaces">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>Interfacce di Rete</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadInterfaces()">
+                    <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover" id="interfacesTable">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Tipo</th>
+                            <th>MAC</th>
+                            <th>IP</th>
+                            <th>VLAN ID</th>
+                            <th>Velocità</th>
+                            <th>Duplex</th>
+                            <th>MTU</th>
+                            <th>Stato</th>
+                            <th>Description</th>
+                            <th>Traffico</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="11" class="text-center py-4">Caricamento...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <h5 class="mt-4">Indirizzi IP</h5>
+            <div class="table-responsive">
+                <table class="table table-hover" id="ipAddressesTable">
+                    <thead>
+                        <tr>
+                            <th>Indirizzo</th>
+                            <th>Network</th>
+                            <th>Interfaccia</th>
+                            <th>Tipo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="4" class="text-center py-4">Caricamento...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab Netwatch -->
+        <div class="tab-pane fade" id="netwatch">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>Netwatch Monitor</h5>
+                <div>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addNetwatchModal">
+                        <i class="bi bi-plus"></i> Nuovo Netwatch
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary ms-2" onclick="loadNetwatch()">
+                        <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover" id="netwatchTable">
+                    <thead>
+                        <tr>
+                            <th>Host</th>
+                            <th>Tipo</th>
+                            <th>Intervallo</th>
+                            <th>Stato</th>
+                            <th>Da</th>
+                            <th>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="6" class="text-center py-4">Caricamento...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab Discovery -->
+        <div class="tab-pane fade" id="discovery">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>Network Discovery</h5>
+            </div>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Rete da scansionare</label>
+                            <input type="text" class="form-control" id="scanNetwork" placeholder="192.168.1.0/24">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Interfaccia (opzionale)</label>
+                            <select class="form-select" id="scanInterface">
+                                <option value="">Tutte</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-primary w-100" onclick="runDiscovery()">
+                                <i class="bi bi-search"></i> Scansiona
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="discoveryResults" style="display: none;">
+                <div class="alert alert-info">
+                    <strong id="discoveryCount">0</strong> dispositivi trovati
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="discoveryTable">
+                        <thead>
+                            <tr>
+                                <th>IP</th>
+                                <th>MAC</th>
+                                <th>Identity</th>
+                                <th>Platform</th>
+                                <th>Interfaccia</th>
+                                <th>Fonte</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Routing -->
+        <div class="tab-pane fade" id="routing">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>Tabella di Routing</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadRoutes()">
+                    <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover" id="routesTable">
+                    <thead>
+                        <tr>
+                            <th>Destinazione</th>
+                            <th>Gateway</th>
+                            <th>Distanza</th>
+                            <th>Tabella</th>
+                            <th>Stato</th>
+                            <th>Tipo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="6" class="text-center py-4">Caricamento...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab Firewall -->
+        <div class="tab-pane fade" id="firewall">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>Statistiche Firewall</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadFirewallStats()">
+                    <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                </button>
+            </div>
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h1 class="display-4 text-primary" id="fwFilterRules">-</h1>
+                            <p class="text-muted mb-0">Filter Rules</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h1 class="display-4 text-success" id="fwNatRules">-</h1>
+                            <p class="text-muted mb-0">NAT Rules</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h1 class="display-4 text-warning" id="fwMangleRules">-</h1>
+                            <p class="text-muted mb-0">Mangle Rules</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h1 class="display-4 text-info" id="fwConnections">-</h1>
+                            <p class="text-muted mb-0">Connessioni Attive</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab LLDP Neighbors -->
+        <div class="tab-pane fade" id="lldp">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>LLDP/CDP Neighbors</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadLLDPNeighbors()">
+                    <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                </button>
+            </div>
+            <div id="lldpNeighborsContent" class="text-center py-4 text-muted">
+                Caricamento LLDP neighbors...
+            </div>
+        </div>
+
+        <!-- Tab Dude Agent -->
+        <div class="tab-pane fade" id="dudeagent">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>Dude Agent Status</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadDudeAgentStatus()">
+                    <i class="bi bi-arrow-clockwise"></i> Aggiorna
+                </button>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <table class="table table-sm mb-0">
+                                <tr>
+                                    <td class="text-muted" width="40%">Pacchetto Installato</td>
+                                    <td><span id="dudeInstalled" class="badge bg-secondary">-</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Versione</td>
+                                    <td id="dudeVersion">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Abilitato</td>
+                                    <td><span id="dudeEnabled" class="badge bg-secondary">-</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Server</td>
+                                    <td id="dudeServer">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Stato Connessione</td>
+                                    <td><span id="dudeStatus" class="badge bg-secondary">-</span></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">Configura Dude Agent</div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Server The Dude</label>
+                                <input type="text" class="form-control" id="dudeServerInput" placeholder="192.168.30.250">
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="dudeEnabledInput" checked>
+                                <label class="form-check-label" for="dudeEnabledInput">Abilita Agent</label>
+                            </div>
+                            <button class="btn btn-primary" onclick="configureDudeAgent()">
+                                <i class="bi bi-save"></i> Salva Configurazione
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Aggiungi Netwatch -->
+<div class="modal fade" id="addNetwatchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nuovo Netwatch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Host *</label>
+                    <input type="text" class="form-control" id="nwHost" placeholder="192.168.1.1 o hostname">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Porta (vuoto = ICMP ping)</label>
+                    <input type="number" class="form-control" id="nwPort" placeholder="80, 443, 22...">
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Intervallo</label>
+                        <input type="text" class="form-control" id="nwInterval" value="30s">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Timeout</label>
+                        <input type="text" class="form-control" id="nwTimeout" value="3s">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Commento</label>
+                    <input type="text" class="form-control" id="nwComment">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Script UP (opzionale)</label>
+                    <textarea class="form-control font-monospace" id="nwUpScript" rows="2" placeholder=":log info &quot;Host up&quot;"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Script DOWN (opzionale)</label>
+                    <textarea class="form-control font-monospace" id="nwDownScript" rows="2" placeholder=":log warning &quot;Host down&quot;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-primary" onclick="addNetwatch()">
+                    <i class="bi bi-plus"></i> Aggiungi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Terminal Modal -->
+<div class="modal fade" id="terminalModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="bi bi-terminal"></i> SSH Terminal</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="bg-dark text-success p-3 font-monospace" id="terminalOutput" style="height: 300px; overflow-y: auto;">
+                    <div class="text-muted">Inserisci un comando e premi Invio</div>
+                </div>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark text-success border-0">></span>
+                    <input type="text" class="form-control bg-dark text-success border-0 font-monospace" 
+                           id="terminalInput" placeholder="Comando..." 
+                           onkeypress="if(event.key==='Enter')executeCommand()">
+                    <button class="btn btn-success" onclick="executeCommand()">Esegui</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const agentId = '{{ agent.id }}';
+const apiBase = '/api/v1/mikrotik/agents/' + agentId;
+
+// Load all on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadSystemInfo();
+    
+    // Load tab content on tab change
+    document.querySelectorAll('#routerTabs button').forEach(btn => {
+        btn.addEventListener('shown.bs.tab', function(e) {
+            const target = e.target.dataset.bsTarget;
+            if (target === '#interfaces') loadInterfaces();
+            else if (target === '#netwatch') loadNetwatch();
+            else if (target === '#routing') loadRoutes();
+            else if (target === '#firewall') loadFirewallStats();
+            else if (target === '#lldp') loadLLDPNeighbors();
+            else if (target === '#dudeagent') loadDudeAgentStatus();
+        });
+    });
+});
+
+function refreshAll() {
+    loadSystemInfo();
+    const activeTab = document.querySelector('#routerTabs .nav-link.active').dataset.bsTarget;
+    if (activeTab === '#interfaces') loadInterfaces();
+    else if (activeTab === '#netwatch') loadNetwatch();
+    else if (activeTab === '#routing') loadRoutes();
+    else if (activeTab === '#firewall') loadFirewallStats();
+    else if (activeTab === '#lldp') loadLLDPNeighbors();
+    else if (activeTab === '#dudeagent') loadDudeAgentStatus();
+}
+
+async function loadSystemInfo() {
+    try {
+        const res = await fetch(apiBase + '/system-info');
+        const data = await res.json();
+        
+        if (data.success) {
+            document.getElementById('routerStatus').className = 'badge bg-success ms-2';
+            document.getElementById('routerStatus').textContent = 'Online';
+            
+            document.getElementById('sysIdentity').textContent = data.identity || '-';
+            document.getElementById('sysVersion').textContent = data.version || '-';
+            document.getElementById('sysCpuLoad').textContent = data.cpu_load || '0';
+            document.getElementById('sysUptime').textContent = data.uptime || '-';
+            
+            document.getElementById('sysBoard').textContent = data.board_name || '-';
+            document.getElementById('sysPlatform').textContent = data.platform || '-';
+            document.getElementById('sysArch').textContent = data.architecture || '-';
+            document.getElementById('sysCpu').textContent = data.cpu_model || '-';
+            document.getElementById('sysCpuCount').textContent = data.cpu_count || '-';
+            document.getElementById('sysCpuFreq').textContent = data.cpu_frequency || '-';
+            
+            const memTotal = data.memory_total_mb || 0;
+            const memFree = data.memory_free_mb || 0;
+            const memUsed = memTotal - memFree;
+            const memPercent = memTotal > 0 ? Math.round((memUsed / memTotal) * 100) : 0;
+            document.getElementById('sysMemTotal').textContent = memTotal;
+            document.getElementById('sysMemUsed').textContent = memUsed;
+            document.getElementById('memProgress').style.width = memPercent + '%';
+            document.getElementById('memProgress').className = 'progress-bar ' + (memPercent > 80 ? 'bg-danger' : memPercent > 60 ? 'bg-warning' : '');
+            
+            const hddTotal = data.hdd_total_mb || 0;
+            const hddFree = data.hdd_free_mb || 0;
+            const hddUsed = hddTotal - hddFree;
+            const hddPercent = hddTotal > 0 ? Math.round((hddUsed / hddTotal) * 100) : 0;
+            document.getElementById('sysHddTotal').textContent = hddTotal;
+            document.getElementById('sysHddUsed').textContent = hddUsed;
+            document.getElementById('hddProgress').style.width = hddPercent + '%';
+            
+            document.getElementById('sysSerial').textContent = data.serial_number || '-';
+            document.getElementById('sysFirmware').textContent = data.firmware || '-';
+            document.getElementById('sysLicense').textContent = data.license_level || '-';
+        } else {
+            document.getElementById('routerStatus').className = 'badge bg-danger ms-2';
+            document.getElementById('routerStatus').textContent = 'Offline';
+        }
+    } catch (e) {
+        document.getElementById('routerStatus').className = 'badge bg-danger ms-2';
+        document.getElementById('routerStatus').textContent = 'Errore';
+    }
+}
+
+async function loadInterfaces() {
+    try {
+        const agentAddress = '{{ agent.address }}';
+        const customerId = '{{ agent.customer_id }}';
+        let interfaces = [];
+        let fromInventory = false;
+        
+        // Prima prova a recuperare le interfacce dall'inventario
+        try {
+            const deviceResponse = await fetch(`/api/v1/inventory/${customerId}/devices?primary_ip=${encodeURIComponent(agentAddress)}`);
+            const deviceData = await deviceResponse.json();
+            
+            if (deviceData.success && deviceData.devices && deviceData.devices.length > 0) {
+                const device = deviceData.devices[0];
+                const deviceId = device.id;
+                
+                // Carica interfacce dall'inventario
+                const invInterfacesRes = await fetch(`/api/v1/inventory/${customerId}/devices/${deviceId}/interfaces`);
+                const invInterfacesData = await invInterfacesRes.json();
+                
+                if (invInterfacesData.success && invInterfacesData.interfaces && invInterfacesData.interfaces.length > 0) {
+                    interfaces = invInterfacesData.interfaces.map(i => ({
+                        name: i.name,
+                        type: i.interface_type || '-',
+                        mac_address: i.mac_address || '-',
+                        ip_addresses: i.ip_addresses || [],
+                        vlan_id: i.vlan_id || null,
+                        speed: i.speed || '-',
+                        duplex: i.duplex || '-',
+                        mtu: i.mtu || '-',
+                        running: i.oper_status === 'up' || i.admin_status === 'up',
+                        disabled: i.admin_status === 'down',
+                        description: i.description || '-',
+                        rx_bytes: i.rx_bytes || 0,
+                        tx_bytes: i.tx_bytes || 0
+                    }));
+                    fromInventory = true;
+                }
+            }
+        } catch (e) {
+            console.debug('Could not load interfaces from inventory:', e);
+        }
+        
+        // Se non abbiamo interfacce dall'inventario, prova dall'API MikroTik
+        if (interfaces.length === 0) {
+            const res = await fetch(apiBase + '/interfaces');
+            const data = await res.json();
+            
+            if (data.success && data.interfaces) {
+                interfaces = data.interfaces;
+            }
+        }
+        
+        const tbody = document.querySelector('#interfacesTable tbody');
+        if (interfaces.length > 0) {
+            tbody.innerHTML = interfaces.map(iface => {
+                const ipAddrs = Array.isArray(iface.ip_addresses) ? iface.ip_addresses.join('<br>') : (iface.ip_addresses || '-');
+                const traffic = `${formatBytes(iface.rx_bytes || 0)} / ${formatBytes(iface.tx_bytes || 0)}`;
+                const statusBadges = `
+                    ${iface.running ? '<span class="badge bg-success">Up</span>' : '<span class="badge bg-secondary">Down</span>'}
+                    ${iface.disabled ? '<span class="badge bg-warning ms-1">Disabled</span>' : ''}
+                    ${fromInventory ? '<span class="badge bg-info ms-1" title="Dati dall\'inventario">Inv</span>' : ''}
+                `;
+                
+                return `
+                <tr>
+                    <td><strong>${iface.name}</strong></td>
+                    <td>${iface.type || '-'}</td>
+                    <td><code>${iface.mac_address || '-'}</code></td>
+                    <td>${ipAddrs}</td>
+                    <td>${iface.vlan_id || '-'}</td>
+                    <td>${iface.speed || '-'}</td>
+                    <td>${iface.duplex || '-'}</td>
+                    <td>${iface.mtu || '-'}</td>
+                    <td>${statusBadges}</td>
+                    <td>${iface.description || '-'}</td>
+                    <td><small>${traffic}</small></td>
+                </tr>
+            `;
+            }).join('');
+            
+            // Populate interface dropdown for discovery
+            const select = document.getElementById('scanInterface');
+            select.innerHTML = '<option value="">Tutte</option>' + 
+                interfaces.filter(i => i.running && !i.disabled).map(i => 
+                    `<option value="${i.name}">${i.name}</option>`
+                ).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">Errore caricamento o nessuna interfaccia trovata</td></tr>';
+        }
+        
+        // Load IP addresses
+        const ipRes = await fetch(apiBase + '/ip-addresses');
+        const ipData = await ipRes.json();
+        
+        const ipTbody = document.querySelector('#ipAddressesTable tbody');
+        if (ipData.success && ipData.addresses) {
+            ipTbody.innerHTML = ipData.addresses.map(addr => `
+                <tr>
+                    <td><code>${addr.address}</code></td>
+                    <td>${addr.network}</td>
+                    <td>${addr.interface}</td>
+                    <td>
+                        ${addr.dynamic ? '<span class="badge bg-info">Dynamic</span>' : '<span class="badge bg-primary">Static</span>'}
+                        ${addr.disabled ? '<span class="badge bg-warning">Disabled</span>' : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {
+        console.error('Error loading interfaces:', e);
+    }
+}
+
+async function loadNetwatch() {
+    try {
+        const res = await fetch(apiBase + '/netwatch');
+        const data = await res.json();
+        
+        const tbody = document.querySelector('#netwatchTable tbody');
+        if (data.success && data.netwatches) {
+            if (data.netwatches.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Nessun netwatch configurato</td></tr>';
+            } else {
+                tbody.innerHTML = data.netwatches.map(nw => `
+                    <tr>
+                        <td>
+                            <strong>${nw.host}</strong>
+                            ${nw.port ? ':' + nw.port : ''}
+                            ${nw.comment ? '<br><small class="text-muted">' + nw.comment + '</small>' : ''}
+                        </td>
+                        <td>${nw.type === 'icmp' ? 'Ping' : 'TCP:' + nw.port}</td>
+                        <td>${nw.interval}</td>
+                        <td>
+                            ${nw.status === 'up' ? '<span class="badge bg-success">Up</span>' : 
+                              nw.status === 'down' ? '<span class="badge bg-danger">Down</span>' : 
+                              '<span class="badge bg-secondary">Unknown</span>'}
+                            ${nw.disabled ? '<span class="badge bg-warning ms-1">Disabled</span>' : ''}
+                        </td>
+                        <td>${nw.since || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteNetwatch('${nw.id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Errore caricamento</td></tr>';
+        }
+    } catch (e) {
+        console.error('Error loading netwatch:', e);
+    }
+}
+
+async function addNetwatch() {
+    const host = document.getElementById('nwHost').value;
+    if (!host) {
+        alert('Inserisci un host');
+        return;
+    }
+    
+    const data = {
+        host: host,
+        port: document.getElementById('nwPort').value ? parseInt(document.getElementById('nwPort').value) : null,
+        interval: document.getElementById('nwInterval').value || '30s',
+        timeout: document.getElementById('nwTimeout').value || '3s',
+        comment: document.getElementById('nwComment').value || null,
+        up_script: document.getElementById('nwUpScript').value || null,
+        down_script: document.getElementById('nwDownScript').value || null,
+    };
+    
+    try {
+        const res = await fetch(apiBase + '/netwatch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            alert('✅ Netwatch creato');
+            bootstrap.Modal.getInstance(document.getElementById('addNetwatchModal')).hide();
+            loadNetwatch();
+            // Clear form
+            document.getElementById('nwHost').value = '';
+            document.getElementById('nwPort').value = '';
+            document.getElementById('nwComment').value = '';
+            document.getElementById('nwUpScript').value = '';
+            document.getElementById('nwDownScript').value = '';
+        } else {
+            alert('❌ Errore: ' + result.error);
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+async function deleteNetwatch(id) {
+    if (!confirm('Eliminare questo netwatch?')) return;
+    
+    try {
+        const res = await fetch(apiBase + '/netwatch/' + id, {method: 'DELETE'});
+        const result = await res.json();
+        
+        if (result.success) {
+            loadNetwatch();
+        } else {
+            alert('❌ Errore: ' + result.error);
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+async function runDiscovery() {
+    const network = document.getElementById('scanNetwork').value;
+    if (!network) {
+        alert('Inserisci una rete da scansionare');
+        return;
+    }
+    
+    const iface = document.getElementById('scanInterface').value;
+    
+    try {
+        document.getElementById('discoveryResults').style.display = 'none';
+        
+        let url = apiBase + '/ip-scan?network=' + encodeURIComponent(network);
+        if (iface) url += '&interface=' + encodeURIComponent(iface);
+        
+        const res = await fetch(url, {method: 'POST'});
+        const data = await res.json();
+        
+        if (data.success) {
+            document.getElementById('discoveryResults').style.display = 'block';
+            document.getElementById('discoveryCount').textContent = data.devices_found;
+            
+            const tbody = document.querySelector('#discoveryTable tbody');
+            tbody.innerHTML = data.results.map(d => `
+                <tr>
+                    <td><code>${d.address || '-'}</code></td>
+                    <td><code>${d.mac_address || '-'}</code></td>
+                    <td>${d.identity || '-'}</td>
+                    <td>${d.platform || '-'} ${d.board || ''}</td>
+                    <td>${d.interface || '-'}</td>
+                    <td><span class="badge bg-secondary">${d.source}</span></td>
+                </tr>
+            `).join('');
+        } else {
+            alert('❌ Errore: ' + data.error);
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+async function loadRoutes() {
+    try {
+        const res = await fetch(apiBase + '/routes');
+        const data = await res.json();
+        
+        const tbody = document.querySelector('#routesTable tbody');
+        if (data.success && data.routes) {
+            tbody.innerHTML = data.routes.map(r => `
+                <tr>
+                    <td><code>${r.dst_address}</code></td>
+                    <td><code>${r.gateway || '-'}</code></td>
+                    <td>${r.distance}</td>
+                    <td>${r.routing_table}</td>
+                    <td>
+                        ${r.active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>'}
+                    </td>
+                    <td>
+                        ${r.static ? '<span class="badge bg-primary">Static</span>' : ''}
+                        ${r.dynamic ? '<span class="badge bg-info">Dynamic</span>' : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {
+        console.error('Error loading routes:', e);
+    }
+}
+
+async function loadFirewallStats() {
+    try {
+        const res = await fetch(apiBase + '/firewall-stats');
+        const data = await res.json();
+        
+        if (data.success) {
+            document.getElementById('fwFilterRules').textContent = data.filter_rules || 0;
+            document.getElementById('fwNatRules').textContent = data.nat_rules || 0;
+            document.getElementById('fwMangleRules').textContent = data.mangle_rules || 0;
+            document.getElementById('fwConnections').textContent = data.active_connections || 0;
+        }
+    } catch (e) {
+        console.error('Error loading firewall stats:', e);
+    }
+}
+
+async function loadDudeAgentStatus() {
+    try {
+        const res = await fetch(apiBase + '/dude-agent-status');
+        const data = await res.json();
+        
+        if (data.success) {
+            document.getElementById('dudeInstalled').textContent = data.dude_installed ? 'Sì' : 'No';
+            document.getElementById('dudeInstalled').className = 'badge ' + (data.dude_installed ? 'bg-success' : 'bg-danger');
+            
+            document.getElementById('dudeVersion').textContent = data.dude_version || '-';
+            
+            document.getElementById('dudeEnabled').textContent = data.enabled ? 'Sì' : 'No';
+            document.getElementById('dudeEnabled').className = 'badge ' + (data.enabled ? 'bg-success' : 'bg-warning');
+            
+            document.getElementById('dudeServer').textContent = data.server || '-';
+            document.getElementById('dudeServerInput').value = data.server || '';
+            document.getElementById('dudeEnabledInput').checked = data.enabled;
+            
+            document.getElementById('dudeStatus').textContent = data.status || 'unknown';
+            document.getElementById('dudeStatus').className = 'badge ' + 
+                (data.status === 'connected' ? 'bg-success' : 'bg-secondary');
+        }
+    } catch (e) {
+        console.error('Error loading dude agent status:', e);
+    }
+}
+
+async function configureDudeAgent() {
+    const server = document.getElementById('dudeServerInput').value;
+    if (!server) {
+        alert('Inserisci indirizzo server The Dude');
+        return;
+    }
+    
+    const enabled = document.getElementById('dudeEnabledInput').checked;
+    
+    try {
+        const res = await fetch(apiBase + '/configure-dude-agent?dude_server=' + encodeURIComponent(server) + '&enabled=' + enabled, {
+            method: 'POST'
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            alert('✅ Configurazione salvata');
+            loadDudeAgentStatus();
+        } else {
+            alert('❌ Errore: ' + result.error);
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+function openTerminal() {
+    document.getElementById('terminalOutput').innerHTML = '<div class="text-muted">Inserisci un comando e premi Invio</div>';
+    new bootstrap.Modal(document.getElementById('terminalModal')).show();
+    setTimeout(() => document.getElementById('terminalInput').focus(), 500);
+}
+
+async function executeCommand() {
+    const input = document.getElementById('terminalInput');
+    const output = document.getElementById('terminalOutput');
+    const command = input.value.trim();
+    
+    if (!command) return;
+    
+    // Add command to output
+    output.innerHTML += `<div class="text-white mt-2">> ${command}</div>`;
+    input.value = '';
+    
+    try {
+        const res = await fetch(`/api/v1/customers/agents/${agentId}/ssh-command?command=${encodeURIComponent(command)}`, {
+            method: 'POST'
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            output.innerHTML += `<div class="text-success">${result.output || '(nessun output)'}</div>`;
+        } else {
+            output.innerHTML += `<div class="text-danger">${result.error || 'Errore'}</div>`;
+        }
+    } catch (e) {
+        output.innerHTML += `<div class="text-danger">Errore: ${e.message}</div>`;
+    }
+    
+    // Scroll to bottom
+    output.scrollTop = output.scrollHeight;
+}
+
+function formatBytes(bytes) {
+    if (!bytes) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
+}
+
+async function loadLLDPNeighbors() {
+    const content = document.getElementById('lldpNeighborsContent');
+    if (!content) return;
+    
+    content.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Caricamento...';
+    
+    try {
+        // Cerca il dispositivo nell'inventario usando l'indirizzo IP dell'agent
+        const agentAddress = '{{ agent.address }}';
+        const customerId = '{{ agent.customer_id }}';
+        
+        // Prima cerca il dispositivo nell'inventario
+        const deviceResponse = await fetch(`/api/v1/inventory/${customerId}/devices?primary_ip=${encodeURIComponent(agentAddress)}`);
+        const deviceData = await deviceResponse.json();
+        
+        if (!deviceData.success || !deviceData.devices || deviceData.devices.length === 0) {
+            content.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Dispositivo non trovato nell'inventario.
+                    <br><small>Esegui un auto-detect per aggiungere questo MikroTik all'inventario e raccogliere i dati LLDP.</small>
+                </div>
+            `;
+            return;
+        }
+        
+        const device = deviceData.devices[0];
+        const deviceId = device.id;
+        
+        // Carica i dati LLDP dall'endpoint API
+        const lldpResponse = await fetch(`/api/v1/inventory/${customerId}/devices/${deviceId}/lldp-neighbors`);
+        const lldpData = await lldpResponse.json();
+        
+        if (lldpData.success && lldpData.neighbors && lldpData.neighbors.length > 0) {
+            content.innerHTML = `
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Interfaccia Locale</th>
+                                <th>Dispositivo Remoto</th>
+                                <th>Porta Remota</th>
+                                <th>MAC Remoto</th>
+                                <th>IP Remoto</th>
+                                <th>Chassis ID</th>
+                                <th>Scoperto via</th>
+                                <th>Ultimo visto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${lldpData.neighbors.map(n => `
+                                <tr>
+                                    <td><code>${n.local_interface || '-'}</code></td>
+                                    <td>
+                                        <strong>${n.remote_device_name || n.remote_system_name || '-'}</strong>
+                                        ${n.remote_device_description || n.remote_system_description ? '<br><small class="text-muted">' + (n.remote_device_description || n.remote_system_description || '').substring(0, 50) + '</small>' : ''}
+                                    </td>
+                                    <td>${n.remote_port || n.remote_port_description || '-'}</td>
+                                    <td><code class="small">${n.remote_mac || n.remote_mac_address || '-'}</code></td>
+                                    <td><code class="small">${n.remote_ip || n.remote_ip_address || '-'}</code></td>
+                                    <td><code class="small">${n.chassis_id || '-'}</code></td>
+                                    <td><span class="badge bg-info">${n.discovered_by || 'lldp'}</span></td>
+                                    <td><small class="text-muted">${n.last_seen ? new Date(n.last_seen).toLocaleString('it-IT') : '-'}</small></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2 text-muted small">
+                    <i class="bi bi-info-circle"></i> Trovati ${lldpData.neighbors.length} neighbor LLDP/CDP
+                </div>
+            `;
+        } else {
+            // Prova a recuperare i dati da custom_fields come fallback
+            const deviceDetailResponse = await fetch(`/api/v1/inventory/devices/${deviceId}`);
+            const deviceDetail = await deviceDetailResponse.json();
+            
+            let neighbors = [];
+            if (deviceDetail.custom_fields) {
+                let cf = deviceDetail.custom_fields;
+                if (typeof cf === 'string') {
+                    try {
+                        cf = JSON.parse(cf);
+                    } catch (e) {
+                        cf = {};
+                    }
+                }
+                neighbors = cf.neighbors || cf.lldp_neighbors || [];
+            }
+            
+            if (neighbors && neighbors.length > 0) {
+                content.innerHTML = `
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Interfaccia Locale</th>
+                                    <th>Dispositivo Remoto</th>
+                                    <th>Porta Remota</th>
+                                    <th>MAC Remoto</th>
+                                    <th>IP Remoto</th>
+                                    <th>Chassis ID</th>
+                                    <th>Scoperto via</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${neighbors.map(n => `
+                                    <tr>
+                                        <td><code>${n.local_interface || '-'}</code></td>
+                                        <td>
+                                            <strong>${n.remote_device_name || n.identity || '-'}</strong>
+                                            ${n.platform ? '<br><small class="text-muted">' + n.platform + '</small>' : ''}
+                                            ${n.version ? '<br><small class="text-muted">' + n.version.substring(0, 50) + '</small>' : ''}
+                                        </td>
+                                        <td>${n.remote_port || n.remote_interface || '-'}</td>
+                                        <td><code class="small">${n.remote_mac || n['mac-address'] || '-'}</code></td>
+                                        <td><code class="small">${n.remote_ip || n.address || '-'}</code></td>
+                                        <td><code class="small">${n.chassis_id || '-'}</code></td>
+                                        <td><span class="badge bg-info">${n.discovered_by || 'lldp'}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-2 text-muted small">
+                        <i class="bi bi-info-circle"></i> Trovati ${neighbors.length} neighbor LLDP/CDP
+                    </div>
+                `;
+            } else {
+                content.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Nessun neighbor LLDP/CDP trovato.
+                        <br><small>I dati vengono raccolti automaticamente durante l'autodetect. Esegui un auto-detect per questo dispositivo.</small>
+                    </div>
+                `;
+            }
+        }
+    } catch (e) {
+        console.error('Error loading LLDP neighbors:', e);
+        content.innerHTML = `<div class="alert alert-danger">Errore: ${e.message}</div>`;
+    }
+}
+</script>
+{% endblock %}

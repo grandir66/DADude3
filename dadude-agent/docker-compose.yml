@@ -1,0 +1,42 @@
+# Docker Compose per DaDude Agent WebSocket
+# CONFIGURAZIONE SEMPLIFICATA: codice su volume, aggiornamenti via git pull
+#
+# Per aggiornare l'agent:
+#   cd /opt/dadude-agent && git pull origin main && docker restart dadude-agent
+#
+services:
+  agent:
+    build: .
+    image: dadude-agent:latest
+    container_name: dadude-agent
+    restart: unless-stopped
+    
+    network_mode: host
+    
+    environment:
+      - PYTHONPATH=/opt/dadude-agent/app
+    
+    env_file:
+      - .env
+    
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    
+    volumes:
+      # Codice dell'agent (git pull per aggiornare)
+      - ./app:/opt/dadude-agent/app:ro
+      # Configurazione
+      - ./config:/opt/dadude-agent/config:ro
+      # Docker socket per container discovery
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    working_dir: /opt/dadude-agent
+    
+    command: ["python", "-m", "app.agent"]
+    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Alert</h1>
+        <p class="text-muted mb-0">Ultimi alert (48 ore)</p>
+    </div>
+</div>
+
+<div class="card table-modern">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Severità</th>
+                    <th>Dispositivo</th>
+                    <th>Tipo</th>
+                    <th>Messaggio</th>
+                    <th>Stato</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr class="{% if not alert.acknowledged %}table-warning{% endif %}">
+                    <td>
+                        <small>{{ alert.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</small>
+                    </td>
+                    <td>
+                        {% if alert.severity == 'critical' %}
+                        <span class="badge bg-danger">Critico</span>
+                        {% elif alert.severity == 'warning' %}
+                        <span class="badge bg-warning text-dark">Warning</span>
+                        {% else %}
+                        <span class="badge bg-info">Info</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ alert.device_name }}</strong></td>
+                    <td>{{ alert.alert_type }}</td>
+                    <td>{{ alert.message }}</td>
+                    <td>
+                        {% if alert.resolved %}
+                        <span class="badge bg-success">Risolto</span>
+                        {% elif alert.acknowledged %}
+                        <span class="badge bg-secondary">Preso in carico</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Da gestire</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not alert.acknowledged %}
+                        <button class="btn btn-sm btn-outline-primary" onclick="acknowledgeAlert('{{ alert.id }}')">
+                            <i class="bi bi-check"></i>
+                        </button>
+                        {% endif %}
+                        {% if not alert.resolved %}
+                        <button class="btn btn-sm btn-outline-success" onclick="resolveAlert('{{ alert.id }}')">
+                            <i class="bi bi-check-all"></i>
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-5">
+                        <i class="bi bi-bell-slash display-4 d-block mb-2"></i>
+                        Nessun alert
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function acknowledgeAlert(alertId) {
+    try {
+        const response = await fetch(`/api/v1/alerts/${alertId}/acknowledge`, { method: 'POST' });
+        if (response.ok) location.reload();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function resolveAlert(alertId) {
+    try {
+        const response = await fetch(`/api/v1/alerts/${alertId}/resolve`, { method: 'POST' });
+        if (response.ok) location.reload();
+    } catch (e) {
+        console.error(e);
+    }
+}
+</script>
+{% endblock %}

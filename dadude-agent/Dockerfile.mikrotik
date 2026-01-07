@@ -1,0 +1,58 @@
+# DaDude Agent v3.0.0 - MikroTik RouterOS 7 Container image (ARM64)
+# Monolithic image: everything included, no external dependencies at runtime
+# Goal: keep layers small and avoid x86_64-only binaries to maximize RouterOS import reliability.
+# Architecture: WebSocket mTLS (agent-initiated), no REST API
+
+FROM python:3.11-slim
+
+# Metadata
+LABEL maintainer="DaDude Team"
+LABEL description="DaDude Agent for MikroTik RouterOS 7 - WebSocket mTLS mode"
+LABEL version="3.0.0"
+
+# Keep runtime predictable on RouterOS
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# RouterOS sometimes fails if WORKDIR points to a path not present due to partial import.
+# We keep WORKDIR as / to avoid chdir issues; code lives in /app and PYTHONPATH points there.
+WORKDIR /
+
+# System deps required for probes/tools. Keep it lean to reduce layer size.
+# All tools needed for network scanning are included here.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    iputils-ping \
+    dnsutils \
+    net-tools \
+    iproute2 \
+    nmap \
+    procps \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python deps - install all required packages
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm -f /tmp/requirements.txt && \
+    rm -rf /root/.cache/pip
+
+# App code - copy everything needed for the agent to run
+# This is a monolithic image: all code is included, no volume mounts needed
+COPY app/ /app/app/
+COPY config/ /app/config/
+
+# No EXPOSE needed - agent uses WebSocket (outbound only, no listening ports)
+# Agent-initiated connection means no ports need to be exposed
+
+# Simple healthcheck - just verify Python can run (agent doesn't expose HTTP API)
+# RouterOS container healthcheck is optional but helps detect container crashes
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=2 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Run the DaDude Agent (WebSocket mTLS mode, agent-initiated)
+# This is the only entry point - everything runs from this command
+CMD ["python", "-m", "app.agent"]
+
+

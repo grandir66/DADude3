@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Dashboard</h1>
+        <span class="text-muted small">
+            {% if dude_connected %}
+            <span class="badge bg-success"><i class="bi bi-check-circle"></i> The Dude: {{ dude_host }}</span>
+            {% endif %}
+        </span>
+    </div>
+    <button class="btn btn-primary btn-sm" id="refresh-btn" v-on:click="refreshDashboard">
+        <i class="bi bi-arrow-clockwise" v-bind:class="{ 'spinning': isRefreshing }"></i> Aggiorna
+    </button>
+</div>
+
+<!-- Stats Cards - Compatte -->
+<div class="row g-3 mb-4">
+    <!-- Dispositivi Inventario -->
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-2 me-3">
+                        <i class="bi bi-hdd-network text-primary"></i>
+                    </div>
+                    <div>
+                        <h4 class="mb-0" id="stat-devices">{{ inventory.total }}</h4>
+                        <small class="text-muted">Dispositivi</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Monitorati -->
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-circle bg-success bg-opacity-10 p-2 me-3">
+                        <i class="bi bi-broadcast text-success"></i>
+                    </div>
+                    <div>
+                        <h4 class="mb-0" id="stat-monitored">{{ inventory.monitored }}</h4>
+                        <small class="text-muted">Monitorati</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sonde -->
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-circle bg-info bg-opacity-10 p-2 me-3">
+                        <i class="bi bi-router text-info"></i>
+                    </div>
+                    <div>
+                        <h4 class="mb-0" id="stat-agents">{{ agents.total }}</h4>
+                        <small class="text-muted">Sonde</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Clienti -->
+    <div class="col-6 col-md-3">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="rounded-circle bg-warning bg-opacity-10 p-2 me-3">
+                        <i class="bi bi-people text-warning"></i>
+                    </div>
+                    <div>
+                        <h4 class="mb-0" id="stat-customers">{{ customers.total }}</h4>
+                        <small class="text-muted">Clienti</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dettaglio Sonde -->
+{% if agents.total > 0 %}
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body py-3">
+                <h6 class="card-title mb-3"><i class="bi bi-diagram-3 me-2"></i>Sonde per Tipo</h6>
+                <div class="d-flex justify-content-around">
+                    <div class="text-center">
+                        <div class="h4 mb-0 text-warning">{{ agents.mikrotik }}</div>
+                        <small class="text-muted"><i class="bi bi-router"></i> MikroTik</small>
+                    </div>
+                    <div class="text-center">
+                        <div class="h4 mb-0 text-primary">{{ agents.docker }}</div>
+                        <small class="text-muted"><i class="bi bi-box"></i> Docker Agent</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body py-3">
+                <h6 class="card-title mb-3"><i class="bi bi-activity me-2"></i>Stato Dispositivi</h6>
+                <div class="d-flex justify-content-around">
+                    <div class="text-center">
+                        <div class="h4 mb-0 text-success">{{ inventory.online }}</div>
+                        <small class="text-muted"><i class="bi bi-check-circle"></i> Online</small>
+                    </div>
+                    <div class="text-center">
+                        <div class="h4 mb-0 text-danger">{{ inventory.offline }}</div>
+                        <small class="text-muted"><i class="bi bi-x-circle"></i> Offline</small>
+                    </div>
+                    <div class="text-center">
+                        <div class="h4 mb-0 text-secondary">{{ inventory.total - inventory.online - inventory.offline }}</div>
+                        <small class="text-muted"><i class="bi bi-question-circle"></i> Unknown</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- The Dude Section (solo se connesso) -->
+{% if dude_connected %}
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card border-info">
+            <div class="card-header bg-info bg-opacity-10">
+                <h6 class="mb-0"><i class="bi bi-hdd-network me-2"></i>The Dude Server</h6>
+            </div>
+            <div class="card-body py-3">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Dispositivi</h6>
+                        <div class="d-flex gap-3">
+                            <span class="badge bg-success fs-6">{{ devices.up }} UP</span>
+                            <span class="badge bg-danger fs-6">{{ devices.down }} DOWN</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Probe</h6>
+                        <div class="d-flex gap-3">
+                            <span class="badge bg-success">{{ probes.ok }} OK</span>
+                            <span class="badge bg-warning text-dark">{{ probes.warning }} Warn</span>
+                            <span class="badge bg-danger">{{ probes.critical }} Crit</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Alert</h6>
+                        {% if alerts.unacknowledged > 0 %}
+                        <span class="badge bg-warning text-dark fs-6">{{ alerts.unacknowledged }} da gestire</span>
+                        {% else %}
+                        <span class="badge bg-success">Nessun alert</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Lista Clienti -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-people me-2"></i>Clienti Recenti</h6>
+        <a href="/customers" class="btn btn-sm btn-outline-primary">Vedi tutti</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Codice</th>
+                    <th>Nome</th>
+                    <th>Contatto</th>
+                    <th>Stato</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in customers.list %}
+                <tr onclick="location.href='/customers/{{ customer.id }}'" style="cursor: pointer;">
+                    <td><code>{{ customer.code }}</code></td>
+                    <td><strong>{{ customer.name }}</strong></td>
+                    <td>{{ customer.contact_name or '-' }}</td>
+                    <td>
+                        {% if customer.active %}
+                        <span class="badge bg-success">Attivo</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inattivo</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox display-6 d-block mb-2"></i>
+                        Nessun cliente configurato
+                        <br>
+                        <a href="/customers" class="btn btn-primary btn-sm mt-2">
+                            <i class="bi bi-plus"></i> Aggiungi Cliente
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if not dude_connected %}
+<!-- Quick Setup (opzionale) -->
+<div class="card mt-4 border-secondary">
+    <div class="card-header bg-secondary bg-opacity-10">
+        <h6 class="mb-0"><i class="bi bi-gear me-2"></i>Configurazione Opzionale: The Dude</h6>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Puoi collegare DaDude a un server MikroTik The Dude per sincronizzare dispositivi e alert.
+            Questa configurazione è opzionale.
+        </p>
+        <a href="/settings" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-plug"></i> Configura Connessione
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Animazioni smooth per i numeri nella dashboard
+function animateValue(element, start, end, duration) {
+    const startTime = performance.now();
+    const animate = (currentTime) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+        const current = Math.floor(start + (end - start) * easeOut);
+        element.textContent = current;
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            element.textContent = end;
+        }
+    };
+    requestAnimationFrame(animate);
+}
+
+// Anima i valori quando la pagina è caricata
+document.addEventListener('DOMContentLoaded', () => {
+    const stats = [
+        { id: 'stat-devices', value: {{ inventory.total }}, delay: 0 },
+        { id: 'stat-monitored', value: {{ inventory.monitored }}, delay: 100 },
+        { id: 'stat-agents', value: {{ agents.total }}, delay: 200 },
+        { id: 'stat-customers', value: {{ customers.total }}, delay: 300 }
+    ];
+    
+    stats.forEach(stat => {
+        setTimeout(() => {
+            const element = document.getElementById(stat.id);
+            if (element) {
+                animateValue(element, 0, stat.value, 1000);
+            }
+        }, stat.delay);
+    });
+    
+    // Aggiungi animazione al pulsante refresh
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            this.querySelector('i').classList.add('spinning');
+            setTimeout(() => {
+                this.querySelector('i').classList.remove('spinning');
+            }, 1000);
+        });
+    }
+});
+
+// App Vue per refresh button (usa createApp già disponibile globalmente da app.js)
+if (typeof Vue !== 'undefined' && Vue.createApp) {
+    Vue.createApp({
+    data() {
+        return {
+            isRefreshing: false
+        }
+    },
+    methods: {
+        refreshDashboard() {
+            this.isRefreshing = true;
+            setTimeout(() => {
+                location.reload();
+            }, 500);
+        }
+    }
+    }).mount('#refresh-btn');
+}
+</script>
+
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spinning {
+    animation: spin 1s linear infinite;
+}
+
+/* Animazioni smooth per le card */
+.card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Animazione fade-in per le card */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.row > div {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.row > div:nth-child(1) { animation-delay: 0.1s; }
+.row > div:nth-child(2) { animation-delay: 0.2s; }
+.row > div:nth-child(3) { animation-delay: 0.3s; }
+.row > div:nth-child(4) { animation-delay: 0.4s; }
+</style>
+{% endblock %}

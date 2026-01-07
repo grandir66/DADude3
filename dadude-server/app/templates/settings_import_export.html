@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item"><a href="/settings">Configurazione</a></li>
+            <li class="breadcrumb-item active">Import/Export</li>
+        </ol>
+    </nav>
+    <h1 class="h3 mb-0">Import/Export Dati</h1>
+</div>
+
+<div class="row">
+    <!-- Export -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-download"></i> Export
+            </div>
+            <div class="card-body">
+                <h6>Esporta Clienti</h6>
+                <p class="text-muted small">Scarica l'elenco completo dei clienti in formato CSV.</p>
+                <a href="/api/v1/import-export/customers/csv" class="btn btn-outline-success mb-4">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Export Clienti CSV
+                </a>
+                
+                <hr>
+                
+                <h6>Esporta per Cliente</h6>
+                <p class="text-muted small">Seleziona un cliente per esportare reti e credenziali.</p>
+                
+                <div class="mb-3">
+                    <select class="form-select" id="exportCustomerSelect">
+                        <option value="">-- Seleziona Cliente --</option>
+                        {% for customer in customers %}
+                        <option value="{{ customer.id }}">{{ customer.code }} - {{ customer.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary" onclick="exportNetworks()">
+                        <i class="bi bi-diagram-3"></i> Reti
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="exportCredentials(false)">
+                        <i class="bi bi-key"></i> Credenziali
+                    </button>
+                    <button class="btn btn-outline-danger" onclick="exportCredentials(true)">
+                        <i class="bi bi-key-fill"></i> Credenziali + Password
+                    </button>
+                </div>
+                <div class="alert alert-warning mt-3 small">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    L'export con password contiene dati sensibili in chiaro!
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Import -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-upload"></i> Import
+            </div>
+            <div class="card-body">
+                <h6>Importa Reti</h6>
+                <p class="text-muted small">Carica un file CSV con le reti da importare.</p>
+                
+                <div class="mb-3">
+                    <select class="form-select" id="importCustomerSelect">
+                        <option value="">-- Seleziona Cliente --</option>
+                        {% for customer in customers %}
+                        <option value="{{ customer.id }}">{{ customer.code }} - {{ customer.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <form id="importNetworksForm" class="mb-4">
+                    <div class="input-group">
+                        <input type="file" class="form-control" id="networksFile" accept=".csv">
+                        <button type="submit" class="btn btn-primary">Import Reti</button>
+                    </div>
+                </form>
+                
+                <hr>
+                
+                <h6>Importa Credenziali</h6>
+                <p class="text-muted small">Carica un file CSV con le credenziali. Le password verranno criptate automaticamente.</p>
+                
+                <form id="importCredentialsForm">
+                    <div class="input-group">
+                        <input type="file" class="form-control" id="credentialsFile" accept=".csv">
+                        <button type="submit" class="btn btn-primary">Import Credenziali</button>
+                    </div>
+                </form>
+                
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="skipErrors">
+                    <label class="form-check-label" for="skipErrors">
+                        Continua anche in caso di errori
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Templates -->
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-file-earmark-text"></i> Template CSV
+    </div>
+    <div class="card-body">
+        <p>Scarica i template CSV per importare i dati nel formato corretto.</p>
+        <div class="btn-group">
+            <a href="/api/v1/import-export/templates/networks" class="btn btn-outline-secondary">
+                <i class="bi bi-download"></i> Template Reti
+            </a>
+            <a href="/api/v1/import-export/templates/credentials" class="btn btn-outline-secondary">
+                <i class="bi bi-download"></i> Template Credenziali
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Risultati Import -->
+<div class="card mt-4" id="importResults" style="display: none;">
+    <div class="card-header">
+        <i class="bi bi-list-check"></i> Risultato Import
+    </div>
+    <div class="card-body">
+        <div id="importResultsContent"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getSelectedCustomer(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select.value) {
+        alert('Seleziona prima un cliente');
+        return null;
+    }
+    return select.value;
+}
+
+function exportNetworks() {
+    const customerId = getSelectedCustomer('exportCustomerSelect');
+    if (customerId) {
+        window.location.href = `/api/v1/import-export/customers/${customerId}/networks/csv`;
+    }
+}
+
+function exportCredentials(includeSecrets) {
+    const customerId = getSelectedCustomer('exportCustomerSelect');
+    if (customerId) {
+        const url = `/api/v1/import-export/customers/${customerId}/credentials/csv?include_secrets=${includeSecrets}`;
+        if (includeSecrets) {
+            if (confirm('ATTENZIONE: Stai per scaricare le password in chiaro. Continuare?')) {
+                window.location.href = url;
+            }
+        } else {
+            window.location.href = url;
+        }
+    }
+}
+
+function showResults(results) {
+    const resultsDiv = document.getElementById('importResults');
+    const contentDiv = document.getElementById('importResultsContent');
+    
+    let html = `
+        <div class="alert alert-${results.errors.length > 0 ? 'warning' : 'success'}">
+            <strong>Importati:</strong> ${results.imported} | 
+            <strong>Saltati:</strong> ${results.skipped}
+        </div>
+    `;
+    
+    if (results.errors.length > 0) {
+        html += '<h6>Errori:</h6><ul class="text-danger">';
+        results.errors.forEach(err => {
+            html += `<li>${err}</li>`;
+        });
+        html += '</ul>';
+    }
+    
+    contentDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+}
+
+document.getElementById('importNetworksForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const customerId = getSelectedCustomer('importCustomerSelect');
+    if (!customerId) return;
+    
+    const fileInput = document.getElementById('networksFile');
+    if (!fileInput.files[0]) {
+        alert('Seleziona un file CSV');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    
+    const skipErrors = document.getElementById('skipErrors').checked;
+    
+    const response = await fetch(
+        `/api/v1/import-export/customers/${customerId}/networks/csv?skip_errors=${skipErrors}`,
+        { method: 'POST', body: formData }
+    );
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+        showResults(data.results);
+    } else {
+        alert('Errore: ' + data.detail);
+    }
+});
+
+document.getElementById('importCredentialsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const customerId = getSelectedCustomer('importCustomerSelect');
+    if (!customerId) return;
+    
+    const fileInput = document.getElementById('credentialsFile');
+    if (!fileInput.files[0]) {
+        alert('Seleziona un file CSV');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    
+    const skipErrors = document.getElementById('skipErrors').checked;
+    
+    const response = await fetch(
+        `/api/v1/import-export/customers/${customerId}/credentials/csv?skip_errors=${skipErrors}`,
+        { method: 'POST', body: formData }
+    );
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+        showResults(data.results);
+    } else {
+        alert('Errore: ' + data.detail);
+    }
+});
+</script>
+{% endblock %}

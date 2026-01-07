@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3 mb-1">Configurazione</h1>
+    <p class="text-muted">Impostazioni generali del sistema DaDude</p>
+</div>
+
+<div class="row">
+    <!-- Connessione Dude -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hdd-network"></i> Connessione Dude Server</span>
+                <span class="status-dot {% if dude_connected %}connected{% else %}disconnected{% endif %}"></span>
+            </div>
+            <form id="dudeSettingsForm">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Host</label>
+                        <input type="text" class="form-control" name="dude_host" value="{{ settings.dude_host }}">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Porta API</label>
+                            <input type="number" class="form-control" name="dude_api_port" value="{{ settings.dude_api_port }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">SSL</label>
+                            <select class="form-select" name="dude_use_ssl">
+                                <option value="false" {% if not settings.dude_use_ssl %}selected{% endif %}>No</option>
+                                <option value="true" {% if settings.dude_use_ssl %}selected{% endif %}>Sì</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="dude_username" value="{{ settings.dude_username }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="dude_password" placeholder="(invariata)">
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Salva
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="testConnection()">
+                            <i class="bi bi-wifi"></i> Test
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Polling -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock"></i> Polling & Sync
+            </div>
+            <form id="pollingSettingsForm">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Intervallo Polling</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="poll_interval" value="{{ settings.poll_interval }}">
+                                <span class="input-group-text">sec</span>
+                            </div>
+                            <small class="text-muted">Controllo stato dispositivi</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Intervallo Full Sync</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="full_sync_interval" value="{{ settings.full_sync_interval }}">
+                                <span class="input-group-text">sec</span>
+                            </div>
+                            <small class="text-muted">Sincronizzazione completa</small>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Timeout Connessione</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="connection_timeout" value="{{ settings.connection_timeout }}">
+                                <span class="input-group-text">sec</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Livello Log</label>
+                            <select class="form-select" name="log_level">
+                                <option value="DEBUG" {% if settings.log_level == 'DEBUG' %}selected{% endif %}>DEBUG</option>
+                                <option value="INFO" {% if settings.log_level == 'INFO' %}selected{% endif %}>INFO</option>
+                                <option value="WARNING" {% if settings.log_level == 'WARNING' %}selected{% endif %}>WARNING</option>
+                                <option value="ERROR" {% if settings.log_level == 'ERROR' %}selected{% endif %}>ERROR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Salva
+                        </button>
+                        <button type="button" class="btn btn-outline-success" onclick="forceSync()">
+                            <i class="bi bi-arrow-clockwise"></i> Sync Ora
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- SSL/HTTPS -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-shield-lock"></i> SSL / HTTPS</span>
+                <span class="badge {% if ssl_enabled %}bg-success{% else %}bg-secondary{% endif %}">
+                    {{ 'Attivo' if ssl_enabled else 'Disattivo' }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="sslEnabled" {% if ssl_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="sslEnabled">Abilita HTTPS</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Certificato</label>
+                    <input type="text" class="form-control" id="sslCertPath" value="{{ ssl_cert_path or '/app/data/certs/server.crt' }}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Chiave Privata</label>
+                    <input type="text" class="form-control" id="sslKeyPath" value="{{ ssl_key_path or '/app/data/certs/server.key' }}" readonly>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-warning" onclick="generateSSLCertificate()">
+                        <i class="bi bi-file-earmark-plus"></i> Genera Certificato
+                    </button>
+                    <button class="btn btn-primary" onclick="saveSSLSettings()">
+                        <i class="bi bi-check"></i> Salva
+                    </button>
+                </div>
+                <div class="alert alert-info mt-3 mb-0 small">
+                    <i class="bi bi-info-circle"></i> Genera un certificato autofirmato per abilitare HTTPS. 
+                    Il browser mostrerà un avviso di sicurezza la prima volta.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Autenticazione -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-person-lock"></i> Autenticazione</span>
+                <span class="badge {% if auth_enabled %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                    {{ 'Attiva' if auth_enabled else 'Disattiva' }}
+                </span>
+            </div>
+            <form id="authSettingsForm">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="auth_enabled" id="authEnabled" {% if auth_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="authEnabled">Richiedi Login</label>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Username Admin</label>
+                            <input type="text" class="form-control" name="admin_username" value="{{ admin_username or 'admin' }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Password Admin</label>
+                            <input type="password" class="form-control" name="admin_password" placeholder="(nuova password)">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check"></i> Salva Autenticazione
+                    </button>
+                    {% if not auth_enabled %}
+                    <div class="alert alert-warning mt-3 mb-0 small">
+                        <i class="bi bi-exclamation-triangle"></i> <strong>Attenzione:</strong> L'autenticazione è disattivata. 
+                        Chiunque può accedere al pannello di controllo.
+                    </div>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Navigazione Settings -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="bi bi-gear"></i> Altre Configurazioni
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <a href="/settings/webhooks" class="btn btn-outline-primary w-100 py-3">
+                    <i class="bi bi-link-45deg display-6 d-block mb-2"></i>
+                    Webhook
+                </a>
+            </div>
+            <div class="col-md-3">
+                <a href="/settings/import-export" class="btn btn-outline-primary w-100 py-3">
+                    <i class="bi bi-arrow-left-right display-6 d-block mb-2"></i>
+                    Import/Export
+                </a>
+            </div>
+            <div class="col-md-3">
+                <a href="/settings/credentials" class="btn btn-outline-primary w-100 py-3">
+                    <i class="bi bi-key display-6 d-block mb-2"></i>
+                    Credenziali
+                </a>
+            </div>
+            <div class="col-md-3">
+                <a href="/docs" target="_blank" class="btn btn-outline-primary w-100 py-3">
+                    <i class="bi bi-code-slash display-6 d-block mb-2"></i>
+                    API Docs
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Riavvio servizio -->
+<div class="card mt-4">
+    <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+            <strong>Riavvia Servizio</strong>
+            <p class="text-muted mb-0 small">Applica le modifiche riavviando il container Docker</p>
+        </div>
+        <button class="btn btn-danger" onclick="restartService()">
+            <i class="bi bi-arrow-clockwise"></i> Riavvia DaDude
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Form Dude Settings
+document.getElementById('dudeSettingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = {};
+    for (const [key, value] of formData.entries()) {
+        if (value) {
+            if (key === 'dude_use_ssl') {
+                data[key] = value === 'true';
+            } else if (key === 'dude_api_port') {
+                data[key] = parseInt(value);
+            } else {
+                data[key] = value;
+            }
+        }
+    }
+    
+    try {
+        const response = await fetch('/api/v1/settings/dude', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        alert(result.success ? '✅ ' + result.message : '❌ Errore: ' + result.message);
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+});
+
+// Form Polling Settings
+document.getElementById('pollingSettingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = {};
+    for (const [key, value] of formData.entries()) {
+        if (value) {
+            if (['poll_interval', 'full_sync_interval', 'connection_timeout'].includes(key)) {
+                data[key] = parseInt(value);
+            } else {
+                data[key] = value;
+            }
+        }
+    }
+    
+    try {
+        const response = await fetch('/api/v1/settings/dadude', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        alert(result.success ? '✅ ' + result.message : '❌ Errore: ' + result.message);
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+});
+
+// Form Auth Settings
+document.getElementById('authSettingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = {
+        auth_enabled: document.getElementById('authEnabled').checked,
+        admin_username: formData.get('admin_username'),
+    };
+    const password = formData.get('admin_password');
+    if (password) {
+        data.admin_password = password;
+    }
+    
+    try {
+        const response = await fetch('/api/v1/settings/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        alert(result.success ? '✅ ' + result.message : '❌ Errore: ' + result.message);
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+});
+
+// SSL Certificate Generation
+async function generateSSLCertificate() {
+    const cn = prompt('Common Name per il certificato (es: dadude.local):', 'dadude.local');
+    if (!cn) return;
+    
+    try {
+        const response = await fetch(`/api/v1/settings/ssl/generate?common_name=${encodeURIComponent(cn)}&days=365`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(`✅ Certificato generato!\n\nCertificato: ${result.cert_path}\nChiave: ${result.key_path}\nValidità: ${result.valid_days} giorni`);
+            document.getElementById('sslCertPath').value = result.cert_path;
+            document.getElementById('sslKeyPath').value = result.key_path;
+            document.getElementById('sslEnabled').checked = true;
+        } else {
+            alert('❌ Errore: ' + (result.detail || result.message));
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+// Save SSL Settings
+async function saveSSLSettings() {
+    const data = {
+        ssl_enabled: document.getElementById('sslEnabled').checked,
+        ssl_cert_path: document.getElementById('sslCertPath').value,
+        ssl_key_path: document.getElementById('sslKeyPath').value,
+    };
+    
+    try {
+        const response = await fetch('/api/v1/settings/ssl', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        alert(result.success ? '✅ ' + result.message : '❌ Errore: ' + result.message);
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+// Test Connection
+async function testConnection() {
+    try {
+        const response = await fetch('/api/v1/system/health');
+        const data = await response.json();
+        const isConnected = data.components?.dude_connection?.status === 'up';
+        alert(isConnected ? '✅ Connessione OK!' : '❌ Connessione fallita!');
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+// Force Sync
+async function forceSync() {
+    try {
+        const response = await fetch('/api/v1/system/sync', { method: 'POST' });
+        const data = await response.json();
+        if (data.status === 'success') {
+            alert(`✅ Sync completato!\n${data.data?.devices || 0} devices, ${data.data?.probes || 0} probes`);
+        } else {
+            alert('❌ Errore: ' + (data.detail || data.message));
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+// Restart Service
+async function restartService() {
+    if (!confirm('Riavviare il servizio DaDude?\n\nIl pannello non sarà disponibile per alcuni secondi.')) return;
+    
+    try {
+        const response = await fetch('/api/v1/settings/restart', { method: 'POST' });
+        const result = await response.json();
+        alert(result.message);
+        if (result.success) {
+            setTimeout(() => location.reload(), 5000);
+        }
+    } catch (e) {
+        // Probabilmente il servizio si è già riavviato
+        alert('Servizio in riavvio... Ricarica la pagina tra qualche secondo.');
+        setTimeout(() => location.reload(), 5000);
+    }
+}
+</script>
+{% endblock %}

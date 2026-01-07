@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item"><a href="/settings">Configurazione</a></li>
+            <li class="breadcrumb-item active">Webhook</li>
+        </ol>
+    </nav>
+    <h1 class="h3 mb-0">Configurazione Webhook</h1>
+</div>
+
+<!-- Destinazioni Webhook -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-link-45deg"></i> Destinazioni Webhook</span>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newWebhookModal">
+            <i class="bi bi-plus"></i> Nuova Destinazione
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>URL</th>
+                    <th>Eventi</th>
+                    <th>Ultimo Successo</th>
+                    <th>Statistiche</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dest in destinations %}
+                <tr>
+                    <td><code>{{ dest.id }}</code></td>
+                    <td><strong>{{ dest.name }}</strong></td>
+                    <td><code class="text-truncate d-inline-block" style="max-width: 200px;">{{ dest.url }}</code></td>
+                    <td>
+                        {% if dest.events %}
+                        <span class="badge bg-info">{{ dest.events|length }} eventi</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Tutti</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if dest.last_success %}
+                        <small>{{ dest.last_success }}</small>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="text-success">✓ {{ dest.success_count }}</span>
+                        <span class="text-danger ms-2">✗ {{ dest.error_count }}</span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteWebhook('{{ dest.id }}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">
+                        Nessuna destinazione webhook configurata
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Test Webhook -->
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-send"></i> Test Webhook
+    </div>
+    <div class="card-body">
+        <p>Invia un messaggio di test a tutte le destinazioni configurate.</p>
+        <button class="btn btn-warning" onclick="testWebhook()">
+            <i class="bi bi-lightning"></i> Invia Test
+        </button>
+    </div>
+</div>
+
+<!-- Istruzioni -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="bi bi-info-circle"></i> Come Configurare Webhook da Dude
+    </div>
+    <div class="card-body">
+        <p>Per inviare notifiche da The Dude a DaDude, configura uno script di notifica:</p>
+        <pre class="bg-dark text-light p-3 rounded"><code>/tool fetch url="http://{{ request.host }}/api/v1/webhook/receive" \
+    http-method=post \
+    http-header-field="Content-Type: application/x-www-form-urlencoded" \
+    http-data="event_type=device_down&device_id=[device.id]&device_name=[device.name]"</code></pre>
+        
+        <h6 class="mt-4">Eventi supportati:</h6>
+        <ul>
+            <li><code>device_up</code> - Device tornato online</li>
+            <li><code>device_down</code> - Device offline</li>
+            <li><code>probe_ok</code> - Probe OK</li>
+            <li><code>probe_warning</code> - Probe in warning</li>
+            <li><code>probe_critical</code> - Probe critico</li>
+        </ul>
+    </div>
+</div>
+
+<!-- Modal Nuovo Webhook -->
+<div class="modal fade" id="newWebhookModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nuova Destinazione Webhook</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newWebhookForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nome *</label>
+                        <input type="text" class="form-control" name="name" required placeholder="Slack Notifications">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL *</label>
+                        <input type="url" class="form-control" name="url" required placeholder="https://hooks.slack.com/...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Eventi (opzionale)</label>
+                        <input type="text" class="form-control" name="events" placeholder="device_down, device_up">
+                        <small class="text-muted">Lascia vuoto per tutti gli eventi. Separa con virgola.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary">Aggiungi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('newWebhookForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    
+    let events = null;
+    if (formData.get('events')) {
+        events = formData.get('events').split(',').map(e => e.trim());
+    }
+    
+    const response = await fetch('/api/v1/webhook/destinations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            url: formData.get('url'),
+            name: formData.get('name'),
+            events: events
+        })
+    });
+    
+    if (response.ok) location.reload();
+    else alert('Errore: ' + (await response.json()).detail);
+});
+
+async function deleteWebhook(id) {
+    if (!confirm('Eliminare questa destinazione?')) return;
+    
+    const response = await fetch(`/api/v1/webhook/destinations/${id}`, { method: 'DELETE' });
+    if (response.ok) location.reload();
+    else alert('Errore');
+}
+
+async function testWebhook() {
+    const response = await fetch('/api/v1/webhook/test', { method: 'POST' });
+    const data = await response.json();
+    alert(`Test inviato a ${data.destinations} destinazioni`);
+}
+</script>
+{% endblock %}

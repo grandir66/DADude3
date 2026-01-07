@@ -1,0 +1,28 @@
+[Unit]
+Description=DaDude Server - Network Inventory & Monitoring System
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/dadude-server/dadude-server
+Environment="PYTHONPATH=/opt/dadude-server/dadude-server"
+Environment="PATH=/opt/dadude-server/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/dadude-server/venv/bin/python -m app.run_dual
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dadude-server
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+
+{% block title %}Monitoraggio Dispositivi - DaDude{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1"><i class="bi bi-activity"></i> Monitoraggio Dispositivi</h1>
+        <p class="text-muted mb-0">Gestione e configurazione monitoraggio dispositivi per cliente</p>
+    </div>
+</div>
+
+<!-- Filtri -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form id="filterForm" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Cliente</label>
+                <select class="form-select" id="customerFilter" name="customer_id" onchange="loadMonitoredDevices()">
+                    <option value="">-- Tutti i clienti --</option>
+                    {% for customer in customers %}
+                    <option value="{{ customer.id|e }}" {% if selected_customer_id|string == customer.id|string %}selected{% endif %}>
+                        {{ customer.name }} ({{ customer.code }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Tipo Monitoraggio</label>
+                <select class="form-select" id="monitoringTypeFilter" name="monitoring_type" onchange="loadMonitoredDevices()">
+                    <option value="">Tutti</option>
+                    <option value="none" {% if monitoring_type_filter == 'none' %}selected{% endif %}>Nessuno (da configurare)</option>
+                    <option value="icmp" {% if monitoring_type_filter == 'icmp' %}selected{% endif %}>ICMP</option>
+                    <option value="tcp" {% if monitoring_type_filter == 'tcp' %}selected{% endif %}>TCP</option>
+                    <option value="netwatch" {% if monitoring_type_filter == 'netwatch' %}selected{% endif %}>MikroTik Netwatch</option>
+                    <option value="agent" {% if monitoring_type_filter == 'agent' %}selected{% endif %}>Agent Remoto</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Stato</label>
+                <select class="form-select" id="statusFilter" name="status" onchange="loadMonitoredDevices()">
+                    <option value="">Tutti</option>
+                    <option value="up" {% if status_filter == 'up' %}selected{% endif %}>UP</option>
+                    <option value="down" {% if status_filter == 'down' %}selected{% endif %}>DOWN</option>
+                    <option value="unknown" {% if status_filter == 'unknown' %}selected{% endif %}>UNKNOWN</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="showAllDevices" {% if show_all %}checked{% endif %} onchange="loadMonitoredDevices()">
+                    <label class="form-check-label" for="showAllDevices">Mostra tutti</label>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabella Device Monitorati -->
+<div id="monitoring-app">
+    <div v-if="devices.length === 0" class="alert alert-info">
+        <i class="bi bi-info-circle"></i> 
+        <div>
+            <strong>Nessun dispositivo trovato</strong>
+            <ul class="mt-2 mb-0">
+                <li v-if="!showAll">Attiva "Mostra tutti" per vedere anche i dispositivi non monitorati</li>
+                <li v-if="!selectedCustomerId">Seleziona un cliente per filtrare i dispositivi</li>
+                <li>Verifica i filtri applicati (Tipo Monitoraggio, Stato)</li>
+            </ul>
+        </div>
+    </div>
+    
+    <data-table
+        v-else
+        :data="devices"
+        :columns="columns"
+        :searchable="true"
+        :sortable="true"
+        :paginated="true"
+        :items-per-page="20"
+        empty-message="Nessun dispositivo monitorato trovato"
+    >
+        <template #cell-monitoring_type="{ value }">
+            <span v-if="value === 'none'" class="badge bg-secondary">
+                <i class="bi bi-x-circle"></i> Nessuno
+            </span>
+            <span v-else-if="value === 'icmp'" class="badge bg-success">
+                <i class="bi bi-broadcast"></i> ICMP
+            </span>
+            <span v-else-if="value === 'tcp'" class="badge bg-primary">
+                <i class="bi bi-globe"></i> TCP
+            </span>
+            <span v-else-if="value === 'netwatch'" class="badge bg-info">
+                <i class="bi bi-router"></i> Netwatch
+            </span>
+            <span v-else-if="value === 'agent'" class="badge bg-warning">
+                <i class="bi bi-cpu"></i> Agent
+            </span>
+            <span v-else class="badge bg-secondary" v-text="value"></span>
+        </template>
+        
+        <template #cell-monitored="{ value }">
+            <span v-if="value" class="badge bg-success">Attivo</span>
+            <span v-else class="badge bg-warning">Configurato</span>
+        </template>
+        
+        <template #cell-status="{ value }">
+            <span v-if="value === 'up'" class="badge bg-success">
+                <i class="bi bi-check-circle"></i> UP
+            </span>
+            <span v-else-if="value === 'down'" class="badge bg-danger">
+                <i class="bi bi-x-circle"></i> DOWN
+            </span>
+            <span v-else class="badge bg-secondary">
+                <i class="bi bi-question-circle"></i> UNKNOWN
+            </span>
+        </template>
+        
+        <template #cell-customer_name="{ row }">
+            <a v-if="row.customer_id" :href="'/customers/' + row.customer_id" class="text-decoration-none">
+                <strong v-text="row.customer_name || 'Unknown'"></strong>
+                <span v-if="row.customer_code" class="text-muted small ms-1" v-text="'(' + row.customer_code + ')'"></span>
+            </a>
+            <span v-else class="text-muted">-</span>
+        </template>
+        
+        <template #cell-actions="{ row }">
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" @click="configureMonitoring(row)" title="Configura Monitoraggio">
+                    <i class="bi bi-gear"></i>
+                </button>
+                <a v-if="row.customer_id" :href="'/customers/' + row.customer_id" class="btn btn-outline-secondary" title="Vai al Cliente">
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+        </template>
+    </data-table>
+</div>
+
+<!-- Modal Configurazione Monitoraggio -->
+<div class="modal fade" id="monitoringConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configura Monitoraggio per <span id="modalDeviceName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="monitoringConfigForm">
+                <input type="hidden" id="monitorDeviceId" name="device_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Tipo di Monitoraggio</label>
+                        <select class="form-select" id="monitorType" name="monitoring_type" onchange="window.monitoringApp && window.monitoringApp.toggleMonitoringFields ? window.monitoringApp.toggleMonitoringFields() : toggleMonitoringFieldsGlobal()">
+                            <option value="none">Nessuno</option>
+                            <option value="icmp">ICMP (Ping)</option>
+                            <option value="tcp">TCP (Porta)</option>
+                            <option value="netwatch">MikroTik Netwatch</option>
+                            <option value="agent">Agent (Probe avanzato)</option>
+                        </select>
+                    </div>
+
+                    <div id="tcpPortField" class="mb-3" style="display: none;">
+                        <label class="form-label">Porta TCP da monitorare *</label>
+                        <input type="number" class="form-control" id="monitorPort" name="monitoring_port" min="1" max="65535" placeholder="Es: 80, 443, 22" required>
+                        <small class="text-muted">La porta è obbligatoria per il monitoraggio TCP</small>
+                    </div>
+
+                    <div id="agentSelectField" class="mb-3" style="display: none;">
+                        <label class="form-label">Seleziona Agente/Sonda</label>
+                        <select class="form-select" id="monitorAgentId" name="monitoring_agent_id">
+                            <option value="">-- Seleziona --</option>
+                            <!-- Options will be loaded dynamically -->
+                        </select>
+                        <small class="text-muted">Seleziona l'agente che eseguirà il monitoraggio (MikroTik per Netwatch, Docker per probe)</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary">Salva Configurazione</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Dati devices passati dal server
+const devicesData = {{ devices | tojson }} || [];
+
+// Funzione per caricare device monitorati (deve essere globale per essere chiamata da onchange)
+async function loadMonitoredDevices() {
+    const customerId = document.getElementById('customerFilter')?.value || '';
+    const monitoringType = document.getElementById('monitoringTypeFilter')?.value || '';
+    const status = document.getElementById('statusFilter')?.value || '';
+    const showAll = document.getElementById('showAllDevices')?.checked || false;
+    
+    console.log('loadMonitoredDevices called:', { customerId, monitoringType, status, showAll });
+    
+    // Costruisci URL con parametri per ricaricare la pagina
+    const params = new URLSearchParams();
+    if (customerId) params.append('customer_id', customerId);
+    if (monitoringType) params.append('monitoring_type', monitoringType);
+    if (status) params.append('status', status);
+    if (showAll) params.append('show_all', 'true');
+    
+    const url = `/monitoring?${params.toString()}`;
+    console.log('Navigating to:', url);
+    
+    // Ricarica pagina con nuovi filtri (più semplice e affidabile)
+    window.location.href = url;
+}
+
+// Funzione globale per toggleMonitoringFields (fallback se Vue non è disponibile)
+function toggleMonitoringFieldsGlobal() {
+    const type = document.getElementById('monitorType')?.value;
+    const tcpPortField = document.getElementById('tcpPortField');
+    const agentSelectField = document.getElementById('agentSelectField');
+    const monitorPort = document.getElementById('monitorPort');
+    
+    if (tcpPortField) {
+        tcpPortField.style.display = (type === 'tcp') ? 'block' : 'none';
+        if (monitorPort) {
+            monitorPort.required = (type === 'tcp');
+            if (type !== 'tcp' && monitorPort.value) {
+                monitorPort.value = '';
+            }
+        }
+    }
+    if (agentSelectField) {
+        agentSelectField.style.display = (type === 'netwatch' || type === 'agent') ? 'block' : 'none';
+    }
+}
+
+// App Vue per monitoring
+let monitoringAppInstance = null;
+
+// Assicurati che Vue e DataTable siano caricati prima di inizializzare
+function initMonitoringApp() {
+    if (typeof Vue === 'undefined' || !Vue.createApp) {
+        console.error('Vue.js non è caricato');
+        return;
+    }
+    
+    if (typeof window.DataTable === 'undefined') {
+        console.error('DataTable component non è caricato');
+        return;
+    }
+    
+    monitoringAppInstance = Vue.createApp({
+        components: {
+            DataTable: window.DataTable
+        },
+        data() {
+            return {
+                devices: devicesData || [],
+                showAll: {{ 'true' if show_all else 'false' }},
+                selectedCustomerId: {{ selected_customer_id|tojson if selected_customer_id else 'null' }},
+                columns: [
+                    { key: 'customer_name', label: 'Cliente', field: 'customer_name', sortable: true },
+                    { key: 'name', label: 'Nome', field: 'name', sortable: true },
+                    { key: 'hostname', label: 'Hostname', field: 'hostname', sortable: true },
+                    { key: 'primary_ip', label: 'IP', field: 'primary_ip', sortable: true },
+                    { key: 'device_type', label: 'Tipo', field: 'device_type', sortable: true },
+                    { key: 'monitoring_type', label: 'Monitoraggio', field: 'monitoring_type', sortable: true },
+                    { key: 'monitored', label: 'Stato', field: 'monitored', sortable: true },
+                    { key: 'status', label: 'Status', field: 'status', sortable: true },
+                    { key: 'last_check', label: 'Ultimo Check', field: 'last_check', sortable: true },
+                    { key: 'actions', label: 'Azioni', field: null, sortable: false }
+                ]
+            }
+        },
+        methods: {
+            async configureMonitoring(device) {
+                document.getElementById('modalDeviceName').textContent = device.name || device.primary_ip;
+                document.getElementById('monitorDeviceId').value = device.id;
+                document.getElementById('monitorType').value = device.monitoring_type || 'none';
+                document.getElementById('monitorPort').value = device.monitoring_port || '';
+                
+                // Carica agenti del cliente prima di aprire il modal
+                await this.loadAgentsForDevice(device);
+                
+                // Imposta l'agente selezionato dopo aver caricato gli agenti
+                document.getElementById('monitorAgentId').value = device.monitoring_agent_id || '';
+                
+                this.toggleMonitoringFields();
+                new bootstrap.Modal(document.getElementById('monitoringConfigModal')).show();
+            },
+            async loadAgentsForDevice(device) {
+                // Ottieni customer_id dal device o dal filtro cliente
+                const customerId = device.customer_id || document.getElementById('customerFilter').value;
+                
+                if (!customerId) {
+                    console.warn('Nessun customer_id disponibile per caricare agenti');
+                    const agentSelect = document.getElementById('monitorAgentId');
+                    agentSelect.innerHTML = '<option value="">-- Seleziona un cliente prima --</option>';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/api/v1/customers/${customerId}/agents?active_only=true`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    const agents = Array.isArray(data) ? data : (data.agents || []);
+                    
+                    const agentSelect = document.getElementById('monitorAgentId');
+                    agentSelect.innerHTML = '<option value="">-- Seleziona Agente/Sonda --</option>';
+                    
+                    agents.forEach(agent => {
+                        const option = document.createElement('option');
+                        option.value = agent.id;
+                        option.textContent = `${agent.name} (${agent.agent_type || 'unknown'})`;
+                        if (agent.address) {
+                            option.textContent += ` - ${agent.address}`;
+                        }
+                        agentSelect.appendChild(option);
+                    });
+                    
+                    if (agents.length === 0) {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '-- Nessun agente disponibile per questo cliente --';
+                        option.disabled = true;
+                        agentSelect.appendChild(option);
+                    }
+                    
+                    console.log(`Loaded ${agents.length} agents for customer ${customerId}`);
+                } catch (e) {
+                    console.error('Error loading agents:', e);
+                    const agentSelect = document.getElementById('monitorAgentId');
+                    agentSelect.innerHTML = '<option value="">-- Errore caricamento agenti --</option>';
+                    if (window.toastError) {
+                        window.toastError('Errore caricamento agenti: ' + e.message);
+                    }
+                }
+            },
+            toggleMonitoringFields() {
+                const type = document.getElementById('monitorType')?.value;
+                const tcpPortField = document.getElementById('tcpPortField');
+                const agentSelectField = document.getElementById('agentSelectField');
+                const monitorPort = document.getElementById('monitorPort');
+                
+                if (tcpPortField) {
+                    tcpPortField.style.display = (type === 'tcp') ? 'block' : 'none';
+                    if (monitorPort) {
+                        monitorPort.required = (type === 'tcp');
+                        if (type !== 'tcp' && monitorPort.value) {
+                            monitorPort.value = '';
+                        }
+                    }
+                }
+                if (agentSelectField) {
+                    agentSelectField.style.display = (type === 'netwatch' || type === 'agent') ? 'block' : 'none';
+                }
+            },
+            async saveMonitoringConfig(event) {
+                event.preventDefault();
+                
+                // Disabilita il pulsante di submit per evitare doppi invii
+                const submitButton = event.target.querySelector('button[type="submit"]');
+                const originalButtonText = submitButton.innerHTML;
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvataggio...';
+                
+                const formData = new FormData(event.target);
+                const config = Object.fromEntries(formData.entries());
+                
+                // Ottieni customer_id dal device o dal filtro
+                const deviceId = config.device_id;
+                const device = this.devices.find(d => d.id === deviceId);
+                const customerId = device?.customer_id || document.getElementById('customerFilter').value;
+                
+                if (customerId) {
+                    config.customer_id = customerId;
+                }
+                
+                // Validazione porta TCP
+                if (config.monitoring_type === 'tcp') {
+                    if (!config.monitoring_port || !config.monitoring_port.toString().trim()) {
+                        if (window.toastError) {
+                            window.toastError('⚠️ La porta TCP è obbligatoria per il monitoraggio TCP');
+                        } else {
+                            alert('⚠️ La porta TCP è obbligatoria per il monitoraggio TCP');
+                        }
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalButtonText;
+                        return;
+                    }
+                    config.monitoring_port = parseInt(config.monitoring_port);
+                    if (isNaN(config.monitoring_port) || config.monitoring_port < 1 || config.monitoring_port > 65535) {
+                        if (window.toastError) {
+                            window.toastError('⚠️ La porta TCP deve essere un numero tra 1 e 65535');
+                        } else {
+                            alert('⚠️ La porta TCP deve essere un numero tra 1 e 65535');
+                        }
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalButtonText;
+                        return;
+                    }
+                } else {
+                    // Rimuovi porta se non è TCP
+                    delete config.monitoring_port;
+                }
+                
+                // Se monitoring_agent_id è vuoto, rimuovilo
+                if (!config.monitoring_agent_id || config.monitoring_agent_id === '') {
+                    delete config.monitoring_agent_id;
+                }
+                
+                try {
+                    const response = await fetch(`/api/v1/inventory/devices/${config.device_id}/monitoring`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+                        throw new Error(errorData.detail || errorData.error || `Errore HTTP ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        // Chiudi il modal usando l'istanza Bootstrap corretta
+                        const modalElement = document.getElementById('monitoringConfigModal');
+                        const modalInstance = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+                        modalInstance.hide();
+                        
+                        // Mostra messaggio di successo con dettagli
+                        const monitoringTypeLabels = {
+                            'none': 'Nessuno',
+                            'icmp': 'ICMP (Ping)',
+                            'tcp': 'TCP (Porta)',
+                            'netwatch': 'MikroTik Netwatch',
+                            'agent': 'Agent Remoto'
+                        };
+                        const typeLabel = monitoringTypeLabels[result.monitoring_type || config.monitoring_type] || (result.monitoring_type || config.monitoring_type);
+                        let message = `✅ Monitoraggio configurato: ${typeLabel}`;
+                        
+                        if (result.monitoring_port || config.monitoring_port) {
+                            message += ` - Porta ${result.monitoring_port || config.monitoring_port}`;
+                        }
+                        
+                        if (result.monitoring_agent_id || config.monitoring_agent_id) {
+                            const agentSelect = document.getElementById('monitorAgentId');
+                            const selectedOption = agentSelect.options[agentSelect.selectedIndex];
+                            if (selectedOption && selectedOption.value) {
+                                message += ` - Agente: ${selectedOption.text}`;
+                            }
+                        }
+                        
+                        // Aggiungi informazioni su configurazione Netwatch o Agent
+                        if (result.netwatch_configured) {
+                            message += ' - Netwatch configurato su MikroTik';
+                        }
+                        if (result.agent_configured) {
+                            message += ' - Verifica agent avviata';
+                        }
+                        
+                        window.toastSuccess(message);
+                        
+                        // Ricarica lista dispositivi dopo un breve delay per mostrare le modifiche
+                        setTimeout(() => {
+                            loadMonitoredDevices();
+                        }, 500);
+                    } else {
+                        window.toastError('Errore salvataggio monitoraggio: ' + (result.error || 'Errore sconosciuto'));
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalButtonText;
+                    }
+                } catch (e) {
+                    console.error('Error saving monitoring config:', e);
+                    window.toastError('Errore di rete: ' + e.message);
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonText;
+                }
+            }
+        },
+        mounted() {
+            document.getElementById('monitoringConfigForm').addEventListener('submit', this.saveMonitoringConfig);
+            // Assicurati che i campi siano mostrati/nascosti correttamente all'apertura del modal
+            const monitorTypeSelect = document.getElementById('monitorType');
+            if (monitorTypeSelect) {
+                monitorTypeSelect.addEventListener('change', () => {
+                    this.toggleMonitoringFields();
+                });
+            }
+        }
+    }).mount('#monitoring-app');
+    
+    // Rendi disponibile globalmente
+    window.monitoringApp = monitoringAppInstance;
+    console.log('Monitoring app initialized with', devicesData.length, 'devices');
+}
+
+// Inizializza quando il DOM è pronto
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMonitoringApp);
+} else {
+    // DOM già caricato
+    initMonitoringApp();
+}
+
+</script>
+{% endblock %}
+

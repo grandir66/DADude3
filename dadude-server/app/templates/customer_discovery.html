@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="/customers">Clienti</a></li>
+                <li class="breadcrumb-item"><a href="/customers/{{ customer.id }}">{{ customer.code }}</a></li>
+                <li class="breadcrumb-item active">Discovery</li>
+            </ol>
+        </nav>
+        <h1 class="h3 mb-0">Discovery - {{ customer.name }}</h1>
+    </div>
+    <div class="connection-status">
+        <span class="status-dot {% if dude_connected %}connected{% else %}disconnected{% endif %}"></span>
+        <span>{% if dude_connected %}Dude Connesso{% else %}Disconnesso{% endif %}</span>
+    </div>
+</div>
+
+{% if not dude_connected %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> The Dude non connesso. Discovery non disponibile.
+</div>
+{% elif networks|length == 0 %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Nessuna rete configurata per questo cliente.
+    <a href="/customers/{{ customer.id }}" class="alert-link">Aggiungi una rete</a> prima di avviare la discovery.
+</div>
+{% else %}
+
+<div class="row">
+    <!-- Form Discovery -->
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-search"></i> Avvia Discovery
+            </div>
+            <div class="card-body">
+                <form id="discoveryForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Rete da scansionare</label>
+                            <select class="form-select" id="networkSelect" required>
+                                {% for net in networks %}
+                                <option value="{{ net.ip_network }}">
+                                    {{ net.name }} ({{ net.ip_network }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sonda</label>
+                            <select class="form-select" id="agentSelect">
+                                <option value="">Server Locale</option>
+                                {% for agent in agents %}
+                                {% if agent.status == 'up' or agent.enabled %}
+                                <option value="{{ agent.id }}">{{ agent.name }} ({{ agent.address }})</option>
+                                {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo Scansione</label>
+                            <select class="form-select" id="scanTypeSelect">
+                                <option value="ping">Ping (veloce)</option>
+                                <option value="arp">ARP (rete locale)</option>
+                                <option value="snmp">SNMP (dettagliato)</option>
+                                <option value="all">Completa</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="addDevicesCheck">
+                                <label class="form-check-label" for="addDevicesCheck">
+                                    Aggiungi a The Dude
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-play-circle"></i> Avvia Discovery
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="discoveryResult" class="mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sonde -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-broadcast"></i> Sonde
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between">
+                        <span><i class="bi bi-house"></i> Server Locale</span>
+                        <span class="badge bg-success">Attivo</span>
+                    </div>
+                    {% for agent in agents %}
+                    <div class="list-group-item d-flex justify-content-between">
+                        <span>{{ agent.name }}</span>
+                        {% if agent.status == 'up' or agent.enabled %}
+                        <span class="badge bg-success">Attivo</span>
+                        {% else %}
+                        <span class="badge bg-danger">Offline</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Risultati Discovery -->
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-list-task"></i> Discovery Attive
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Rete</th>
+                    <th>Stato</th>
+                    <th>Trovati</th>
+                    <th>Aggiunti</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody id="discoveriesTable">
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-3">
+                        <i class="bi bi-hourglass"></i> Caricamento...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('discoveryForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const resultDiv = document.getElementById('discoveryResult');
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'mt-3 alert alert-info';
+    resultDiv.innerHTML = '<i class="bi bi-hourglass-split"></i> Avvio discovery...';
+    
+    const data = {
+        network: document.getElementById('networkSelect').value,
+        agent_id: document.getElementById('agentSelect').value || null,
+        scan_type: document.getElementById('scanTypeSelect').value,
+        add_devices: document.getElementById('addDevicesCheck').checked
+    };
+    
+    try {
+        const response = await fetch('/api/v1/discovery/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            resultDiv.className = 'mt-3 alert alert-success';
+            resultDiv.innerHTML = `<i class="bi bi-check-circle"></i> Discovery avviata!`;
+            refreshDiscoveries();
+        } else {
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.innerHTML = `<i class="bi bi-x-circle"></i> ${result.detail || result.error}`;
+        }
+    } catch (error) {
+        resultDiv.className = 'mt-3 alert alert-danger';
+        resultDiv.innerHTML = `<i class="bi bi-x-circle"></i> ${error.message}`;
+    }
+});
+
+async function refreshDiscoveries() {
+    const tbody = document.getElementById('discoveriesTable');
+    if (!tbody) return;
+    
+    try {
+        const response = await fetch('/api/v1/discovery/list');
+        const discoveries = await response.json();
+        
+        if (discoveries.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Nessuna discovery</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = discoveries.map(d => `
+            <tr>
+                <td><code>${d.address_range}</code></td>
+                <td>
+                    ${d.status === 'running' ? 
+                        '<span class="badge bg-primary">In corso</span>' :
+                        '<span class="badge bg-success">Completata</span>'
+                    }
+                </td>
+                <td><strong>${d.found}</strong></td>
+                <td>${d.added}</td>
+                <td>
+                    ${d.status === 'running' ?
+                        `<button class="btn btn-sm btn-outline-danger" onclick="stopDiscovery('${d.id}')">Stop</button>` :
+                        `<button class="btn btn-sm btn-outline-primary" onclick="viewResults('${d.id}')">Vedi</button>`
+                    }
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">${error.message}</td></tr>`;
+    }
+}
+
+async function stopDiscovery(id) {
+    await fetch(`/api/v1/discovery/${id}`, { method: 'DELETE' });
+    refreshDiscoveries();
+}
+
+async function viewResults(id) {
+    const response = await fetch(`/api/v1/discovery/${id}/results`);
+    const results = await response.json();
+    
+    if (results.length === 0) {
+        alert('Nessun dispositivo trovato');
+        return;
+    }
+    
+    let msg = 'Dispositivi trovati:\n\n';
+    results.forEach(r => {
+        msg += `${r.name} - ${r.address}\n`;
+    });
+    alert(msg);
+}
+
+refreshDiscoveries();
+setInterval(refreshDiscoveries, 10000);
+</script>
+{% endblock %}

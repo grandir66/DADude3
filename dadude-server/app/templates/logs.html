@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .log-viewer {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Courier New', monospace;
+        font-size: 0.875rem;
+        border-radius: var(--radius-lg);
+        padding: 1rem;
+        max-height: 70vh;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+    
+    .log-line {
+        padding: 0.25rem 0.5rem;
+        border-left: 3px solid transparent;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        line-height: 1.5;
+    }
+    
+    .log-line:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .log-line.DEBUG {
+        border-left-color: #6b7280;
+        color: #9ca3af;
+    }
+    
+    .log-line.INFO {
+        border-left-color: #3b82f6;
+        color: #93c5fd;
+    }
+    
+    .log-line.WARNING {
+        border-left-color: #f59e0b;
+        color: #fcd34d;
+    }
+    
+    .log-line.ERROR {
+        border-left-color: #ef4444;
+        color: #fca5a5;
+    }
+    
+    .log-line.CRITICAL {
+        border-left-color: #dc2626;
+        color: #fee2e2;
+        background-color: rgba(220, 38, 38, 0.1);
+    }
+    
+    .log-controls {
+        background: white;
+        border-radius: var(--radius-lg);
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: var(--shadow-sm);
+    }
+    
+    .log-stats {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+    
+    .log-stat {
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius-md);
+        background: var(--gray-50);
+        font-size: 0.875rem;
+    }
+    
+    .log-stat .stat-value {
+        font-weight: var(--font-weight-bold);
+        font-size: 1.125rem;
+    }
+    
+    .auto-scroll-indicator {
+        position: sticky;
+        bottom: 0;
+        background: rgba(37, 99, 235, 0.9);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius-md);
+        text-align: center;
+        margin-top: 0.5rem;
+        display: none;
+    }
+    
+    .auto-scroll-indicator.active {
+        display: block;
+    }
+    
+    .spinning {
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% raw %}
+<div id="logs-app">
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Log Server</h1>
+        <span class="text-muted small">Visualizzazione log di funzionamento del server</span>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" id="refresh-btn" @click="refreshLogs">
+            <i class="bi bi-arrow-clockwise" :class="{ 'spinning': isRefreshing }"></i> Aggiorna
+        </button>
+        <button class="btn btn-outline-danger btn-sm" id="clear-btn" @click="clearFilters">
+            <i class="bi bi-x-circle"></i> Pulisci Filtri
+        </button>
+    </div>
+</div>
+
+<!-- Controls -->
+<div class="log-controls">
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label small">Livello Log</label>
+            <select class="form-select form-select-sm" id="level-filter" v-model="levelFilter" @change="refreshLogs">
+                <option value="">Tutti</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+                <option value="CRITICAL">CRITICAL</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small">Cerca</label>
+            <input type="text" class="form-control form-control-sm" id="search-filter" 
+                   v-model="searchFilter" placeholder="Cerca nei log..." 
+                   @input="debounceSearch">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Righe</label>
+            <select class="form-select form-select-sm" id="lines-filter" v-model="linesCount" @change="refreshLogs">
+                <option value="100">100</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="2000">2000</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">Auto-refresh</label>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="auto-refresh" v-model="autoRefresh" @change="toggleAutoRefresh">
+                <label class="form-check-label small" for="auto-refresh">
+                    <span v-if="autoRefresh">Attivo ({{ refreshInterval }}s)</span>
+                    <span v-else>Disattivo</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Stats -->
+    <div class="log-stats" v-if="logStats">
+        <div class="log-stat">
+            <div class="stat-value text-primary">{{ logStats.total_lines }}</div>
+            <div class="stat-label">Righe visualizzate</div>
+        </div>
+        <div class="log-stat" v-if="levelCounts">
+            <div class="stat-value text-info">{{ levelCounts.INFO || 0 }}</div>
+            <div class="stat-label">INFO</div>
+        </div>
+        <div class="log-stat" v-if="levelCounts">
+            <div class="stat-value text-warning">{{ levelCounts.WARNING || 0 }}</div>
+            <div class="stat-label">WARNING</div>
+        </div>
+        <div class="log-stat" v-if="levelCounts">
+            <div class="stat-value text-danger">{{ levelCounts.ERROR || 0 }}</div>
+            <div class="stat-label">ERROR</div>
+        </div>
+        <div class="log-stat" v-if="levelCounts">
+            <div class="stat-value text-danger">{{ levelCounts.CRITICAL || 0 }}</div>
+            <div class="stat-label">CRITICAL</div>
+        </div>
+    </div>
+</div>
+
+<!-- Log Viewer -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Log Viewer</span>
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="auto-scroll" v-model="autoScroll" checked>
+            <label class="form-check-label small" for="auto-scroll">Auto-scroll</label>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="log-viewer" id="log-viewer" ref="logViewer">
+            <div v-if="loading" class="text-center p-4">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Caricamento...</span>
+                </div>
+                <span class="ms-2">Caricamento log...</span>
+            </div>
+            <div v-else-if="error" class="text-danger p-4">
+                <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            </div>
+            <div v-else-if="logs.length === 0" class="text-muted p-4 text-center">
+                Nessun log trovato con i filtri selezionati
+            </div>
+            <template v-else>
+                <div v-for="(log, index) in logs" :key="index" 
+                     :class="['log-line', getLogLevel(log)]"
+                     v-html="highlightSearch(log)">
+                </div>
+            </template>
+        </div>
+        <div class="auto-scroll-indicator" :class="{ active: !autoScroll && hasNewLogs }">
+            Nuovi log disponibili - Attiva auto-scroll per vedere le ultime righe
+        </div>
+    </div>
+</div>
+</div>
+{% endraw %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// App Vue per log viewer (usa createApp già disponibile globalmente da app.js)
+if (typeof Vue !== 'undefined' && Vue.createApp) {
+    Vue.createApp({
+    data() {
+        return {
+            logs: [],
+            loading: false,
+            error: null,
+            isRefreshing: false,
+            levelFilter: '',
+            searchFilter: '',
+            linesCount: '500',
+            autoRefresh: false,
+            refreshInterval: 5,
+            autoRefreshTimer: null,
+            autoScroll: true,
+            hasNewLogs: false,
+            logStats: null,
+            levelCounts: null,
+            searchDebounceTimer: null,
+        };
+    },
+    mounted() {
+        this.refreshLogs();
+        this.loadLogLevels();
+    },
+    beforeUnmount() {
+        this.stopAutoRefresh();
+    },
+    methods: {
+        async refreshLogs() {
+            this.isRefreshing = true;
+            this.loading = true;
+            this.error = null;
+            
+            try {
+                const params = new URLSearchParams({
+                    lines: String(this.linesCount),
+                    tail: 'true'
+                });
+                
+                if (this.levelFilter) {
+                    params.append('level', this.levelFilter);
+                }
+                
+                if (this.searchFilter) {
+                    params.append('search', this.searchFilter);
+                }
+                
+                const response = await fetch(`/api/v1/system/logs?${params}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Errore HTTP: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Controlla se ci sono nuovi log
+                if (this.logs.length > 0 && data.logs.length > 0) {
+                    const lastOldLog = this.logs[this.logs.length - 1];
+                    const firstNewLog = data.logs[0];
+                    this.hasNewLogs = lastOldLog !== firstNewLog;
+                }
+                
+                this.logs = data.logs;
+                this.logStats = {
+                    total_lines: data.total_lines,
+                    file: data.file
+                };
+                
+                // Scroll automatico se abilitato
+                if (this.autoScroll) {
+                    this.$nextTick(() => {
+                        this.scrollToBottom();
+                    });
+                }
+            } catch (err) {
+                this.error = err.message || 'Errore nel caricamento dei log';
+                console.error('Errore caricamento log:', err);
+            } finally {
+                this.loading = false;
+                this.isRefreshing = false;
+            }
+        },
+        
+        async loadLogLevels() {
+            try {
+                const response = await fetch('/api/v1/system/logs/levels');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.levelCounts = data.levels;
+                }
+            } catch (err) {
+                console.error('Errore caricamento livelli log:', err);
+            }
+        },
+        
+        getLogLevel(logLine) {
+            const upperLine = logLine.toUpperCase();
+            if (upperLine.includes('CRITICAL')) return 'CRITICAL';
+            if (upperLine.includes('ERROR')) return 'ERROR';
+            if (upperLine.includes('WARNING')) return 'WARNING';
+            if (upperLine.includes('INFO')) return 'INFO';
+            if (upperLine.includes('DEBUG')) return 'DEBUG';
+            return 'INFO';
+        },
+        
+        highlightSearch(logLine) {
+            if (!this.searchFilter) {
+                return this.escapeHtml(logLine);
+            }
+            
+            const regex = new RegExp(`(${this.escapeRegex(this.searchFilter)})`, 'gi');
+            return this.escapeHtml(logLine).replace(regex, '<mark>$1</mark>');
+        },
+        
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+        
+        escapeRegex(text) {
+            return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        },
+        
+        scrollToBottom() {
+            const viewer = this.$refs.logViewer;
+            if (viewer) {
+                viewer.scrollTop = viewer.scrollHeight;
+            }
+        },
+        
+        toggleAutoRefresh() {
+            if (this.autoRefresh) {
+                this.startAutoRefresh();
+            } else {
+                this.stopAutoRefresh();
+            }
+        },
+        
+        startAutoRefresh() {
+            this.stopAutoRefresh();
+            this.autoRefreshTimer = setInterval(() => {
+                this.refreshLogs();
+            }, this.refreshInterval * 1000);
+        },
+        
+        stopAutoRefresh() {
+            if (this.autoRefreshTimer) {
+                clearInterval(this.autoRefreshTimer);
+                this.autoRefreshTimer = null;
+            }
+        },
+        
+        clearFilters() {
+            this.levelFilter = '';
+            this.searchFilter = '';
+            this.linesCount = '500';
+            this.refreshLogs();
+        },
+        
+        debounceSearch() {
+            clearTimeout(this.searchDebounceTimer);
+            this.searchDebounceTimer = setTimeout(() => {
+                this.refreshLogs();
+            }, 500);
+        }
+    },
+    watch: {
+        autoRefresh(newVal) {
+            if (newVal) {
+                this.startAutoRefresh();
+            } else {
+                this.stopAutoRefresh();
+            }
+        }
+    }
+    }).mount('#logs-app');
+}
+</script>
+{% endblock %}

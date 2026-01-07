@@ -1,0 +1,122 @@
+/* Stili per componenti Vue */
+
+/* Toast Animations */
+.toast-enter-active {
+    transition: all 0.3s ease-out;
+}
+
+.toast-leave-active {
+    transition: all 0.3s ease-in;
+}
+
+.toast-enter-from {
+    opacity: 0;
+    transform: translateX(100%);
+}
+
+.toast-leave-to {
+    opacity: 0;
+    transform: translateX(100%);
+}
+
+.toast-move {
+    transition: transform 0.3s ease;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+    backdrop-filter: blur(2px);
+}
+
+.loading-content {
+    text-align: center;
+    color: white;
+}
+
+/* Fade transition */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+/* Smooth transitions per elementi interattivi */
+.btn, .card, .nav-link {
+    transition: all 0.2s ease;
+}
+
+/* Miglioramenti tabelle */
+.table-modern tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.table-modern tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+/* Miglioramenti form */
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25);
+}
+
+/* Animazioni per card hover */
+.card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Badge animati */
+.badge {
+    transition: transform 0.2s ease;
+}
+
+.badge:hover {
+    transform: scale(1.05);
+}
+
+/* DataTable Styles */
+.data-table-wrapper {
+    background: white;
+    border-radius: 1rem;
+    padding: 1.5rem;
+}
+
+.data-table-wrapper .table th.sortable:hover {
+    background-color: #f1f5f9;
+}
+
+.data-table-wrapper .pagination .page-link {
+    color: var(--primary-color);
+    border-color: #e2e8f0;
+}
+
+.data-table-wrapper .pagination .page-item.active .page-link {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.data-table-wrapper .pagination .page-item.disabled .page-link {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+

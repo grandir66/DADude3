@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Network Discovery</h1>
+        <p class="text-muted mb-0">Scansiona le reti dei clienti per trovare dispositivi</p>
+    </div>
+    <div class="connection-status">
+        <span class="status-dot {% if dude_connected %}connected{% else %}disconnected{% endif %}"></span>
+        <span class="text-muted">
+            {% if dude_connected %}Dude Connesso{% else %}Dude Disconnesso{% endif %}
+        </span>
+    </div>
+</div>
+
+{% if not dude_connected %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> 
+    <strong>Attenzione:</strong> The Dude non è connesso. La discovery non è disponibile.
+</div>
+{% else %}
+
+<div class="row">
+    <!-- Sonde/Agenti -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-broadcast"></i> Sonde Disponibili
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Indirizzo</th>
+                            <th>Stato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><i class="bi bi-house"></i> Server Locale</td>
+                            <td><code>localhost</code></td>
+                            <td><span class="badge bg-success">Attivo</span></td>
+                        </tr>
+                        {% for agent in agents %}
+                        <tr>
+                            <td>{{ agent.name }}</td>
+                            <td><code>{{ agent.address }}</code></td>
+                            <td>
+                                {% if agent.status == 'up' or agent.enabled %}
+                                <span class="badge bg-success">Attivo</span>
+                                {% else %}
+                                <span class="badge bg-danger">Offline</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-muted text-center py-3">
+                                Solo server locale disponibile
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Discovery -->
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-search"></i> Avvia Discovery
+            </div>
+            <div class="card-body">
+                <form id="discoveryForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Cliente</label>
+                            <select class="form-select" id="customerSelect" onchange="updateNetworks()">
+                                <option value="">-- Seleziona Cliente --</option>
+                                {% for item in customers_with_networks %}
+                                <option value="{{ item.customer.id }}" 
+                                        data-networks='{{ item.networks | tojson }}'>
+                                    {{ item.customer.code }} - {{ item.customer.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Rete da scansionare</label>
+                            <select class="form-select" id="networkSelect" disabled>
+                                <option value="">-- Prima seleziona cliente --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sonda</label>
+                            <select class="form-select" id="agentSelect">
+                                <option value="">Server Locale</option>
+                                {% for agent in agents %}
+                                {% if agent.status == 'up' or agent.enabled %}
+                                <option value="{{ agent.id }}">{{ agent.name }} ({{ agent.address }})</option>
+                                {% endif %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tipo Scansione</label>
+                            <select class="form-select" id="scanTypeSelect">
+                                <option value="ping">Ping (veloce)</option>
+                                <option value="arp">ARP (rete locale)</option>
+                                <option value="snmp">SNMP (dettagliato)</option>
+                                <option value="all">Completa (tutti)</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="addDevicesCheck">
+                                <label class="form-check-label" for="addDevicesCheck">
+                                    Aggiungi automaticamente i dispositivi trovati a The Dude
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary" id="startDiscoveryBtn">
+                            <i class="bi bi-play-circle"></i> Avvia Discovery
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="refreshDiscoveries()">
+                            <i class="bi bi-arrow-clockwise"></i> Aggiorna Lista
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="discoveryResult" class="mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Discovery Attive -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-task"></i> Discovery in Corso / Completate</span>
+        <button class="btn btn-sm btn-outline-primary" onclick="refreshDiscoveries()">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Rete</th>
+                    <th>Tipo</th>
+                    <th>Sonda</th>
+                    <th>Stato</th>
+                    <th>Trovati</th>
+                    <th>Aggiunti</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody id="discoveriesTable">
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">
+                        <i class="bi bi-hourglass"></i> Caricamento...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateNetworks() {
+    const customerSelect = document.getElementById('customerSelect');
+    const networkSelect = document.getElementById('networkSelect');
+    const selectedOption = customerSelect.options[customerSelect.selectedIndex];
+    
+    networkSelect.innerHTML = '';
+    
+    if (!selectedOption.value) {
+        networkSelect.innerHTML = '<option value="">-- Prima seleziona cliente --</option>';
+        networkSelect.disabled = true;
+        return;
+    }
+    
+    const networks = JSON.parse(selectedOption.dataset.networks || '[]');
+    
+    if (networks.length === 0) {
+        networkSelect.innerHTML = '<option value="">Nessuna rete configurata</option>';
+        networkSelect.disabled = true;
+        return;
+    }
+    
+    networkSelect.disabled = false;
+    networks.forEach(net => {
+        const option = document.createElement('option');
+        option.value = net.ip_network;
+        option.textContent = `${net.name} (${net.ip_network})`;
+        networkSelect.appendChild(option);
+    });
+}
+
+document.getElementById('discoveryForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const network = document.getElementById('networkSelect').value;
+    if (!network) {
+        alert('Seleziona una rete da scansionare');
+        return;
+    }
+    
+    const resultDiv = document.getElementById('discoveryResult');
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'mt-3 alert alert-info';
+    resultDiv.innerHTML = '<i class="bi bi-hourglass-split"></i> Avvio discovery...';
+    
+    const data = {
+        network: network,
+        agent_id: document.getElementById('agentSelect').value || null,
+        scan_type: document.getElementById('scanTypeSelect').value,
+        add_devices: document.getElementById('addDevicesCheck').checked
+    };
+    
+    try {
+        const response = await fetch('/api/v1/discovery/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            resultDiv.className = 'mt-3 alert alert-success';
+            resultDiv.innerHTML = `<i class="bi bi-check-circle"></i> Discovery avviata! ID: ${result.discovery_id}`;
+            refreshDiscoveries();
+        } else {
+            resultDiv.className = 'mt-3 alert alert-danger';
+            resultDiv.innerHTML = `<i class="bi bi-x-circle"></i> Errore: ${result.detail || result.error || 'Errore sconosciuto'}`;
+        }
+    } catch (error) {
+        resultDiv.className = 'mt-3 alert alert-danger';
+        resultDiv.innerHTML = `<i class="bi bi-x-circle"></i> Errore: ${error.message}`;
+    }
+});
+
+async function refreshDiscoveries() {
+    const tbody = document.getElementById('discoveriesTable');
+    
+    try {
+        const response = await fetch('/api/v1/discovery/list');
+        const discoveries = await response.json();
+        
+        if (discoveries.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">
+                        Nessuna discovery attiva
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tbody.innerHTML = discoveries.map(d => `
+            <tr>
+                <td><code>${d.address_range}</code></td>
+                <td>${d.type}</td>
+                <td>${d.agent || 'Locale'}</td>
+                <td>
+                    ${d.status === 'running' ? 
+                        `<span class="badge bg-primary"><i class="bi bi-hourglass-split"></i> ${d.progress || 'In corso'}</span>` :
+                        d.status === 'completed' ?
+                        '<span class="badge bg-success">Completata</span>' :
+                        `<span class="badge bg-secondary">${d.status}</span>`
+                    }
+                </td>
+                <td><strong>${d.found}</strong></td>
+                <td>${d.added}</td>
+                <td>
+                    ${d.status === 'running' ?
+                        `<button class="btn btn-sm btn-outline-danger" onclick="stopDiscovery('${d.id}')">
+                            <i class="bi bi-stop-circle"></i> Stop
+                        </button>` :
+                        `<button class="btn btn-sm btn-outline-primary" onclick="viewResults('${d.id}')">
+                            <i class="bi bi-eye"></i> Risultati
+                        </button>`
+                    }
+                </td>
+            </tr>
+        `).join('');
+        
+    } catch (error) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-danger py-4">
+                    Errore caricamento: ${error.message}
+                </td>
+            </tr>
+        `;
+    }
+}
+
+async function stopDiscovery(discoveryId) {
+    if (!confirm('Vuoi fermare questa discovery?')) return;
+    
+    try {
+        await fetch(`/api/v1/discovery/${discoveryId}`, { method: 'DELETE' });
+        refreshDiscoveries();
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+async function viewResults(discoveryId) {
+    try {
+        const response = await fetch(`/api/v1/discovery/${discoveryId}/results`);
+        const results = await response.json();
+        
+        if (results.length === 0) {
+            alert('Nessun dispositivo trovato');
+            return;
+        }
+        
+        let html = '<h5>Dispositivi Trovati</h5><table class="table table-sm">';
+        html += '<tr><th>Nome</th><th>IP</th><th>MAC</th><th>Tipo</th><th>Stato</th></tr>';
+        results.forEach(r => {
+            html += `<tr>
+                <td>${r.name}</td>
+                <td><code>${r.address}</code></td>
+                <td><code>${r.mac_address || '-'}</code></td>
+                <td>${r.type || '-'}</td>
+                <td>${r.status}</td>
+            </tr>`;
+        });
+        html += '</table>';
+        
+        // Mostra in modal o alert
+        const resultDiv = document.getElementById('discoveryResult');
+        resultDiv.style.display = 'block';
+        resultDiv.className = 'mt-3 alert alert-info';
+        resultDiv.innerHTML = html;
+        
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+// Carica discoveries all'avvio
+refreshDiscoveries();
+
+// Auto-refresh ogni 10 secondi
+setInterval(refreshDiscoveries, 10000);
+</script>
+{% endblock %}

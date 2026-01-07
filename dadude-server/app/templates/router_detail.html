@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Router {{ agent.name }} - DaDude</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root { --primary-color: #2563eb; }
+        .sidebar { width: 250px; min-height: 100vh; background: #1e293b; }
+        .sidebar a { color: #94a3b8; text-decoration: none; }
+        .sidebar a:hover, .sidebar a.active { color: white; background: #334155; }
+        .main-content { flex: 1; background: #f8fafc; min-height: 100vh; }
+        .card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
+        .status-online { background: #dcfce7; color: #166534; }
+        .status-offline { background: #fee2e2; color: #991b1b; }
+        .status-unknown { background: #f3f4f6; color: #6b7280; }
+        .info-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .info-card .display-6 { font-weight: 600; }
+        .table-modern { border-radius: 8px; overflow: hidden; }
+        .table-modern th { background: #f8fafc; font-weight: 600; }
+        .nav-tabs .nav-link { color: #64748b; border: none; padding: 1rem 1.5rem; }
+        .nav-tabs .nav-link.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); background: transparent; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div class="sidebar p-3">
+            <h4 class="text-white mb-4">
+                <i class="bi bi-hdd-network me-2"></i>DaDude
+            </h4>
+            <nav class="nav flex-column">
+                <a class="nav-link py-2" href="/"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+                <a class="nav-link py-2" href="/customers"><i class="bi bi-building me-2"></i>Clienti</a>
+                <a class="nav-link py-2" href="/devices"><i class="bi bi-pc-display me-2"></i>Dispositivi</a>
+                <a class="nav-link py-2 active" href="#"><i class="bi bi-router me-2"></i>Router MikroTik</a>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content p-4">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb mb-1">
+                            <li class="breadcrumb-item"><a href="/customers">Clienti</a></li>
+                            <li class="breadcrumb-item"><a href="/customers/{{ agent.customer_id }}">{{ customer.name if customer else 'Cliente' }}</a></li>
+                            <li class="breadcrumb-item active">{{ agent.name }}</li>
+                        </ol>
+                    </nav>
+                    <h2 class="mb-0">
+                        <i class="bi bi-router me-2"></i>{{ agent.name }}
+                        <span id="statusBadge" class="status-badge status-unknown ms-2">Caricamento...</span>
+                    </h2>
+                    <small class="text-muted">{{ agent.address }}:{{ agent.port }}</small>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary" onclick="refreshAll()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Aggiorna
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="window.history.back()">
+                        <i class="bi bi-arrow-left me-1"></i>Indietro
+                    </button>
+                </div>
+            </div>
+
+            <!-- Info Cards -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="card info-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="opacity-75 mb-1">Versione</h6>
+                                    <div class="display-6" id="infoVersion">-</div>
+                                </div>
+                                <i class="bi bi-code-square fs-1 opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card info-card h-100" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="opacity-75 mb-1">CPU</h6>
+                                    <div class="display-6" id="infoCpu">-</div>
+                                </div>
+                                <i class="bi bi-cpu fs-1 opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card info-card h-100" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="opacity-75 mb-1">RAM</h6>
+                                    <div class="display-6" id="infoRam">-</div>
+                                </div>
+                                <i class="bi bi-memory fs-1 opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card info-card h-100" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="opacity-75 mb-1">Uptime</h6>
+                                    <div class="display-6" id="infoUptime">-</div>
+                                </div>
+                                <i class="bi bi-clock-history fs-1 opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <ul class="nav nav-tabs mb-4" id="routerTabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-bs-toggle="tab" href="#system">
+                        <i class="bi bi-info-circle me-1"></i>Sistema
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#interfaces">
+                        <i class="bi bi-ethernet me-1"></i>Interfacce
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#netwatch">
+                        <i class="bi bi-eye me-1"></i>Netwatch
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#routes">
+                        <i class="bi bi-signpost-split me-1"></i>Routes
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#firewall">
+                        <i class="bi bi-shield me-1"></i>Firewall
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#discovery">
+                        <i class="bi bi-search me-1"></i>Discovery
+                    </a>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+                <!-- Sistema -->
+                <div class="tab-pane fade show active" id="system">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Informazioni Sistema</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadSystemInfo()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="systemInfoLoading" class="text-center py-4">
+                                <div class="loading"></div>
+                                <p class="mt-2 text-muted">Caricamento...</p>
+                            </div>
+                            <div id="systemInfoContent" style="display: none;">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <table class="table table-sm">
+                                            <tr><th width="40%">Identity</th><td id="sysIdentity">-</td></tr>
+                                            <tr><th>Board</th><td id="sysBoard">-</td></tr>
+                                            <tr><th>Platform</th><td id="sysPlatform">-</td></tr>
+                                            <tr><th>Architettura</th><td id="sysArch">-</td></tr>
+                                            <tr><th>Serial</th><td id="sysSerial">-</td></tr>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <table class="table table-sm">
+                                            <tr><th width="40%">CPU Model</th><td id="sysCpuModel">-</td></tr>
+                                            <tr><th>CPU Count</th><td id="sysCpuCount">-</td></tr>
+                                            <tr><th>CPU Freq</th><td id="sysCpuFreq">-</td></tr>
+                                            <tr><th>HDD Total</th><td id="sysHddTotal">-</td></tr>
+                                            <tr><th>HDD Free</th><td id="sysHddFree">-</td></tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="systemInfoError" class="alert alert-danger" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interfacce -->
+                <div class="tab-pane fade" id="interfaces">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-ethernet me-2"></i>Interfacce di Rete</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadInterfaces()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="interfacesLoading" class="text-center py-4">
+                                <div class="loading"></div>
+                            </div>
+                            <table class="table table-hover mb-0" id="interfacesTable" style="display: none;">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Tipo</th>
+                                        <th>MAC</th>
+                                        <th>Stato</th>
+                                        <th>RX/TX</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="interfacesBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Netwatch -->
+                <div class="tab-pane fade" id="netwatch">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-eye me-2"></i>Netwatch</h5>
+                            <div>
+                                <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#addNetwatchModal">
+                                    <i class="bi bi-plus"></i> Nuovo
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="loadNetwatch()">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="netwatchLoading" class="text-center py-4">
+                                <div class="loading"></div>
+                            </div>
+                            <table class="table table-hover mb-0" id="netwatchTable" style="display: none;">
+                                <thead>
+                                    <tr>
+                                        <th>Host</th>
+                                        <th>Tipo</th>
+                                        <th>Intervallo</th>
+                                        <th>Stato</th>
+                                        <th>Da</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="netwatchBody"></tbody>
+                            </table>
+                            <div id="netwatchEmpty" class="text-center py-4 text-muted" style="display: none;">
+                                Nessun netwatch configurato
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Routes -->
+                <div class="tab-pane fade" id="routes">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-signpost-split me-2"></i>Tabella Routing</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadRoutes()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="routesLoading" class="text-center py-4">
+                                <div class="loading"></div>
+                            </div>
+                            <table class="table table-hover mb-0" id="routesTable" style="display: none;">
+                                <thead>
+                                    <tr>
+                                        <th>Destinazione</th>
+                                        <th>Gateway</th>
+                                        <th>Distanza</th>
+                                        <th>Stato</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="routesBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Firewall -->
+                <div class="tab-pane fade" id="firewall">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-shield me-2"></i>Statistiche Firewall</h5>
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadFirewall()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="firewallLoading" class="text-center py-4">
+                                <div class="loading"></div>
+                            </div>
+                            <div id="firewallContent" class="row" style="display: none;">
+                                <div class="col-md-3 text-center">
+                                    <div class="display-4 text-primary" id="fwFilter">0</div>
+                                    <small class="text-muted">Filter Rules</small>
+                                </div>
+                                <div class="col-md-3 text-center">
+                                    <div class="display-4 text-success" id="fwNat">0</div>
+                                    <small class="text-muted">NAT Rules</small>
+                                </div>
+                                <div class="col-md-3 text-center">
+                                    <div class="display-4 text-warning" id="fwMangle">0</div>
+                                    <small class="text-muted">Mangle Rules</small>
+                                </div>
+                                <div class="col-md-3 text-center">
+                                    <div class="display-4 text-info" id="fwConns">0</div>
+                                    <small class="text-muted">Connessioni Attive</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Discovery -->
+                <div class="tab-pane fade" id="discovery">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-search me-2"></i>Network Discovery & Import</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Step 1: Scansione -->
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Rete (CIDR)</label>
+                                    <input type="text" class="form-control" id="scanNetwork" placeholder="192.168.1.0/24">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Interfaccia</label>
+                                    <select class="form-select" id="scanInterface">
+                                        <option value="">Auto</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button class="btn btn-primary w-100" onclick="runDiscovery()">
+                                        <i class="bi bi-search me-1"></i>Scansiona
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div id="discoveryLoading" class="text-center py-4" style="display: none;">
+                                <div class="loading"></div>
+                                <p class="mt-2">Scansione in corso...</p>
+                            </div>
+                            
+                            <div id="discoveryResults" style="display: none;">
+                                <!-- Step 2: Credenziali e Identificazione -->
+                                <div class="card bg-light mb-3">
+                                    <div class="card-body py-2">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-4">
+                                                <label class="form-label mb-0 small">Credenziali per identificazione:</label>
+                                                <select class="form-select form-select-sm" id="probeCredentials" multiple size="3">
+                                                    <!-- Popolato dinamicamente -->
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <button class="btn btn-warning btn-sm w-100" onclick="identifySelected()">
+                                                    <i class="bi bi-cpu me-1"></i>Identifica Selezionati
+                                                </button>
+                                                <small class="text-muted d-block mt-1">Prova SSH/SNMP/API</small>
+                                            </div>
+                                            <div class="col-md-5 text-end">
+                                                <div class="btn-group btn-group-sm">
+                                                    <button class="btn btn-outline-primary" onclick="selectAllDevices()">
+                                                        <i class="bi bi-check-all"></i> Tutti
+                                                    </button>
+                                                    <button class="btn btn-outline-secondary" onclick="selectByVendor()">
+                                                        <i class="bi bi-funnel"></i> Per Vendor
+                                                    </button>
+                                                    <button class="btn btn-success" onclick="importSelected()">
+                                                        <i class="bi bi-download me-1"></i>Importa
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <h6><span id="discoveryCount">0</span> dispositivi trovati 
+                                    <span id="identifiedCount" class="badge bg-success ms-2" style="display: none;">0 identificati</span>
+                                </h6>
+                                
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th width="40"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+                                                <th>IP</th>
+                                                <th>MAC</th>
+                                                <th>Vendor</th>
+                                                <th>Tipo</th>
+                                                <th>Identity/Hostname</th>
+                                                <th>Identificato</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="discoveryBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nuovo Netwatch -->
+    <div class="modal fade" id="addNetwatchModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuovo Netwatch</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Host</label>
+                        <input type="text" class="form-control" id="nwHost" placeholder="192.168.1.1 o hostname">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Porta (vuoto = ICMP ping)</label>
+                        <input type="number" class="form-control" id="nwPort" placeholder="es: 80, 443, 22">
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Intervallo</label>
+                            <input type="text" class="form-control" id="nwInterval" value="30s">
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Timeout</label>
+                            <input type="text" class="form-control" id="nwTimeout" value="3s">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Commento</label>
+                        <input type="text" class="form-control" id="nwComment">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-primary" onclick="addNetwatch()">
+                        <i class="bi bi-plus me-1"></i>Crea
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const agentId = '{{ agent.id }}';
+        const apiBase = '/api/v1/mikrotik/agents/' + agentId;
+
+        // Carica info sistema
+        async function loadSystemInfo() {
+            document.getElementById('systemInfoLoading').style.display = 'block';
+            document.getElementById('systemInfoContent').style.display = 'none';
+            document.getElementById('systemInfoError').style.display = 'none';
+
+            try {
+                const response = await fetch(`${apiBase}/system-info`);
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('sysIdentity').textContent = data.identity || '-';
+                    document.getElementById('sysBoard').textContent = data.board_name || '-';
+                    document.getElementById('sysPlatform').textContent = data.platform || '-';
+                    document.getElementById('sysArch').textContent = data.architecture || '-';
+                    document.getElementById('sysSerial').textContent = data.serial_number || '-';
+                    document.getElementById('sysCpuModel').textContent = data.cpu_model || '-';
+                    document.getElementById('sysCpuCount').textContent = data.cpu_count || '-';
+                    document.getElementById('sysCpuFreq').textContent = data.cpu_frequency ? data.cpu_frequency + ' MHz' : '-';
+                    document.getElementById('sysHddTotal').textContent = data.hdd_total_mb ? data.hdd_total_mb + ' MB' : '-';
+                    document.getElementById('sysHddFree').textContent = data.hdd_free_mb ? data.hdd_free_mb + ' MB' : '-';
+
+                    // Update cards
+                    document.getElementById('infoVersion').textContent = data.version ? data.version.split(' ')[0] : '-';
+                    document.getElementById('infoCpu').textContent = data.cpu_load ? data.cpu_load + '%' : '-';
+                    const ramUsed = data.memory_total_mb && data.memory_free_mb 
+                        ? Math.round((data.memory_total_mb - data.memory_free_mb) / data.memory_total_mb * 100) + '%'
+                        : '-';
+                    document.getElementById('infoRam').textContent = ramUsed;
+                    document.getElementById('infoUptime').textContent = data.uptime ? data.uptime.split(',')[0] : '-';
+
+                    document.getElementById('statusBadge').className = 'status-badge status-online';
+                    document.getElementById('statusBadge').textContent = 'Online';
+
+                    document.getElementById('systemInfoContent').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Errore sconosciuto');
+                }
+            } catch (e) {
+                document.getElementById('systemInfoError').textContent = 'Errore: ' + e.message;
+                document.getElementById('systemInfoError').style.display = 'block';
+                document.getElementById('statusBadge').className = 'status-badge status-offline';
+                document.getElementById('statusBadge').textContent = 'Offline';
+            } finally {
+                document.getElementById('systemInfoLoading').style.display = 'none';
+            }
+        }
+
+        // Carica interfacce
+        async function loadInterfaces() {
+            document.getElementById('interfacesLoading').style.display = 'block';
+            document.getElementById('interfacesTable').style.display = 'none';
+
+            try {
+                const response = await fetch(`${apiBase}/interfaces`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const tbody = document.getElementById('interfacesBody');
+                    tbody.innerHTML = '';
+
+                    // Popola anche select discovery
+                    const select = document.getElementById('scanInterface');
+                    select.innerHTML = '<option value="">Auto</option>';
+
+                    data.interfaces.forEach(iface => {
+                        const statusClass = iface.running ? 'text-success' : 'text-danger';
+                        const statusIcon = iface.running ? 'bi-check-circle-fill' : 'bi-x-circle-fill';
+                        const rx = formatBytes(iface.rx_bytes);
+                        const tx = formatBytes(iface.tx_bytes);
+
+                        tbody.innerHTML += `
+                            <tr>
+                                <td><strong>${iface.name}</strong></td>
+                                <td><span class="badge bg-secondary">${iface.type}</span></td>
+                                <td><code>${iface.mac_address || '-'}</code></td>
+                                <td><i class="bi ${statusIcon} ${statusClass}"></i> ${iface.running ? 'Up' : 'Down'}</td>
+                                <td><small>↓${rx} / ↑${tx}</small></td>
+                            </tr>
+                        `;
+
+                        if (iface.type === 'ether' || iface.type === 'bridge') {
+                            select.innerHTML += `<option value="${iface.name}">${iface.name}</option>`;
+                        }
+                    });
+
+                    document.getElementById('interfacesTable').style.display = 'table';
+                }
+            } catch (e) {
+                console.error('Error loading interfaces:', e);
+            } finally {
+                document.getElementById('interfacesLoading').style.display = 'none';
+            }
+        }
+
+        // Carica netwatch
+        async function loadNetwatch() {
+            document.getElementById('netwatchLoading').style.display = 'block';
+            document.getElementById('netwatchTable').style.display = 'none';
+            document.getElementById('netwatchEmpty').style.display = 'none';
+
+            try {
+                const response = await fetch(`${apiBase}/netwatch`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const tbody = document.getElementById('netwatchBody');
+                    tbody.innerHTML = '';
+
+                    if (data.netwatches.length === 0) {
+                        document.getElementById('netwatchEmpty').style.display = 'block';
+                    } else {
+                        data.netwatches.forEach(nw => {
+                            const statusClass = nw.status === 'up' ? 'bg-success' : (nw.status === 'down' ? 'bg-danger' : 'bg-secondary');
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td><strong>${nw.host}</strong>${nw.port ? ':' + nw.port : ''}</td>
+                                    <td>${nw.type}</td>
+                                    <td>${nw.interval}</td>
+                                    <td><span class="badge ${statusClass}">${nw.status}</span></td>
+                                    <td><small>${nw.since || '-'}</small></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteNetwatch('${nw.id}')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        document.getElementById('netwatchTable').style.display = 'table';
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading netwatch:', e);
+            } finally {
+                document.getElementById('netwatchLoading').style.display = 'none';
+            }
+        }
+
+        // Carica routes
+        async function loadRoutes() {
+            document.getElementById('routesLoading').style.display = 'block';
+            document.getElementById('routesTable').style.display = 'none';
+
+            try {
+                const response = await fetch(`${apiBase}/routes`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const tbody = document.getElementById('routesBody');
+                    tbody.innerHTML = '';
+
+                    data.routes.forEach(route => {
+                        const flags = [];
+                        if (route.active) flags.push('<span class="badge bg-success">A</span>');
+                        if (route.static) flags.push('<span class="badge bg-primary">S</span>');
+                        if (route.dynamic) flags.push('<span class="badge bg-info">D</span>');
+                        if (route.disabled) flags.push('<span class="badge bg-secondary">X</span>');
+
+                        tbody.innerHTML += `
+                            <tr>
+                                <td><code>${route.dst_address}</code></td>
+                                <td>${route.gateway || '-'}</td>
+                                <td>${route.distance || '-'}</td>
+                                <td>${flags.join(' ')}</td>
+                            </tr>
+                        `;
+                    });
+
+                    document.getElementById('routesTable').style.display = 'table';
+                }
+            } catch (e) {
+                console.error('Error loading routes:', e);
+            } finally {
+                document.getElementById('routesLoading').style.display = 'none';
+            }
+        }
+
+        // Carica firewall stats
+        async function loadFirewall() {
+            document.getElementById('firewallLoading').style.display = 'block';
+            document.getElementById('firewallContent').style.display = 'none';
+
+            try {
+                const response = await fetch(`${apiBase}/firewall-stats`);
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('fwFilter').textContent = data.filter_rules || 0;
+                    document.getElementById('fwNat').textContent = data.nat_rules || 0;
+                    document.getElementById('fwMangle').textContent = data.mangle_rules || 0;
+                    document.getElementById('fwConns').textContent = data.active_connections || 0;
+                    document.getElementById('firewallContent').style.display = 'flex';
+                }
+            } catch (e) {
+                console.error('Error loading firewall:', e);
+            } finally {
+                document.getElementById('firewallLoading').style.display = 'none';
+            }
+        }
+
+        // Discovery
+        let discoveredDevices = []; // Store per import
+        const customerId = '{{ agent.customer_id }}';
+        
+        // Carica credenziali cliente per probe
+        async function loadCredentials() {
+            try {
+                const response = await fetch(`/api/v1/customers/${customerId}/credentials`);
+                const data = await response.json();
+                const creds = data.credentials || data || [];
+                
+                const select = document.getElementById('probeCredentials');
+                select.innerHTML = '';
+                
+                creds.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = `${c.name} (${c.credential_type})`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load credentials:', e);
+            }
+        }
+        
+        async function runDiscovery() {
+            const network = document.getElementById('scanNetwork').value;
+            if (!network) {
+                alert('Inserisci una rete da scansionare');
+                return;
+            }
+
+            const iface = document.getElementById('scanInterface').value;
+            document.getElementById('discoveryLoading').style.display = 'block';
+            document.getElementById('discoveryResults').style.display = 'none';
+
+            try {
+                let url = `${apiBase}/ip-scan?network=${encodeURIComponent(network)}`;
+                if (iface) url += `&interface=${iface}`;
+
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    // Enrich con vendor info
+                    const enrichResponse = await fetch('/api/v1/inventory/enrich-devices', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ devices: data.results })
+                    });
+                    const enriched = await enrichResponse.json();
+                    
+                    discoveredDevices = enriched.success ? enriched.devices : data.results;
+                    
+                    document.getElementById('discoveryCount').textContent = data.devices_found;
+                    renderDiscoveryTable();
+                    document.getElementById('discoveryResults').style.display = 'block';
+                    
+                    // Carica credenziali se non già caricate
+                    loadCredentials();
+                } else {
+                    alert('Errore: ' + (data.error || 'Scansione fallita'));
+                }
+            } catch (e) {
+                alert('Errore: ' + e.message);
+            } finally {
+                document.getElementById('discoveryLoading').style.display = 'none';
+            }
+        }
+        
+        function renderDiscoveryTable() {
+            const tbody = document.getElementById('discoveryBody');
+            tbody.innerHTML = '';
+            
+            const typeOptions = `
+                <option value="other">Generico</option>
+                <option value="mikrotik">MikroTik</option>
+                <option value="network">Rete</option>
+                <option value="windows">Windows</option>
+                <option value="linux">Linux</option>
+                <option value="printer">Stampante</option>
+                <option value="camera">Telecamera</option>
+                <option value="voip">VoIP</option>
+            `;
+            
+            let identifiedCount = 0;
+            
+            discoveredDevices.forEach((dev, idx) => {
+                const hasMAC = dev.mac_address && dev.mac_address.trim() !== '';
+                const rowClass = hasMAC ? '' : 'class="table-secondary text-muted"';
+                
+                // Vendor badge
+                let vendorBadge = '<span class="text-muted">-</span>';
+                if (dev.vendor) {
+                    const vendorColors = {
+                        'MikroTik': 'danger', 'Cisco': 'primary', 'HP': 'info',
+                        'Ubiquiti': 'success', 'Hikvision': 'warning', 'Dahua': 'warning',
+                        'Apple': 'secondary', 'Dell': 'dark', 'default': 'secondary'
+                    };
+                    const color = vendorColors[dev.vendor] || vendorColors['default'];
+                    vendorBadge = `<span class="badge bg-${color}">${dev.vendor}</span>`;
+                }
+                
+                // Tipo suggerito
+                const suggestedType = dev.identified_type || dev.suggested_type || 'other';
+                
+                // Identificato?
+                let identifiedBadge = '';
+                if (dev.identified_by) {
+                    identifiedCount++;
+                    const method = dev.identified_by.replace('probe_', '').replace('mac_vendor', 'MAC');
+                    identifiedBadge = `<span class="badge bg-success">${method}</span>`;
+                    if (dev.os_family) {
+                        identifiedBadge += ` <small class="text-muted">${dev.os_family}</small>`;
+                    }
+                }
+                
+                tbody.innerHTML += `
+                    <tr ${rowClass} data-index="${idx}">
+                        <td><input type="checkbox" class="device-checkbox" data-index="${idx}" ${hasMAC ? '' : 'disabled'}></td>
+                        <td><code>${dev.address || '-'}</code></td>
+                        <td><code class="small">${dev.mac_address || '-'}</code></td>
+                        <td>${vendorBadge}</td>
+                        <td>
+                            <select class="form-select form-select-sm device-type-select" data-index="${idx}" style="width: 100px;" ${hasMAC ? '' : 'disabled'}>
+                                ${typeOptions}
+                            </select>
+                        </td>
+                        <td>${dev.hostname || dev.identity || '-'}</td>
+                        <td>${identifiedBadge || '<span class="text-muted">-</span>'}</td>
+                    </tr>
+                `;
+            });
+            
+            // Imposta tipo selezionato per ogni device
+            discoveredDevices.forEach((dev, idx) => {
+                const select = document.querySelector(`.device-type-select[data-index="${idx}"]`);
+                if (select) {
+                    select.value = dev.identified_type || dev.suggested_type || 'other';
+                }
+            });
+            
+            // Mostra conteggio identificati
+            const countBadge = document.getElementById('identifiedCount');
+            if (identifiedCount > 0) {
+                countBadge.textContent = `${identifiedCount} identificati`;
+                countBadge.style.display = 'inline';
+            } else {
+                countBadge.style.display = 'none';
+            }
+        }
+
+        function toggleSelectAll() {
+            const checked = document.getElementById('selectAllCheckbox').checked;
+            document.querySelectorAll('.device-checkbox:not(:disabled)').forEach(cb => {
+                cb.checked = checked;
+            });
+        }
+
+        function selectAllDevices() {
+            document.getElementById('selectAllCheckbox').checked = true;
+            toggleSelectAll();
+        }
+        
+        function selectByVendor() {
+            const vendors = [...new Set(discoveredDevices.filter(d => d.vendor).map(d => d.vendor))];
+            if (vendors.length === 0) {
+                alert('Nessun vendor rilevato');
+                return;
+            }
+            
+            const vendor = prompt(`Seleziona vendor:\n${vendors.join(', ')}`);
+            if (!vendor) return;
+            
+            document.querySelectorAll('.device-checkbox').forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                const dev = discoveredDevices[idx];
+                cb.checked = dev && dev.vendor && dev.vendor.toLowerCase().includes(vendor.toLowerCase());
+            });
+        }
+        
+        async function identifySelected() {
+            const checkboxes = document.querySelectorAll('.device-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('Seleziona almeno un dispositivo da identificare');
+                return;
+            }
+            
+            // Get credenziali selezionate
+            const credSelect = document.getElementById('probeCredentials');
+            const credentialIds = Array.from(credSelect.selectedOptions).map(o => o.value);
+            
+            if (credentialIds.length === 0) {
+                alert('Seleziona almeno una credenziale per il probe');
+                return;
+            }
+            
+            const devices = [];
+            checkboxes.forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                const dev = discoveredDevices[idx];
+                if (dev) {
+                    devices.push({
+                        address: dev.address,
+                        mac_address: dev.mac_address,
+                    });
+                }
+            });
+            
+            document.getElementById('discoveryLoading').style.display = 'block';
+            document.getElementById('discoveryLoading').querySelector('p').textContent = 'Identificazione in corso...';
+            
+            try {
+                const response = await fetch(`/api/v1/inventory/probe-devices?customer_id=${customerId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        devices: devices,
+                        credential_ids: credentialIds
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Aggiorna discoveredDevices con i risultati
+                    result.results.forEach(probeResult => {
+                        const idx = discoveredDevices.findIndex(d => d.address === probeResult.address);
+                        if (idx >= 0) {
+                            discoveredDevices[idx] = {
+                                ...discoveredDevices[idx],
+                                ...probeResult,
+                                identified_type: probeResult.device_type,
+                            };
+                        }
+                    });
+                    
+                    renderDiscoveryTable();
+                    alert(`✅ Identificati ${result.probed} dispositivi\n${result.errors} errori`);
+                } else {
+                    alert('Errore: ' + (result.error || 'Identificazione fallita'));
+                }
+            } catch (e) {
+                alert('Errore: ' + e.message);
+            } finally {
+                document.getElementById('discoveryLoading').style.display = 'none';
+                document.getElementById('discoveryLoading').querySelector('p').textContent = 'Scansione in corso...';
+            }
+        }
+
+        async function importSelected() {
+            const checkboxes = document.querySelectorAll('.device-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('Seleziona almeno un dispositivo da importare');
+                return;
+            }
+
+            const devices = [];
+
+            checkboxes.forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                const dev = discoveredDevices[idx];
+                
+                // Prendi tipo dal select
+                const typeSelect = document.querySelector(`.device-type-select[data-index="${idx}"]`);
+                const deviceType = typeSelect ? typeSelect.value : (dev.identified_type || dev.suggested_type || 'other');
+                
+                if (dev) {
+                    devices.push({
+                        address: dev.address,
+                        mac_address: dev.mac_address,
+                        name: dev.hostname || dev.identity || dev.address,
+                        identity: dev.hostname || dev.identity,
+                        platform: dev.vendor || dev.platform,
+                        board: dev.model || dev.board,
+                        device_type: deviceType,
+                        category: dev.category,
+                    });
+                }
+            });
+
+            if (!confirm(`Importare ${devices.length} dispositivi nell'inventario?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/inventory/devices/bulk-import?customer_id=${customerId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ devices: devices })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✅ Importati ${result.imported} dispositivi\n${result.skipped} saltati (duplicati)\n${result.skipped_no_mac || 0} saltati (senza MAC)`);
+                    // Deseleziona tutti
+                    document.querySelectorAll('.device-checkbox').forEach(cb => cb.checked = false);
+                    document.getElementById('selectAllCheckbox').checked = false;
+                } else {
+                    alert('Errore: ' + (result.error || 'Import fallito'));
+                }
+            } catch (e) {
+                alert('Errore: ' + e.message);
+            }
+        }
+
+        // Aggiungi netwatch
+        async function addNetwatch() {
+            const host = document.getElementById('nwHost').value;
+            if (!host) {
+                alert('Inserisci un host');
+                return;
+            }
+
+            const data = {
+                host: host,
+                port: document.getElementById('nwPort').value ? parseInt(document.getElementById('nwPort').value) : null,
+                interval: document.getElementById('nwInterval').value || '30s',
+                timeout: document.getElementById('nwTimeout').value || '3s',
+                comment: document.getElementById('nwComment').value || null
+            };
+
+            try {
+                const response = await fetch(`${apiBase}/netwatch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('addNetwatchModal')).hide();
+                    loadNetwatch();
+                } else {
+                    alert('Errore: ' + (result.error || 'Creazione fallita'));
+                }
+            } catch (e) {
+                alert('Errore: ' + e.message);
+            }
+        }
+
+        // Elimina netwatch
+        async function deleteNetwatch(id) {
+            if (!confirm('Eliminare questo netwatch?')) return;
+
+            try {
+                const response = await fetch(`${apiBase}/netwatch/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+
+                if (result.success) {
+                    loadNetwatch();
+                } else {
+                    alert('Errore: ' + (result.error || 'Eliminazione fallita'));
+                }
+            } catch (e) {
+                alert('Errore: ' + e.message);
+            }
+        }
+
+        // Utility
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function refreshAll() {
+            loadSystemInfo();
+            loadInterfaces();
+            loadNetwatch();
+            loadRoutes();
+            loadFirewall();
+        }
+
+        // Tab change handler
+        document.querySelectorAll('#routerTabs a').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function (e) {
+                const target = e.target.getAttribute('href');
+                if (target === '#interfaces') loadInterfaces();
+                else if (target === '#netwatch') loadNetwatch();
+                else if (target === '#routes') loadRoutes();
+                else if (target === '#firewall') loadFirewall();
+            });
+        });
+
+        // Init
+        loadSystemInfo();
+    </script>
+</body>
+</html>

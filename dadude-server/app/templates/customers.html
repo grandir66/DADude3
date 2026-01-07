@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Clienti</h1>
+        <p class="text-muted mb-0" id="customer-count">{{ customers|length }} clienti</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newCustomerModal">
+        <i class="bi bi-plus-lg"></i> Nuovo Cliente
+    </button>
+</div>
+
+<!-- Vue DataTable per Clienti -->
+<div id="customers-app">
+    <data-table
+        :data="customers"
+        :columns="columns"
+        :searchable="true"
+        :sortable="true"
+        :paginated="true"
+        :items-per-page="10"
+        empty-message="Nessun cliente configurato"
+    >
+        <template #cell-code="{ value }">
+            <code class="fw-bold" v-text="value"></code>
+        </template>
+        
+        <template #cell-name="{ row }">
+            <a v-bind:href="'/customers/' + row.id" class="text-decoration-none">
+                <strong v-text="row.name"></strong>
+            </a>
+        </template>
+        
+        <template #cell-contact_email="{ value }">
+            <a v-if="value" v-bind:href="'mailto:' + value" v-text="value"></a>
+            <span v-else>-</span>
+        </template>
+        
+        <template #cell-active="{ value }">
+            <span v-if="value" class="badge bg-success">Attivo</span>
+            <span v-else class="badge bg-secondary">Inattivo</span>
+        </template>
+        
+        <template #cell-actions="{ row }">
+            <div class="btn-group btn-group-sm">
+                <a v-bind:href="'/customers/' + row.id" class="btn btn-outline-primary" title="Visualizza">
+                    <i class="bi bi-eye"></i>
+                </a>
+                <button class="btn btn-outline-secondary" v-on:click="showEditModal(row)" title="Modifica">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-outline-danger" v-on:click="confirmDelete(row)" title="Elimina">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </template>
+    </data-table>
+</div>
+
+<!-- Modal Nuovo Cliente -->
+<div class="modal fade" id="newCustomerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nuovo Cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newCustomerForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Codice Cliente *</label>
+                        <input type="text" class="form-control" name="code" required 
+                               pattern="[A-Za-z0-9_-]+" placeholder="ES: ACME001">
+                        <small class="text-muted">Solo lettere, numeri, _ e -</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nome *</label>
+                        <input type="text" class="form-control" name="name" required placeholder="Acme Corporation">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrizione</label>
+                        <textarea class="form-control" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contatto</label>
+                        <input type="text" class="form-control" name="contact_name" placeholder="Mario Rossi">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="contact_email" placeholder="mario.rossi@example.com">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Telefono</label>
+                        <input type="tel" class="form-control" name="contact_phone" placeholder="+39 123 456 7890">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Stato</label>
+                        <select class="form-select" name="active">
+                            <option value="true">Attivo</option>
+                            <option value="false">Inattivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Crea Cliente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Modifica Cliente -->
+<div class="modal fade" id="editCustomerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Modifica Cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editCustomerForm">
+                <input type="hidden" id="editCustomerId" name="id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Codice Cliente *</label>
+                        <input type="text" class="form-control" id="editCustomerCode" name="code" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nome *</label>
+                        <input type="text" class="form-control" id="editCustomerName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrizione</label>
+                        <textarea class="form-control" id="editCustomerDescription" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Stato</label>
+                        <select class="form-select" id="editCustomerActive" name="active">
+                            <option value="true">Attivo</option>
+                            <option value="false">Disattivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Salva Modifiche
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Dati customers passati dal server
+const customersData = {{ customers | tojson }};
+
+// App Vue per customers (usa createApp già disponibile globalmente da app.js)
+if (typeof Vue !== 'undefined' && Vue.createApp && typeof window.DataTable !== 'undefined') {
+    Vue.createApp({
+    components: {
+        DataTable: window.DataTable
+    },
+    data() {
+        return {
+            customers: customersData,
+            columns: [
+                { key: 'code', label: 'Codice', field: 'code', sortable: true },
+                { key: 'name', label: 'Nome', field: 'name', sortable: true },
+                { key: 'contact_name', label: 'Contatto', field: 'contact_name', sortable: true },
+                { key: 'contact_email', label: 'Email', field: 'contact_email', sortable: true },
+                { key: 'contact_phone', label: 'Telefono', field: 'contact_phone', sortable: false },
+                { key: 'active', label: 'Stato', field: 'active', sortable: true },
+                { key: 'actions', label: 'Azioni', field: null, sortable: false }
+            ]
+        }
+    },
+    mounted() {
+        // Aggiorna contatore quando cambiano i dati filtrati
+        this.$nextTick(() => {
+            this.updateCustomerCount();
+        });
+    },
+    methods: {
+        showEditModal(customer) {
+            document.getElementById('editCustomerId').value = customer.id;
+            document.getElementById('editCustomerCode').value = customer.code;
+            document.getElementById('editCustomerName').value = customer.name;
+            document.getElementById('editCustomerDescription').value = customer.description || '';
+            document.getElementById('editCustomerActive').value = customer.active ? 'true' : 'false';
+            new bootstrap.Modal(document.getElementById('editCustomerModal')).show();
+        },
+        confirmDelete(customer) {
+            if (!confirm(`⚠️ Eliminare il cliente "${customer.name}"?\n\nATTENZIONE: Verranno eliminati anche tutti gli agent, reti, credenziali e dispositivi associati!`)) {
+                return;
+            }
+            
+            // Doppia conferma per sicurezza
+            if (!confirm(`Conferma finale: eliminare definitivamente "${customer.name}" e tutti i dati associati?`)) {
+                return;
+            }
+            
+            this.deleteCustomer(customer.id, customer.name);
+        },
+        async deleteCustomer(customerId, customerName) {
+            try {
+                const response = await fetch(`/api/v1/customers/${customerId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    if (window.toastSuccess) {
+                        window.toastSuccess('Cliente eliminato con successo');
+                    }
+                    // Rimuovi dalla lista
+                    this.customers = this.customers.filter(c => c.id !== customerId);
+                    this.updateCustomerCount();
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    const error = await response.json();
+                    if (window.toastError) {
+                        window.toastError('Errore: ' + (error.detail || 'Eliminazione fallita'));
+                    } else {
+                        alert('Errore: ' + (error.detail || 'Eliminazione fallita'));
+                    }
+                }
+            } catch (e) {
+                if (window.toastError) {
+                    window.toastError('Errore: ' + e.message);
+                } else {
+                    alert('Errore: ' + e.message);
+                }
+            }
+        },
+        updateCustomerCount() {
+            const countEl = document.getElementById('customer-count');
+            if (countEl) {
+                // Il DataTable gestisce il conteggio, ma possiamo aggiornare il totale
+                countEl.textContent = `${this.customers.length} clienti`;
+            }
+        },
+        reloadCustomers() {
+            // Ricarica i clienti dall'API
+            fetch('/api/v1/customers?active_only=true&limit=500')
+                .then(response => response.json())
+                .then(data => {
+                    // Gestisci sia array che oggetto con customers
+                    const customersList = Array.isArray(data) ? data : (data.customers || []);
+                    this.customers = customersList;
+                    this.updateCustomerCount();
+                })
+                .catch(error => {
+                    console.error('Errore caricamento clienti:', error);
+                    if (window.toastError) {
+                        window.toastError('Errore nel caricamento dei clienti');
+                    }
+                });
+        }
+    }
+    }).mount('#customers-app');
+}
+
+// Form Nuovo Cliente
+document.getElementById('newCustomerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    data.active = data.active === 'true';
+    
+    try {
+        const response = await fetch('/api/v1/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            if (window.toastSuccess) {
+                window.toastSuccess('Cliente creato con successo');
+            }
+            bootstrap.Modal.getInstance(document.getElementById('newCustomerModal')).hide();
+            setTimeout(() => location.reload(), 500);
+        } else {
+            const error = await response.json();
+            if (window.toastError) {
+                window.toastError('Errore: ' + (error.detail || 'Errore sconosciuto'));
+            } else {
+                alert('Errore: ' + (error.detail || 'Errore sconosciuto'));
+            }
+        }
+    } catch (e) {
+        if (window.toastError) {
+            window.toastError('Errore di connessione');
+        } else {
+            alert('Errore di connessione');
+        }
+    }
+});
+
+// Form Modifica Cliente
+document.getElementById('editCustomerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const customerId = document.getElementById('editCustomerId').value;
+    
+    const data = {
+        code: document.getElementById('editCustomerCode').value,
+        name: document.getElementById('editCustomerName').value,
+        description: document.getElementById('editCustomerDescription').value || null,
+        active: document.getElementById('editCustomerActive').value === 'true',
+    };
+    
+    try {
+        const response = await fetch(`/api/v1/customers/${customerId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editCustomerModal')).hide();
+            if (window.toastSuccess) {
+                window.toastSuccess('Cliente aggiornato con successo');
+            } else {
+                alert('✅ Cliente aggiornato con successo');
+            }
+            setTimeout(() => location.reload(), 500);
+        } else {
+            const error = await response.json();
+            if (window.toastError) {
+                window.toastError('Errore: ' + (error.detail || 'Aggiornamento fallito'));
+            } else {
+                alert('❌ Errore: ' + (error.detail || 'Aggiornamento fallito'));
+            }
+        }
+    } catch (e) {
+        if (window.toastError) {
+            window.toastError('Errore: ' + e.message);
+        } else {
+            alert('❌ Errore: ' + e.message);
+        }
+    }
+});
+</script>
+{% endblock %}

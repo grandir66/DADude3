@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Dispositivi</h1>
+        <p class="text-muted mb-0" id="device-count">{{ devices|length }} dispositivi totali</p>
+    </div>
+    <div class="btn-group" role="group">
+        <input type="radio" class="btn-check" name="statusFilter" id="filter-all" value="" {% if not status_filter %}checked{% endif %} v-on:change="filterByStatus('')">
+        <label class="btn btn-outline-secondary" for="filter-all">Tutti</label>
+        
+        <input type="radio" class="btn-check" name="statusFilter" id="filter-up" value="up" {% if status_filter == 'up' %}checked{% endif %} v-on:change="filterByStatus('up')">
+        <label class="btn btn-outline-success" for="filter-up">UP</label>
+        
+        <input type="radio" class="btn-check" name="statusFilter" id="filter-down" value="down" {% if status_filter == 'down' %}checked{% endif %} v-on:change="filterByStatus('down')">
+        <label class="btn btn-outline-danger" for="filter-down">DOWN</label>
+    </div>
+</div>
+
+<!-- Vue DataTable per Dispositivi -->
+<div id="devices-app">
+    <data-table
+        :data="filteredDevices"
+        :columns="columns"
+        :searchable="true"
+        :sortable="true"
+        :paginated="true"
+        :items-per-page="15"
+        empty-message="Nessun dispositivo trovato"
+    >
+        <template #cell-status="{ value }">
+            <span v-if="value === 'up'" class="badge bg-success">
+                <i class="bi bi-check-circle"></i> UP
+            </span>
+            <span v-else-if="value === 'down'" class="badge bg-danger">
+                <i class="bi bi-x-circle"></i> DOWN
+            </span>
+            <span v-else class="badge bg-secondary">
+                <i class="bi bi-question-circle"></i> <span v-text="value ? value.toUpperCase() : 'UNKNOWN'"></span>
+            </span>
+        </template>
+        
+        <template #cell-name="{ value }">
+            <strong v-text="value"></strong>
+        </template>
+        
+        <template #cell-address="{ value }">
+            <code v-text="value || '-'"></code>
+        </template>
+        
+        <template #cell-mac_address="{ value }">
+            <code class="text-muted" v-text="value || '-'"></code>
+        </template>
+        
+        <template #cell-last_seen="{ value }">
+            <span v-if="value" v-text="formatDate(value)"></span>
+            <span v-else>-</span>
+        </template>
+        
+        <template #cell-monitoring="{ row }">
+            <select class="form-select form-select-sm" 
+                    :value="row.monitoring_type || 'none'"
+                    @change="updateMonitoring(row.id, $event.target.value)"
+                    style="min-width: 120px;">
+                <option v-for="opt in monitoringOptions" :key="opt.value" :value="opt.value" v-text="opt.label"></option>
+            </select>
+            <button v-if="row.monitoring_type === 'tcp' || row.monitoring_type === 'mikrotik' || row.monitoring_type === 'agent'" 
+                    class="btn btn-sm btn-outline-secondary ms-1" 
+                    @click="showMonitoringConfig(row)"
+                    title="Configura">
+                <i class="bi bi-gear"></i>
+            </button>
+        </template>
+    </data-table>
+</div>
+
+<!-- Modal Configurazione Monitoraggio -->
+<div class="modal fade" id="monitoringConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configurazione Monitoraggio</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tipo Monitoraggio</label>
+                    <select class="form-select" id="monitoringType" v-model="monitoringConfig.type">
+                        <option value="none">Nessuno</option>
+                        <option value="icmp">ICMP (Ping)</option>
+                        <option value="tcp">TCP (Porta)</option>
+                        <option value="mikrotik">MikroTik Netwatch</option>
+                        <option value="agent">Agent Docker</option>
+                    </select>
+                </div>
+                <div class="mb-3" v-if="monitoringConfig.type === 'tcp'">
+                    <label class="form-label">Porta TCP</label>
+                    <input type="number" class="form-control" id="monitoringPort" v-model="monitoringConfig.port" min="1" max="65535" placeholder="22">
+                </div>
+                <div class="mb-3" v-if="monitoringConfig.type === 'mikrotik' || monitoringConfig.type === 'agent'">
+                    <label class="form-label">Agent</label>
+                    <select class="form-select" id="monitoringAgent" v-model="monitoringConfig.agent_id">
+                        <option value="">Seleziona agent...</option>
+                        <!-- Popolato dinamicamente -->
+                    </select>
+                </div>
+                <div class="mb-3" v-if="monitoringConfig.type !== 'none'">
+                    <label class="form-label">Intervallo Check (secondi)</label>
+                    <input type="number" class="form-control" id="monitoringInterval" v-model="monitoringConfig.interval" min="10" value="30">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-primary" @click="saveMonitoringConfig">Salva</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Dati devices passati dal server
+const devicesData = {{ devices | tojson }};
+const statusFilter = {{ status_filter | tojson if status_filter else 'null' }};
+
+// App Vue per devices (usa createApp già disponibile globalmente da app.js)
+if (typeof Vue !== 'undefined' && Vue.createApp && typeof window.DataTable !== 'undefined') {
+    Vue.createApp({
+    components: {
+        DataTable: window.DataTable
+    },
+    data() {
+        return {
+            devices: devicesData,
+            currentStatusFilter: statusFilter || '',
+            columns: [
+                { key: 'status', label: 'Stato', field: (row) => row.status?.value || 'unknown', sortable: true },
+                { key: 'name', label: 'Nome', field: 'name', sortable: true },
+                { key: 'address', label: 'Indirizzo IP', field: 'address', sortable: true },
+                { key: 'mac_address', label: 'MAC Address', field: 'mac_address', sortable: true },
+                { key: 'device_type', label: 'Tipo', field: 'device_type', sortable: true },
+                { key: 'group', label: 'Gruppo', field: 'group', sortable: true },
+                { key: 'monitoring', label: 'Monitoraggio', field: (row) => this.getMonitoringLabel(row), sortable: false },
+                { key: 'last_seen', label: 'Ultimo Contatto', field: 'last_seen', sortable: true }
+            ],
+            monitoringOptions: [
+                { value: 'none', label: 'Nessuno' },
+                { value: 'icmp', label: 'ICMP' },
+                { value: 'tcp', label: 'TCP' },
+                { value: 'mikrotik', label: 'MikroTik' },
+                { value: 'agent', label: 'Agent' }
+            ],
+            monitoringConfig: {
+                device_id: null,
+                type: 'none',
+                port: null,
+                agent_id: null,
+                interval: 30
+            },
+            availableAgents: []
+        }
+    },
+    computed: {
+        filteredDevices() {
+            if (!this.currentStatusFilter) {
+                return this.devices;
+            }
+            return this.devices.filter(device => {
+                const status = device.status?.value || 'unknown';
+                return status === this.currentStatusFilter;
+            });
+        }
+    },
+    mounted() {
+        this.updateDeviceCount();
+    },
+    methods: {
+        filterByStatus(status) {
+            this.currentStatusFilter = status;
+            // Aggiorna URL senza ricaricare la pagina
+            const url = new URL(window.location);
+            if (status) {
+                url.searchParams.set('status', status);
+            } else {
+                url.searchParams.delete('status');
+            }
+            window.history.pushState({}, '', url);
+            this.updateDeviceCount();
+        },
+        formatDate(dateString) {
+            if (!dateString) return '-';
+            try {
+                const date = new Date(dateString);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${day}/${month} ${hours}:${minutes}`;
+            } catch (e) {
+                return dateString;
+            }
+        },
+        updateDeviceCount() {
+            const countEl = document.getElementById('device-count');
+            if (countEl) {
+                const total = this.filteredDevices.length;
+                const totalAll = this.devices.length;
+                if (this.currentStatusFilter) {
+                    countEl.textContent = `${total} dispositivi (${totalAll} totali)`;
+                } else {
+                    countEl.textContent = `${totalAll} dispositivi totali`;
+                }
+            }
+        },
+        getMonitoringLabel(row) {
+            const type = row.monitoring_type || 'none';
+            const option = this.monitoringOptions.find(opt => opt.value === type);
+            if (option) {
+                if (type === 'tcp' && row.monitoring_port) {
+                    return `${option.label} (${row.monitoring_port})`;
+                }
+                return option.label;
+            }
+            return 'Nessuno';
+        },
+        async updateMonitoring(deviceId, monitoringType) {
+            try {
+                const response = await fetch(`/api/v1/inventory/devices/${deviceId}/monitoring`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        monitoring_type: monitoringType
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Aggiorna device locale
+                    const device = this.devices.find(d => d.id === deviceId);
+                    if (device) {
+                        device.monitoring_type = monitoringType;
+                    }
+                    
+                    if (window.toastSuccess) {
+                        window.toastSuccess('Monitoraggio aggiornato');
+                    }
+                    
+                    // Se è TCP, MikroTik o Agent, apri modal configurazione
+                    if (monitoringType === 'tcp' || monitoringType === 'mikrotik' || monitoringType === 'agent') {
+                        this.showMonitoringConfig(device);
+                    }
+                } else {
+                    throw new Error(data.error || 'Errore aggiornamento monitoraggio');
+                }
+            } catch (e) {
+                console.error('Errore aggiornamento monitoraggio:', e);
+                if (window.toastError) {
+                    window.toastError('Errore: ' + e.message);
+                }
+            }
+        },
+        async showMonitoringConfig(device) {
+            this.monitoringConfig = {
+                device_id: device.id,
+                type: device.monitoring_type || 'none',
+                port: device.monitoring_port || null,
+                agent_id: device.monitoring_agent_id || null,
+                interval: 30
+            };
+            
+            // Carica agent disponibili
+            try {
+                const response = await fetch('/api/v1/agents?active_only=true');
+                const data = await response.json();
+                if (data.agents) {
+                    this.availableAgents = data.agents;
+                }
+            } catch (e) {
+                console.error('Errore caricamento agent:', e);
+            }
+            
+            // Mostra modal
+            const modal = new bootstrap.Modal(document.getElementById('monitoringConfigModal'));
+            modal.show();
+        },
+        async saveMonitoringConfig() {
+            if (!this.monitoringConfig.device_id) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/v1/inventory/devices/${this.monitoringConfig.device_id}/monitoring`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        monitoring_type: this.monitoringConfig.type,
+                        monitoring_port: this.monitoringConfig.type === 'tcp' ? parseInt(this.monitoringConfig.port) : null,
+                        monitoring_agent_id: (this.monitoringConfig.type === 'mikrotik' || this.monitoringConfig.type === 'agent') ? this.monitoringConfig.agent_id : null,
+                        interval: parseInt(this.monitoringConfig.interval) || 30
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Aggiorna device locale
+                    const device = this.devices.find(d => d.id === this.monitoringConfig.device_id);
+                    if (device) {
+                        device.monitoring_type = this.monitoringConfig.type;
+                        device.monitoring_port = this.monitoringConfig.port;
+                        device.monitoring_agent_id = this.monitoringConfig.agent_id;
+                    }
+                    
+                    // Chiudi modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('monitoringConfigModal'));
+                    if (modal) {
+                        modal.hide();
+                    }
+                    
+                    if (window.toastSuccess) {
+                        window.toastSuccess('Configurazione monitoraggio salvata');
+                    }
+                } else {
+                    throw new Error(data.error || 'Errore salvataggio configurazione');
+                }
+            } catch (e) {
+                console.error('Errore salvataggio configurazione:', e);
+                if (window.toastError) {
+                    window.toastError('Errore: ' + e.message);
+                }
+            }
+        }
+    },
+    watch: {
+        filteredDevices() {
+            this.updateDeviceCount();
+        }
+    }
+    }).mount('#devices-app');
+}
+</script>
+{% endblock %}

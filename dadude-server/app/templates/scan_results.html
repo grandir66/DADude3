@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.device-checkbox,
+#selectAllCheckbox {
+    cursor: pointer !important;
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: middle !important;
+    position: relative !important;
+    z-index: 999 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-block !important;
+    -webkit-appearance: checkbox !important;
+    -moz-appearance: checkbox !important;
+    appearance: checkbox !important;
+    pointer-events: auto !important;
+    background-color: white !important;
+    border: 1px solid #ccc !important;
+}
+.device-checkbox:disabled {
+    cursor: not-allowed !important;
+    opacity: 0.5 !important;
+}
+td:first-child {
+    position: relative;
+    z-index: 1;
+    min-width: 30px;
+}
+td:first-child > * {
+    pointer-events: auto !important;
+}
+</style>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Risultati Scansione</h1>
+        <p class="text-muted mb-0">{{ customer.code }} - {{ customer.name }}</p>
+    </div>
+    <div>
+        <a href="/customers/{{ customer.id }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Torna al Cliente
+        </a>
+    </div>
+</div>
+
+<!-- Info Scansione -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-info-circle"></i> Informazioni Scansione
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <strong>Rete:</strong><br>
+                <code>{{ scan.network_cidr }}</code>
+            </div>
+            <div class="col-md-2">
+                <strong>Tipo:</strong><br>
+                <span class="badge bg-info">{{ scan.scan_type }}</span>
+            </div>
+            <div class="col-md-2">
+                <strong>Stato:</strong><br>
+                {% if scan.status == "completed" %}
+                <span class="badge bg-success">Completata</span>
+                {% elif scan.status == "running" %}
+                <span class="badge bg-primary">In Corso</span>
+                {% elif scan.status == "failed" %}
+                <span class="badge bg-danger">Fallita</span>
+                {% else %}
+                <span class="badge bg-secondary">{{ scan.status }}</span>
+                {% endif %}
+            </div>
+            <div class="col-md-2">
+                <strong>Device Trovati:</strong><br>
+                <span class="badge bg-primary">{{ scan.devices_found }}</span>
+            </div>
+            <div class="col-md-3">
+                <strong>Data:</strong><br>
+                {{ scan.created_at[:19] if scan.created_at else "N/A" }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-refresh se scansione in corso -->
+{% if scan.status == "running" %}
+<div class="alert alert-info">
+    <i class="bi bi-hourglass-split"></i> 
+    Scansione in corso... La pagina si aggiornerà automaticamente.
+</div>
+<script>
+    setTimeout(function() {
+        location.reload();
+    }, 5000); // Refresh ogni 5 secondi
+</script>
+{% endif %}
+
+<!-- Tabella Device -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-task"></i> Dispositivi Trovati ({{ devices|length }})</span>
+        <div>
+            <button class="btn btn-sm btn-info" onclick="resolveSelected()" id="resolveBtn">
+                <i class="bi bi-arrow-clockwise"></i> Risolvi MAC/DNS
+            </button>
+            <button class="btn btn-sm btn-warning" onclick="identifySelected()" id="identifyBtn">
+                <i class="bi bi-search"></i> Identifica Device
+            </button>
+            <button class="btn btn-sm btn-primary" onclick="selectAll()">
+                <i class="bi bi-check-square"></i> Seleziona Tutti
+            </button>
+            <button class="btn btn-sm btn-outline-primary" onclick="deselectAll()">
+                <i class="bi bi-square"></i> Deseleziona Tutti
+            </button>
+            <button class="btn btn-sm btn-info" onclick="checkDuplicates()">
+                <i class="bi bi-search"></i> Verifica Duplicati
+            </button>
+            <button class="btn btn-sm btn-success" onclick="importSelected()">
+                <i class="bi bi-download"></i> Importa Selezionati
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="devicesTable">
+                <thead>
+                    <tr>
+                        <th width="30" style="text-align: center; position: relative;">
+                            <label style="cursor: pointer; margin: 0; padding: 0; display: inline-block;">
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleAll(this)" style="cursor: pointer; width: 18px; height: 18px; margin: 0; position: relative; z-index: 1000;">
+                            </label>
+                        </th>
+                        <th>IP</th>
+                        <th>MAC</th>
+                        <th>Vendor</th>
+                        <th>Nome/Hostname</th>
+                        <th>Reverse DNS</th>
+                        <th>Device Type</th>
+                        <th>Category</th>
+                        <th>OS Family</th>
+                        <th>Piattaforma</th>
+                        <th>Porte Aperte</th>
+                        <th>Stato</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in devices %}
+                    <tr data-device-id="{{ device.id }}">
+                        <td style="text-align: center; vertical-align: middle; position: relative;">
+                            <label style="cursor: pointer; margin: 0; padding: 0; display: inline-block;">
+                                <input type="checkbox" class="device-checkbox" value="{{ device.id }}" id="device_{{ device.id }}" style="cursor: pointer; width: 18px; height: 18px; margin: 0; position: relative; z-index: 1000;">
+                                {% if device.imported %}
+                                <br><small class="text-success" title="Già importato"><i class="bi bi-check-circle"></i></small>
+                                {% endif %}
+                            </label>
+                        </td>
+                        <td><code>{{ device.address }}</code></td>
+                        <td><code>{{ device.mac_address or "-" }}</code></td>
+                        <td>
+                            {% if device.vendor %}
+                            <span class="badge bg-info">{{ device.vendor }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ device.identity or device.hostname or "-" }}
+                            {% if device.hostname and device.hostname != device.identity %}
+                            <br><small class="text-muted">{{ device.hostname }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.reverse_dns %}
+                            <code>{{ device.reverse_dns }}</code>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.device_type %}
+                            <span class="badge bg-primary">{{ device.device_type }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.category %}
+                            <span class="badge bg-info">{{ device.category }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.os_family %}
+                            <span class="badge bg-success">{{ device.os_family }}</span>
+                            {% if device.os_version %}
+                            <br><small class="text-muted">{{ device.os_version }}</small>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.platform %}
+                            <span class="badge bg-secondary">{{ device.platform }}</span>
+                            {% if device.board %}
+                            <br><small class="text-muted">{{ device.board }}</small>
+                            {% endif %}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.open_ports %}
+                            {% for port in device.open_ports[:5] %}
+                            {% if port.open %}
+                            <span class="badge bg-success">{{ port.port }}/{{ port.protocol }}</span>
+                            {% endif %}
+                            {% endfor %}
+                            {% if device.open_ports|length > 5 %}
+                            <span class="text-muted">+{{ device.open_ports|length - 5 }}</span>
+                            {% endif %}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.imported %}
+                            <span class="badge bg-success">Importato</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Non importato</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="12" class="text-center text-muted py-4">
+                            Nessun dispositivo trovato
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.device-checkbox');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+}
+
+function selectAll() {
+    const checkboxes = document.querySelectorAll('.device-checkbox');
+    checkboxes.forEach(cb => cb.checked = true);
+    document.getElementById('selectAllCheckbox').checked = true;
+}
+
+function deselectAll() {
+    const checkboxes = document.querySelectorAll('.device-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    document.getElementById('selectAllCheckbox').checked = false;
+}
+
+async function identifySelected() {
+    // Ottieni tutti i device dalla tabella (anche quelli già importati possono essere re-identificati)
+    const allRows = document.querySelectorAll('tr[data-device-id]');
+    const deviceIds = [];
+    
+    // Se ci sono checkbox selezionati, usa quelli
+    const checkedBoxes = document.querySelectorAll('.device-checkbox:checked');
+    if (checkedBoxes.length > 0) {
+        deviceIds.push(...Array.from(checkedBoxes).map(cb => cb.value));
+    } else {
+        // Altrimenti usa tutti i device non importati (quelli con checkbox)
+        const allCheckboxes = document.querySelectorAll('.device-checkbox');
+        if (allCheckboxes.length > 0) {
+            deviceIds.push(...Array.from(allCheckboxes).map(cb => cb.value));
+        } else {
+            // Se non ci sono checkbox (tutti importati), usa tutti i device dalla tabella
+            allRows.forEach(row => {
+                const deviceId = row.getAttribute('data-device-id');
+                if (deviceId) deviceIds.push(deviceId);
+            });
+        }
+    }
+    
+    if (deviceIds.length === 0) {
+        alert('Nessun dispositivo trovato da identificare');
+        return;
+    }
+    
+    if (!confirm(`Vuoi identificare ${deviceIds.length} dispositivo/i usando probe SNMP/SSH/WMI?`)) {
+        return;
+    }
+    
+    const btn = document.getElementById('identifyBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Identificazione...';
+    
+    try {
+        const response = await fetch(`/api/v1/customers/{{ customer.id }}/scans/{{ scan.id }}/identify`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({device_ids: deviceIds})
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(`Identificazione completata!\n- Device identificati: ${result.identified_count || 0}\n- SNMP: ${result.snmp_count || 0}\n- SSH: ${result.ssh_count || 0}\n- WMI: ${result.wmi_count || 0}\n- Vendor: ${result.vendor_count || 0}\n- Totale processati: ${result.total_processed || 0}`);
+            location.reload();
+        } else {
+            alert('Errore durante l\'identificazione: ' + (result.detail || result.error || 'Errore sconosciuto'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+async function resolveSelected() {
+    // Ottieni tutti i device dalla tabella
+    const allRows = document.querySelectorAll('tr[data-device-id]');
+    const deviceIds = [];
+    
+    // Se ci sono checkbox selezionati, usa quelli
+    const checkedBoxes = document.querySelectorAll('.device-checkbox:checked');
+    if (checkedBoxes.length > 0) {
+        deviceIds.push(...Array.from(checkedBoxes).map(cb => cb.value));
+    } else {
+        // Altrimenti usa tutti i device non importati (quelli con checkbox)
+        const allCheckboxes = document.querySelectorAll('.device-checkbox');
+        if (allCheckboxes.length > 0) {
+            deviceIds.push(...Array.from(allCheckboxes).map(cb => cb.value));
+        } else {
+            // Se non ci sono checkbox (tutti importati), usa tutti i device dalla tabella
+            allRows.forEach(row => {
+                const deviceId = row.getAttribute('data-device-id');
+                if (deviceId) deviceIds.push(deviceId);
+            });
+        }
+    }
+    
+    if (deviceIds.length === 0) {
+        alert('Nessun dispositivo trovato da risolvere');
+        return;
+    }
+    
+    if (!confirm(`Vuoi forzare la risoluzione MAC/DNS per ${deviceIds.length} dispositivo/i?`)) {
+        return;
+    }
+    
+    const btn = document.getElementById('resolveBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Risoluzione...';
+    
+    try {
+        const response = await fetch(`/api/v1/customers/{{ customer.id }}/scans/{{ scan.id }}/resolve`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({device_ids: deviceIds})
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert(`Risoluzione completata!\n- Vendor trovati: ${result.vendor_resolved || 0}\n- DNS risolti: ${result.dns_resolved || 0}\n- Totale processati: ${result.total_processed || 0}`);
+            location.reload();
+        } else {
+            alert('Errore durante la risoluzione: ' + (result.detail || result.error || 'Errore sconosciuto'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+async function checkDuplicates() {
+    const checkboxes = document.querySelectorAll('.device-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert('Seleziona almeno un dispositivo da verificare');
+        return;
+    }
+    
+    const deviceIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    try {
+        const response = await fetch(`/api/v1/customers/{{ customer.id }}/scans/{{ scan.id }}/check-duplicates`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({device_ids: deviceIds})
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            if (result.duplicates_found > 0) {
+                let message = `Trovati ${result.duplicates_found} duplicato/i su ${result.total_checked} device verificati:\n\n`;
+                result.duplicates.forEach((dup, idx) => {
+                    message += `${idx + 1}. ${dup.discovered_device.address} -> ${dup.existing_device.name} (${dup.existing_device.id})\n`;
+                    message += `   Raccomandazione: ${dup.merge_proposal.recommendation}\n`;
+                    message += `   Score esistente: ${(dup.merge_proposal.existing_score * 100).toFixed(0)}%\n`;
+                    message += `   Score nuovo: ${(dup.merge_proposal.discovered_score * 100).toFixed(0)}%\n\n`;
+                });
+                message += '\nVuoi procedere con l\'import comunque?';
+                if (confirm(message)) {
+                    importSelected();
+                }
+            } else {
+                alert(`Nessun duplicato trovato su ${result.total_checked} device verificati.`);
+            }
+        } else {
+            alert('Errore durante verifica duplicati: ' + (result.detail || result.error || 'Errore sconosciuto'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+
+async function importSelected() {
+    const checkboxes = document.querySelectorAll('.device-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert('Seleziona almeno un dispositivo da importare');
+        return;
+    }
+    
+    const deviceIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (!confirm(`Vuoi importare ${deviceIds.length} dispositivo/i nell'inventory?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/customers/{{ customer.id }}/scans/{{ scan.id }}/import`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({device_ids: deviceIds})
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            let message = `Importati ${result.imported_count} dispositivo/i con successo!`;
+            if (result.merged_count > 0) {
+                message += `\n- ${result.merged_count} merge con device esistenti`;
+            }
+            if (result.new_count > 0) {
+                message += `\n- ${result.new_count} nuovi device creati`;
+            }
+            alert(message);
+            location.reload();
+        } else {
+            alert('Errore durante l\'importazione: ' + (result.detail || result.error || 'Errore sconosciuto'));
+        }
+    } catch (error) {
+        alert('Errore: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+
+# Docker
+*.tar.gz
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Config secrets
+config/config.json
+!config/config.example.json
+
+# Logs
+*.log
+logs/
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+

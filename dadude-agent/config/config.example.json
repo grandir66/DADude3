@@ -1,0 +1,11 @@
+{
+  "server_url": "https://your-dadude-server.com",
+  "agent_token": "your-secure-token-here",
+  "agent_id": "agent-001",
+  "agent_name": "Agent Cliente XYZ",
+  "poll_interval": 60,
+  "dns_servers": ["192.168.4.1", "8.8.8.8"],
+  "api_port": 8080,
+  "log_level": "INFO"
+}
+

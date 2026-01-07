@@ -1,0 +1,629 @@
+{% extends "base.html" %}
+
+{% block title %}File Backup{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-folder2-open"></i> File Backup</h1>
+        <div>
+            <button class="btn btn-primary" onclick="refreshFiles()">
+                <i class="bi bi-arrow-clockwise"></i> Aggiorna
+            </button>
+        </div>
+    </div>
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb" id="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="navigateToPath('')">Root</a></li>
+        </ol>
+    </nav>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="backupTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="files-tab" data-bs-toggle="tab" data-bs-target="#files" type="button" role="tab">
+                <i class="bi bi-folder2"></i> File System
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab">
+                <i class="bi bi-clock-history"></i> Storico Database
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="backupTabContent">
+        <!-- Tab File System -->
+        <div class="tab-pane fade show active" id="files" role="tabpanel">
+            <!-- Filtri -->
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo Device</label>
+                            <select class="form-select" id="filterDeviceType" onchange="applyFilters()">
+                                <option value="">Tutti</option>
+                                <option value="mikrotik">MikroTik</option>
+                                <option value="hp_aruba">HP/Aruba</option>
+                                <option value="proxmox">Proxmox</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Codice Cliente</label>
+                            <input type="text" class="form-control" id="filterCustomerCode" placeholder="Filtra per cliente" onchange="applyFilters()">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Path</label>
+                            <input type="text" class="form-control" id="currentPath" placeholder="/" value="" onkeypress="if(event.key==='Enter') navigateToPath(document.getElementById('currentPath').value)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabella file -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;"></th>
+                                    <th>Nome</th>
+                                    <th>Tipo</th>
+                                    <th>Dimensione</th>
+                                    <th>Modificato</th>
+                                    <th style="width: 150px;">Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody id="filesTable">
+                                <tr>
+                                    <td colspan="6" class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Caricamento...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Storico Database -->
+        <div class="tab-pane fade" id="history" role="tabpanel">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label">Cliente</label>
+                            <select class="form-select" id="historyCustomerId" onchange="loadBackupHistory()">
+                                <option value="">Seleziona cliente...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo Device</label>
+                            <select class="form-select" id="historyDeviceType" onchange="loadBackupHistory()">
+                                <option value="">Tutti</option>
+                                <option value="mikrotik">MikroTik</option>
+                                <option value="hp_aruba">HP/Aruba</option>
+                                <option value="proxmox">Proxmox</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Giorni</label>
+                            <select class="form-select" id="historyDays" onchange="loadBackupHistory()">
+                                <option value="7">Ultimi 7 giorni</option>
+                                <option value="30" selected>Ultimi 30 giorni</option>
+                                <option value="90">Ultimi 90 giorni</option>
+                                <option value="365">Ultimo anno</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabella storico -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Device</th>
+                                    <th>Tipo</th>
+                                    <th>File</th>
+                                    <th>Dimensione</th>
+                                    <th>Stato</th>
+                                    <th style="width: 150px;">Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTable">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">
+                                        Seleziona un cliente per visualizzare lo storico backup
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPath = '';
+let currentFilters = {
+    device_type: '',
+    customer_code: ''
+};
+
+async function loadFiles(path = '') {
+    const tbody = document.getElementById('filesTable');
+    if (!tbody) {
+        console.error('filesTable element not found');
+        return;
+    }
+    
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento...</span></div></td></tr>';
+
+    const params = new URLSearchParams();
+    if (path) params.append('path', path);
+    if (currentFilters.device_type) params.append('device_type', currentFilters.device_type);
+    if (currentFilters.customer_code) params.append('customer_code', currentFilters.customer_code);
+
+    try {
+        const response = await fetch(`/api/v1/device-backup/files/list?${params.toString()}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+            throw new Error(errorData.detail || errorData.error || `HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.error || 'Errore caricamento file');
+        }
+
+        currentPath = data.path || '';
+        const pathInput = document.getElementById('currentPath');
+        if (pathInput) {
+            pathInput.value = currentPath;
+        }
+
+        updateBreadcrumb(currentPath);
+        renderFiles(data.items || []);
+    } catch (e) {
+        console.error('Error loading files:', e);
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">
+            <i class="bi bi-exclamation-triangle"></i> Errore: ${escapeHtml(e.message || 'Errore sconosciuto')}
+            <br><small>Verifica che il server sia raggiungibile e che la directory backup esista.</small>
+        </td></tr>`;
+        if (window.toastError) {
+            window.toastError('Errore caricamento file backup: ' + e.message);
+        }
+    }
+}
+
+function renderFiles(items) {
+    const tbody = document.getElementById('filesTable');
+
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Nessun file trovato</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = items.map(item => {
+        const icon = item.type === 'directory' 
+            ? '<i class="bi bi-folder-fill text-warning"></i>' 
+            : getFileIcon(item.name);
+        
+        const size = item.size 
+            ? formatFileSize(item.size) 
+            : '-';
+        
+        const modified = item.modified 
+            ? new Date(item.modified).toLocaleString('it-IT') 
+            : '-';
+
+        const actions = item.type === 'directory'
+            ? `<button class="btn btn-sm btn-outline-primary" onclick="navigateToPath('${item.path}')" title="Apri">
+                 <i class="bi bi-folder2-open"></i>
+               </button>`
+            : `<button class="btn btn-sm btn-outline-success" onclick="downloadFile('${item.path}')" title="Scarica">
+                 <i class="bi bi-download"></i>
+               </button>
+               <button class="btn btn-sm btn-outline-danger" onclick="deleteFile('${item.path}', '${item.name}')" title="Elimina">
+                 <i class="bi bi-trash"></i>
+               </button>`;
+
+        return `
+            <tr>
+                <td>${icon}</td>
+                <td><strong>${escapeHtml(item.name)}</strong></td>
+                <td><span class="badge bg-${item.type === 'directory' ? 'warning' : 'info'}">${item.type === 'directory' ? 'Directory' : 'File'}</span></td>
+                <td>${size}</td>
+                <td>${modified}</td>
+                <td>${actions}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        'rsc': '<i class="bi bi-file-code text-primary"></i>',
+        'backup': '<i class="bi bi-file-zip text-warning"></i>',
+        'txt': '<i class="bi bi-file-text text-secondary"></i>',
+        'cfg': '<i class="bi bi-file-code text-info"></i>',
+        'conf': '<i class="bi bi-file-code text-info"></i>',
+    };
+    return icons[ext] || '<i class="bi bi-file text-secondary"></i>';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function updateBreadcrumb(path) {
+    const breadcrumb = document.getElementById('breadcrumb');
+    const parts = path.split('/').filter(p => p);
+    
+    breadcrumb.innerHTML = '<li class="breadcrumb-item"><a href="#" onclick="navigateToPath(\'\')">Root</a></li>';
+    
+    let currentPath = '';
+    parts.forEach((part, index) => {
+        currentPath += (currentPath ? '/' : '') + part;
+        const isLast = index === parts.length - 1;
+        breadcrumb.innerHTML += `<li class="breadcrumb-item ${isLast ? 'active' : ''}">
+            ${isLast ? escapeHtml(part) : `<a href="#" onclick="navigateToPath('${currentPath}')">${escapeHtml(part)}</a>`}
+        </li>`;
+    });
+}
+
+function navigateToPath(path) {
+    loadFiles(path);
+}
+
+function applyFilters() {
+    currentFilters.device_type = document.getElementById('filterDeviceType').value;
+    currentFilters.customer_code = document.getElementById('filterCustomerCode').value;
+    loadFiles(currentPath);
+}
+
+function refreshFiles() {
+    loadFiles(currentPath);
+}
+
+async function downloadFile(path) {
+    if (!path) {
+        if (window.toastError) {
+            window.toastError('Path file non valido');
+        } else {
+            alert('Path file non valido');
+        }
+        return;
+    }
+    
+    try {
+        const url = `/api/v1/device-backup/files/download?path=${encodeURIComponent(path)}`;
+        
+        // Usa fetch per scaricare il file e gestire gli errori
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+            throw new Error(errorData.detail || errorData.error || `Errore HTTP ${response.status}`);
+        }
+        
+        // Ottieni il blob del file
+        const blob = await response.blob();
+        
+        // Crea un URL temporaneo per il blob
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        // Crea un link temporaneo e cliccalo per avviare il download
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        
+        // Ottieni il nome file dall'header Content-Disposition o dal path
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = path.split('/').pop(); // Nome file dal path
+        
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (filenameMatch && filenameMatch[1]) {
+                filename = filenameMatch[1].replace(/['"]/g, '');
+            }
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Pulisci
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+        
+        if (window.toastSuccess) {
+            window.toastSuccess('Download avviato: ' + filename);
+        }
+    } catch (e) {
+        console.error('Error downloading file:', e);
+        const errorMessage = e.message || 'Errore sconosciuto';
+        
+        if (window.toastError) {
+            window.toastError('Errore download file: ' + errorMessage);
+        } else {
+            alert('Errore download file: ' + errorMessage);
+        }
+    }
+}
+
+async function deleteFile(path, name) {
+    if (!confirm(`Sei sicuro di voler eliminare il file "${name}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/v1/device-backup/files/delete?path=${encodeURIComponent(path)}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert('File eliminato con successo');
+            refreshFiles();
+        } else {
+            throw new Error(data.error || 'Errore eliminazione file');
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Carica lista clienti per storico
+async function loadCustomers() {
+    try {
+        const response = await fetch('/api/v1/customers?active_only=true');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        // Gestisci sia array che oggetto con chiave customers
+        const customers = Array.isArray(data) ? data : (data.customers || []);
+        
+        const select = document.getElementById('historyCustomerId');
+        if (!select) {
+            console.error('Element historyCustomerId not found');
+            return;
+        }
+        
+        // Pulisci opzioni esistenti (tranne la prima)
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+        
+        customers.forEach(customer => {
+            const option = document.createElement('option');
+            option.value = customer.id;
+            option.textContent = `${customer.name} (${customer.code || customer.id})`;
+            select.appendChild(option);
+        });
+        
+        console.log(`Loaded ${customers.length} customers for backup history`);
+    } catch (e) {
+        console.error('Error loading customers:', e);
+        if (window.toastError) {
+            window.toastError('Errore caricamento clienti: ' + e.message);
+        }
+    }
+}
+
+// Carica storico backup dal database
+async function loadBackupHistory() {
+    const customerId = document.getElementById('historyCustomerId').value;
+    const deviceType = document.getElementById('historyDeviceType').value;
+    const days = document.getElementById('historyDays').value;
+    
+    const tbody = document.getElementById('historyTable');
+    
+    if (!customerId) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Seleziona un cliente per visualizzare lo storico backup</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento...</span></div></td></tr>';
+    
+    try {
+        const response = await fetch(`/api/v1/device-backup/history/customer/${customerId}?days=${days}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+            throw new Error(errorData.detail || `Errore HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Gestisci diversi formati di risposta
+        const backups = data.backups || (Array.isArray(data) ? data : []);
+        
+        if (!backups || backups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nessun backup trovato</td></tr>';
+            return;
+        }
+        
+        // Filtra per tipo device se specificato
+        let filteredBackups = backups;
+        if (deviceType) {
+            filteredBackups = backups.filter(b => b.device_type === deviceType);
+        }
+        
+        if (filteredBackups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nessun backup trovato per il tipo selezionato</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = filteredBackups.map(backup => {
+            const date = backup.created_at 
+                ? new Date(backup.created_at).toLocaleString('it-IT')
+                : '-';
+            
+            const size = backup.file_size 
+                ? formatFileSize(backup.file_size)
+                : '-';
+            
+            const statusBadge = backup.success
+                ? '<span class="badge bg-success">Successo</span>'
+                : '<span class="badge bg-danger">Errore</span>';
+            
+            const deviceTypeBadge = {
+                'mikrotik': '<span class="badge bg-primary">MikroTik</span>',
+                'hp_aruba': '<span class="badge bg-info">HP/Aruba</span>',
+                'proxmox': '<span class="badge bg-warning">Proxmox</span>'
+            }[backup.device_type] || '<span class="badge bg-secondary">' + (backup.device_type || 'Unknown') + '</span>';
+            
+            const actions = backup.success && backup.file_name
+                ? `<button class="btn btn-sm btn-outline-success" onclick="downloadBackupById('${backup.id}')" title="Scarica">
+                     <i class="bi bi-download"></i>
+                   </button>`
+                : '<span class="text-muted">-</span>';
+            
+            return `
+                <tr>
+                    <td>${date}</td>
+                    <td>${escapeHtml(backup.device_hostname || backup.device_ip || 'N/A')}</td>
+                    <td>${deviceTypeBadge}</td>
+                    <td><code>${escapeHtml(backup.file_name || '-')}</code></td>
+                    <td>${size}</td>
+                    <td>${statusBadge}</td>
+                    <td>${actions}</td>
+                </tr>
+            `;
+        }).join('');
+        
+    } catch (e) {
+        console.error('Error loading backup history:', e);
+        const errorMessage = e.message || 'Errore sconosciuto';
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">
+            <i class="bi bi-exclamation-triangle"></i> Errore: ${escapeHtml(errorMessage)}
+            <br><small>Verifica che il cliente selezionato sia corretto e che il server sia raggiungibile.</small>
+        </td></tr>`;
+        
+        // Mostra toast se disponibile
+        if (window.toastError) {
+            window.toastError('Errore caricamento storico backup: ' + errorMessage);
+        }
+    }
+}
+
+// Funzione per scaricare backup dal database
+async function downloadBackupById(backupId) {
+    if (!backupId) {
+        if (window.toastError) {
+            window.toastError('ID backup non valido');
+        } else {
+            alert('ID backup non valido');
+        }
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/device-backup/download/${backupId}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+            throw new Error(errorData.detail || `Errore HTTP ${response.status}`);
+        }
+        
+        // Ottieni il blob del file
+        const blob = await response.blob();
+        
+        // Crea un URL temporaneo per il blob
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        // Crea un link temporaneo e cliccalo per avviare il download
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        
+        // Ottieni il nome file dall'header Content-Disposition o usa un default
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'backup';
+        
+        if (contentDisposition) {
+            // Prova diversi formati di Content-Disposition
+            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (filenameMatch && filenameMatch[1]) {
+                filename = filenameMatch[1].replace(/['"]/g, '');
+                // Decodifica se necessario
+                try {
+                    filename = decodeURIComponent(filename);
+                } catch (e) {
+                    // Se fallisce, usa il valore originale
+                }
+            }
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Pulisci
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+        
+        if (window.toastSuccess) {
+            window.toastSuccess('Download avviato: ' + filename);
+        }
+    } catch (e) {
+        console.error('Error downloading backup:', e);
+        const errorMessage = e.message || 'Errore sconosciuto';
+        
+        if (window.toastError) {
+            window.toastError('Errore download backup: ' + errorMessage);
+        } else {
+            alert('Errore download backup: ' + errorMessage);
+        }
+    }
+}
+
+// Carica file all'avvio quando il DOM è pronto
+(function() {
+    function initBackupPage() {
+        console.log('Initializing backup page...');
+        try {
+            loadFiles();
+            loadCustomers();
+        } catch (e) {
+            console.error('Error initializing backup page:', e);
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBackupPage);
+    } else {
+        // DOM già caricato
+        initBackupPage();
+    }
+})();
+</script>
+
+{% endblock %}
+

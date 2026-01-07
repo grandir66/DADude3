@@ -1,0 +1,28 @@
+[Unit]
+Description=DaDude Agent - WebSocket Client
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/dadude-agent/dadude-agent
+Environment="PYTHONPATH=/opt/dadude-agent/dadude-agent"
+Environment="PATH=/opt/dadude-agent/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/dadude-agent/venv/bin/python -m app.agent
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dadude-agent
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Capabilities for network scanning
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

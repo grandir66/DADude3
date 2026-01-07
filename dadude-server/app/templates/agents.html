@@ -1,0 +1,2041 @@
+{% extends "base.html" %}
+
+{% block title %}Gestione Agent - DaDude{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-robot"></i> Gestione Agent</h2>
+        <div class="btn-group">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newAgentModal">
+                <i class="bi bi-plus-lg"></i> Nuovo Agent
+            </button>
+            <button class="btn btn-outline-primary" onclick="loadAgents()">
+                <i class="bi bi-arrow-clockwise"></i> Aggiorna
+            </button>
+        </div>
+    </div>
+
+    <!-- Server Update Status -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-server"></i> Stato Server DaDude
+            </h5>
+            <div class="btn-group">
+                <button class="btn btn-sm btn-light" onclick="checkServerUpdate()">
+                    <i class="bi bi-cloud-arrow-down"></i> Verifica Aggiornamenti
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="server-status">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-box-seam fs-2 me-3 text-primary"></i>
+                            <div>
+                                <small class="text-muted">Versione Server</small>
+                                <h5 class="mb-0" id="server-version">Caricamento...</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-robot fs-2 me-3 text-info"></i>
+                            <div>
+                                <small class="text-muted">Versione Agent</small>
+                                <h5 class="mb-0" id="agent-version">Caricamento...</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center" id="update-status-container" style="display: none;">
+                            <i class="bi bi-arrow-up-circle-fill fs-2 me-3 text-success"></i>
+                            <div>
+                                <small class="text-muted">Aggiornamento Disponibile</small>
+                                <h5 class="mb-0" id="latest-version">-</h5>
+                                <button class="btn btn-sm btn-success mt-1" onclick="updateServer()">
+                                    <i class="bi bi-download"></i> Aggiorna Server
+                                </button>
+                            </div>
+                        </div>
+                        <div id="up-to-date-container" style="display: none;">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-check-circle-fill fs-2 me-3 text-success"></i>
+                                <div>
+                                    <small class="text-muted">Stato</small>
+                                    <h5 class="mb-0 text-success">Aggiornato</h5>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent in attesa di approvazione -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">
+                <i class="bi bi-hourglass-split"></i> Agent in Attesa di Approvazione
+                <span id="pending-count" class="badge bg-dark ms-2">0</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="pending-agents">
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-search fs-1"></i>
+                    <p class="mt-2">Caricamento...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Attivi -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-check-circle"></i> Agent Attivi
+                <span id="active-count" class="badge bg-light text-dark ms-2">0</span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="active-agents">
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-search fs-1"></i>
+                    <p class="mt-2">Caricamento...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Outdated -->
+    <div class="card">
+        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-arrow-up-circle"></i> Aggiornamenti Disponibili
+                <span id="outdated-count" class="badge bg-light text-dark ms-2">0</span>
+            </h5>
+            <button class="btn btn-sm btn-light" onclick="updateAllAgents()" id="update-all-btn" style="display: none;">
+                <i class="bi bi-download"></i> Aggiorna Tutti
+            </button>
+        </div>
+        <div class="card-body">
+            <div id="outdated-agents">
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-check-lg fs-1"></i>
+                    <p class="mt-2">Tutti gli agent sono aggiornati</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Approva Agent -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Approva Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Agent</label>
+                    <input type="text" class="form-control" id="approve-agent-name" readonly>
+                    <input type="hidden" id="approve-agent-id">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Indirizzo IP</label>
+                    <input type="text" class="form-control" id="approve-agent-ip" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Assegna a Cliente *</label>
+                    <select class="form-select" id="approve-customer-id" required>
+                        <option value="">-- Seleziona Cliente --</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-success" onclick="confirmApprove()">
+                    <i class="bi bi-check-lg"></i> Approva
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Riassegna Agent -->
+<div class="modal fade" id="reassignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-left-right"></i> Riassegna Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Agent</label>
+                    <input type="text" class="form-control" id="reassign-agent-name" readonly>
+                    <input type="hidden" id="reassign-agent-id">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Cliente Attuale</label>
+                    <input type="text" class="form-control" id="reassign-current-customer" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nuovo Cliente *</label>
+                    <select class="form-select" id="reassign-customer-id" required>
+                        <option value="">-- Seleziona Nuovo Cliente --</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Oppure</label>
+                    <button type="button" class="btn btn-outline-warning w-100" onclick="unassignAgent()">
+                        <i class="bi bi-x-circle"></i> Dissocia da Cliente (rende pending)
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-primary" onclick="confirmReassign()">
+                    <i class="bi bi-check-lg"></i> Riassegna
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Modifica Agent -->
+<div class="modal fade" id="editAgentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Modifica Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editAgentForm">
+                <input type="hidden" id="editAgentId" name="agent_id">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nome Agent</label>
+                            <input type="text" class="form-control" id="editAgentName" name="name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-select" id="editAgentType" name="agent_type" disabled>
+                                <option value="docker">Docker</option>
+                                <option value="mikrotik">MikroTik</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Indirizzo IP</label>
+                            <input type="text" class="form-control" id="editAgentAddress" name="address">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Porta</label>
+                            <input type="number" class="form-control" id="editAgentPort" name="port">
+                        </div>
+                    </div>
+                    <!-- Credenziali MikroTik (solo se tipo è mikrotik) -->
+                    <div id="editMikrotikCredentials" style="display: none;">
+                        <hr>
+                        <h6 class="text-muted mb-3">Credenziali MikroTik</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Username</label>
+                                <input type="text" class="form-control" id="editAgentUsername" name="username" placeholder="admin">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Password</label>
+                                <input type="password" class="form-control" id="editAgentPassword" name="password" placeholder="Lascia vuoto per mantenere password esistente">
+                                <small class="text-muted">⚠️ <strong>Importante:</strong> Lascia vuoto per mantenere la password esistente. Inserisci nuova password solo per cambiarla.</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Agent Docker Remoto (opzionale)</label>
+                                <select class="form-select" id="editDockerAgentId" name="docker_agent_id">
+                                    <option value="">-- Nessuno (comandi locali) --</option>
+                                </select>
+                                <small class="text-muted">Seleziona un agent Docker per eseguire comandi remoti su questo MikroTik</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Configurazione ARP Gateway per Docker Agent -->
+                    <div id="editDockerArpConfig" style="display: none;">
+                        <hr>
+                        <h6 class="text-muted mb-3">Configurazione ARP Gateway</h6>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            Configura un gateway MikroTik o SNMP per la risoluzione ARP durante le scansioni di rete.
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Gateway MikroTik per ARP</label>
+                                <select class="form-select" id="editArpGatewayAgentId" name="arp_gateway_agent_id">
+                                    <option value="">-- Nessuno --</option>
+                                </select>
+                                <small class="text-muted">Seleziona un agent MikroTik da usare per query ARP</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Oppure: Gateway SNMP per ARP</label>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Indirizzo IP</label>
+                                <input type="text" class="form-control" id="editArpGatewaySnmpAddress" name="arp_gateway_snmp_address" placeholder="192.168.1.1">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Community</label>
+                                <input type="text" class="form-control" id="editArpGatewaySnmpCommunity" name="arp_gateway_snmp_community" placeholder="public">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Versione SNMP</label>
+                                <select class="form-select" id="editArpGatewaySnmpVersion" name="arp_gateway_snmp_version">
+                                    <option value="2c">2c</option>
+                                    <option value="1">1</option>
+                                    <option value="3">3</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Sede/Ubicazione</label>
+                            <input type="text" class="form-control" id="editAgentLocation" name="location" placeholder="es: Ufficio Milano">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nome Sito</label>
+                            <input type="text" class="form-control" id="editAgentSiteName" name="site_name" placeholder="es: Datacenter 1">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">DNS Server (per reverse lookup)</label>
+                            <input type="text" class="form-control" id="editAgentDns" name="dns_server" placeholder="192.168.1.1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Stato</label>
+                            <select class="form-select" id="editAgentActive" name="active">
+                                <option value="true">Attivo</option>
+                                <option value="false">Disattivo</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Note</label>
+                        <textarea class="form-control" id="editAgentNotes" name="notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Salva Modifiche
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuovo Agent -->
+<div class="modal fade" id="newAgentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-broadcast"></i> Nuovo Agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newAgentForm">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 
+                        <strong>Agent MikroTik</strong> - Per cache ARP, Netwatch su reti remote e monitoraggio RouterOS.<br>
+                        <strong>Agent Docker</strong> - Per probing avanzato (WMI, SSH, SNMP, Port Scan) su reti remote.
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nome Agent *</label>
+                            <input type="text" class="form-control" name="name" required placeholder="Router Milano">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cliente *</label>
+                            <select class="form-select" name="customer_id" id="newAgentCustomerId" required>
+                                <option value="">-- Seleziona Cliente --</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Indirizzo IP/Hostname *</label>
+                            <input type="text" class="form-control" name="address" required placeholder="192.168.1.1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo Agent *</label>
+                            <select class="form-select" name="agent_type" id="newAgentType" onchange="toggleNewAgentTypeFields()">
+                                <option value="mikrotik">MikroTik (RouterOS nativo)</option>
+                                <option value="docker">Docker Agent (WMI/SSH/SNMP)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Campi MikroTik -->
+                    <div id="newMikrotikFields">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Tipo Connessione</label>
+                                <select class="form-select" name="connection_type" id="newAgentConnType" onchange="toggleNewConnectionFields()">
+                                    <option value="api">Solo API RouterOS</option>
+                                    <option value="ssh">Solo SSH</option>
+                                    <option value="both">API + SSH</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Porta API</label>
+                                <input type="number" class="form-control" name="port" value="8728">
+                            </div>
+                        </div>
+                        
+                        <!-- Campi API RouterOS -->
+                        <div id="newApiFields">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Opzioni API</label>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" name="use_ssl" id="newAgentUseSsl">
+                                        <label class="form-check-label" for="newAgentUseSsl">Usa SSL/TLS (8729)</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Campi SSH -->
+                        <div id="newSshFields" style="display:none;">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Porta SSH</label>
+                                    <input type="number" class="form-control" name="ssh_port" value="22">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Chiave Privata SSH (opzionale)</label>
+                                    <textarea class="form-control" name="ssh_key" rows="2" placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea>
+                                    <small class="text-muted">Lascia vuoto per usare password</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Username *</label>
+                                <input type="text" class="form-control" name="username" id="newAgentUsername" placeholder="admin" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Password *</label>
+                                <input type="password" class="form-control" name="password" id="newAgentPassword" placeholder="password" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Campi Docker Agent -->
+                    <div id="newDockerFields" style="display:none;">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>Docker Agent</strong> - Container con capacità avanzate di probing (WMI, SSH, SNMP, Port Scan).
+                            Può essere deployato su MikroTik RouterOS 7 con container o su qualsiasi host Docker.
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Porta API Agent</label>
+                                <input type="number" class="form-control" name="agent_api_port" value="8080">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Token Autenticazione *</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" name="agent_token" id="newAgentToken" placeholder="token-segreto" required>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="generateNewAgentToken()">
+                                        <i class="bi bi-shuffle"></i> Genera
+                                    </button>
+                                </div>
+                                <small class="text-muted">Deve corrispondere al token configurato nell'agent</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">URL Agent (opzionale)</label>
+                                <input type="text" class="form-control" name="agent_url" placeholder="http://192.168.1.1:8080">
+                                <small class="text-muted">Lascia vuoto per usare http://{indirizzo}:{porta}</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">DNS Server</label>
+                                <input type="text" class="form-control" name="dns_server" placeholder="192.168.1.1">
+                                <small class="text-muted">IP del DNS locale per reverse lookup</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Sede/Ubicazione</label>
+                            <input type="text" class="form-control" name="location" placeholder="es: Ufficio Milano">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nome Sito</label>
+                            <input type="text" class="form-control" name="site_name" placeholder="es: Datacenter 1">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Note</label>
+                        <textarea class="form-control" name="notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="resetNewAgentForm()">Annulla</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Crea Agent
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Console Remota -->
+<div class="modal fade" id="consoleModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="bi bi-terminal"></i> Console Remota - <span id="console-agent-name"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="console-agent-id">
+                
+                <!-- Opzioni target -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Esegui su</label>
+                        <select class="form-select form-select-sm" id="console-target-type" onchange="toggleSSHOptions()">
+                            <option value="agent">Agent locale</option>
+                            <option value="ssh">Host remoto (SSH)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3" id="ssh-host-group" style="display:none;">
+                        <label class="form-label">Host</label>
+                        <input type="text" class="form-control form-control-sm" id="console-ssh-host" placeholder="192.168.1.100">
+                    </div>
+                    <div class="col-md-2" id="ssh-user-group" style="display:none;">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control form-control-sm" id="console-ssh-user" value="root">
+                    </div>
+                    <div class="col-md-2" id="ssh-pass-group" style="display:none;">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control form-control-sm" id="console-ssh-pass" placeholder="(opzionale)">
+                    </div>
+                    <div class="col-md-2" id="ssh-port-group" style="display:none;">
+                        <label class="form-label">Porta</label>
+                        <input type="number" class="form-control form-control-sm" id="console-ssh-port" value="22">
+                    </div>
+                </div>
+                
+                <!-- Comando -->
+                <div class="mb-3">
+                    <label class="form-label">Comando</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark text-success">$</span>
+                        <input type="text" class="form-control font-monospace" id="console-command" 
+                               placeholder="es: uptime, df -h, ip addr, ping -c 3 8.8.8.8"
+                               onkeypress="if(event.key==='Enter')execConsoleCommand()">
+                        <button class="btn btn-success" onclick="execConsoleCommand()">
+                            <i class="bi bi-play-fill"></i> Esegui
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Comandi rapidi -->
+                <div class="mb-3">
+                    <label class="form-label">Comandi rapidi</label>
+                    <div class="btn-group btn-group-sm flex-wrap">
+                        <button class="btn btn-outline-secondary" onclick="setCommand('uptime')">uptime</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('df -h')">df -h</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('free -m')">free -m</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('ip addr')">ip addr</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('ps aux --sort=-%mem | head -20')">top mem</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('docker ps')">docker ps</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('systemctl status')">systemctl</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('cat /etc/os-release')">OS info</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('netstat -tlnp')">netstat</button>
+                        <button class="btn btn-outline-secondary" onclick="setCommand('ls -la')">ls -la</button>
+                    </div>
+                </div>
+                
+                <!-- Output -->
+                <div class="mb-3">
+                    <label class="form-label">Output</label>
+                    <pre id="console-output" class="bg-dark text-light p-3 rounded" 
+                         style="min-height: 300px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;">
+In attesa di comandi...
+                    </pre>
+                </div>
+                
+                <!-- Storico -->
+                <div class="mb-0">
+                    <label class="form-label">Storico comandi</label>
+                    <div id="console-history" class="d-flex flex-wrap gap-1">
+                        <span class="text-muted small">Nessun comando eseguito</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="clearConsole()">
+                    <i class="bi bi-trash"></i> Pulisci Output
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let customers = [];
+
+async function loadAgents() {
+    await Promise.all([
+        loadPendingAgents(),
+        loadActiveAgents(),
+        loadOutdatedAgents(),
+        loadCustomers()
+    ]);
+}
+
+async function loadCustomers() {
+    try {
+        const response = await fetch('/api/v1/customers');
+        if (response.ok) {
+            const data = await response.json();
+            customers = data.customers || data;
+            
+            // Popola dropdown
+            const select = document.getElementById('approve-customer-id');
+            select.innerHTML = '<option value="">-- Seleziona Cliente --</option>';
+            customers.forEach(c => {
+                select.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+            });
+        }
+    } catch (e) {
+        console.error('Error loading customers:', e);
+    }
+}
+
+async function loadPendingAgents() {
+    const container = document.getElementById('pending-agents');
+    
+    try {
+        const response = await fetch('/api/v1/agents/pending');
+        if (!response.ok) throw new Error('Failed to load pending agents');
+        
+        const data = await response.json();
+        document.getElementById('pending-count').textContent = data.total;
+        
+        if (data.total === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-check-circle fs-1"></i>
+                    <p class="mt-2">Nessun agent in attesa di approvazione</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Indirizzo</th>
+                        <th>Tipo</th>
+                        <th>Versione</th>
+                        <th>Registrato</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.agents.map(a => `
+                        <tr>
+                            <td><strong>${a.name}</strong></td>
+                            <td><code>${a.address}</code></td>
+                            <td><span class="badge bg-secondary">${a.agent_type || 'docker'}</span></td>
+                            <td>${a.version || 'N/A'}</td>
+                            <td>${a.created_at ? new Date(a.created_at).toLocaleString() : 'N/A'}</td>
+                            <td>
+                                <button class="btn btn-sm btn-success" onclick="showApproveModal('${a.id}', '${a.name}', '${a.address}')">
+                                    <i class="bi bi-check-lg"></i> Approva
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="rejectAgent('${a.id}')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+    } catch (e) {
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                Errore nel caricamento: ${e.message}
+            </div>
+        `;
+    }
+}
+
+async function loadActiveAgents() {
+    const container = document.getElementById('active-agents');
+
+    try {
+        // Carica tutti gli agent assegnati dai clienti
+        const response = await fetch('/api/v1/customers');
+        if (!response.ok) throw new Error('Failed to load customers');
+
+        const data = await response.json();
+        const customers = data.customers || data; // Supporta entrambi i formati
+        let allAgents = [];
+
+        for (const customer of customers) {
+            const agentsResp = await fetch(`/api/v1/customers/${customer.id}/agents`);
+            if (agentsResp.ok) {
+                const agents = await agentsResp.json();
+                agents.forEach(a => {
+                    allAgents.push({...a, customer_name: customer.name, customer_id: customer.id});
+                });
+            }
+        }
+
+        // Ottieni lista agent connessi via WebSocket (real-time)
+        let wsConnected = new Set();
+        let wsConnectedByName = new Set();
+        try {
+            const wsResp = await fetch('/api/v1/admin/agents/ws/connected');
+            if (wsResp.ok) {
+                const wsData = await wsResp.json();
+                wsData.agents.forEach(wsAgent => {
+                    wsConnected.add(wsAgent.agent_id);
+                    // Extract name from agent_id (format: "agent-{name}" or "agent-{name}-{number}")
+                    const match = wsAgent.agent_id.match(/^agent-(.+?)(?:-\d+)?$/);
+                    if (match) {
+                        wsConnectedByName.add(match[1]);
+                    }
+                });
+                console.log(`WebSocket connected agents: ${wsConnected.size}`, Array.from(wsConnected));
+                console.log(`WebSocket connected names: ${wsConnectedByName.size}`, Array.from(wsConnectedByName));
+            }
+        } catch (e) {
+            console.warn('Could not fetch WebSocket status:', e);
+        }
+
+        // Aggiorna stato connessione real-time per ogni agent
+        // Prima identifica i Docker agents connessi per ogni cliente
+        const connectedDockerByCustomer = {};
+        allAgents.forEach(a => {
+            if (a.agent_type === 'docker' && wsConnectedByName.has(a.name)) {
+                a.ws_connected = true;
+                if (!connectedDockerByCustomer[a.customer_id]) {
+                    connectedDockerByCustomer[a.customer_id] = a.name;
+                }
+            } else if (a.agent_type === 'docker') {
+                a.ws_connected = false;
+            }
+        });
+        
+        // Per MikroTik, verifica se raggiungibili via Docker agent dello stesso cliente
+        allAgents.forEach(a => {
+            if (a.agent_type === 'mikrotik' || !a.agent_type) {
+                const bridgeAgent = connectedDockerByCustomer[a.customer_id];
+                if (bridgeAgent) {
+                    a.reachable = true;
+                    a.reachable_via = bridgeAgent;
+                } else {
+                    a.reachable = false;
+                }
+            }
+        });
+
+        document.getElementById('active-count').textContent = allAgents.length;
+        
+        if (allAgents.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-robot fs-1"></i>
+                    <p class="mt-2">Nessun agent attivo</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Cliente</th>
+                        <th>Indirizzo</th>
+                        <th>Tipo</th>
+                        <th>Stato</th>
+                        <th>Versione</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${allAgents.map(a => `
+                        <tr>
+                            <td><strong>${a.name}</strong></td>
+                            <td><a href="/customers/${a.customer_id}">${a.customer_name}</a></td>
+                            <td><code>${a.address}</code></td>
+                            <td><span class="badge ${a.agent_type === 'docker' ? 'bg-info' : 'bg-primary'}">${a.agent_type || 'mikrotik'}</span></td>
+                            <td>
+                                ${a.agent_type === 'docker' 
+                                    ? `<span class="badge ${a.ws_connected ? 'bg-success' : 'bg-danger'}">
+                                        ${a.ws_connected ? '<i class="bi bi-wifi"></i> Online' : '<i class="bi bi-x-circle"></i> Offline'}
+                                       </span>`
+                                    : (a.reachable 
+                                        ? `<span class="badge bg-info"><i class="bi bi-arrow-right-circle"></i> Raggiungibile</span>
+                                           <small class="text-muted d-block">via ${a.reachable_via}</small>`
+                                        : `<span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Non raggiungibile</span>`)
+                                }
+                            </td>
+                            <td>${a.version || 'N/A'}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    ${a.agent_type === 'mikrotik' || !a.agent_type
+                                        ? `<a href="/customers/${a.customer_id}/agents/${a.id}/mikrotik" class="btn btn-outline-info" title="Gestione MikroTik">
+                                            <i class="bi bi-router"></i>
+                                           </a>`
+                                        : `<button class="btn btn-outline-info" onclick="showAgentCapabilities('${a.id}')" title="Capacità Agent">
+                                            <i class="bi bi-cpu"></i>
+                                           </button>`
+                                    }
+                                    <button class="btn btn-outline-dark" onclick="showConsoleModal('${a.id}', '${a.name}')" title="Console remota">
+                                        <i class="bi bi-terminal"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="showReassignModal('${a.id}', '${a.name}', '${a.customer_id}')" title="Riassegna a cliente">
+                                        <i class="bi bi-arrow-left-right"></i>
+                                    </button>
+                                    <button class="btn btn-outline-primary" onclick="testAgent('${a.id}', '${a.address}', ${a.agent_api_port || 8080})" title="Test connessione">
+                                        <i class="bi bi-broadcast"></i>
+                                    </button>
+                                    <button class="btn btn-outline-info" onclick="verifyAgentVersion('${a.id}', '${a.name}')" title="Verifica versione">
+                                        <i class="bi bi-search"></i>
+                                    </button>
+                                    <button class="btn btn-outline-warning" onclick="restartAgent('${a.id}')" title="Riavvia">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="showEditAgentModal('${a.id}')" title="Modifica">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="deleteAgent('${a.id}', '${a.name}')" title="Elimina">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+    } catch (e) {
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                Errore nel caricamento: ${e.message}
+            </div>
+        `;
+    }
+}
+
+async function loadOutdatedAgents() {
+    const container = document.getElementById('outdated-agents');
+    
+    try {
+        const response = await fetch('/api/v1/agents/outdated');
+        if (!response.ok) throw new Error('Failed to load outdated agents');
+        
+        const data = await response.json();
+        document.getElementById('outdated-count').textContent = data.outdated_count;
+        
+        if (data.outdated_count === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-check-lg fs-1"></i>
+                    <p class="mt-2">Tutti gli agent sono aggiornati (v${data.latest_version})</p>
+                </div>
+            `;
+            document.getElementById('update-all-btn').style.display = 'none';
+            return;
+        }
+        
+        document.getElementById('update-all-btn').style.display = 'block';
+        
+        container.innerHTML = `
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Indirizzo</th>
+                        <th>Versione Attuale</th>
+                        <th>Versione Disponibile</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.outdated_agents.map(a => `
+                        <tr>
+                            <td><strong>${a.name}</strong></td>
+                            <td><code>${a.address}</code></td>
+                            <td><span class="badge bg-warning text-dark">${a.current_version}</span></td>
+                            <td><span class="badge bg-success">${a.latest_version}</span></td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-primary" onclick="updateAgent('${a.id}')">
+                                        <i class="bi bi-download"></i> Aggiorna
+                                    </button>
+                                    <button class="btn btn-info" onclick="verifyAgentVersion('${a.id}', '${a.name}')" title="Verifica versione dopo update">
+                                        <i class="bi bi-search"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+    } catch (e) {
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                Errore nel caricamento: ${e.message}
+            </div>
+        `;
+    }
+}
+
+function showApproveModal(agentId, agentName, agentIp) {
+    document.getElementById('approve-agent-id').value = agentId;
+    document.getElementById('approve-agent-name').value = agentName;
+    document.getElementById('approve-agent-ip').value = agentIp;
+    
+    new bootstrap.Modal(document.getElementById('approveModal')).show();
+}
+
+async function confirmApprove() {
+    const agentId = document.getElementById('approve-agent-id').value;
+    const customerId = document.getElementById('approve-customer-id').value;
+    
+    if (!customerId) {
+        alert('Seleziona un cliente');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/agents/${agentId}/approve?customer_id=${customerId}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('approveModal')).hide();
+            alert('Agent approvato con successo!');
+            loadAgents();
+        } else {
+            const data = await response.json();
+            alert('Errore: ' + (data.detail || 'Approvazione fallita'));
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+async function rejectAgent(agentId) {
+    if (!confirm('Eliminare questo agent in attesa?')) return;
+    
+    try {
+        const response = await fetch(`/api/v1/customers/agents/${agentId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            loadAgents();
+        } else {
+            alert('Errore nella cancellazione');
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+// Mostra modal modifica agent
+async function showEditAgentModal(agentId) {
+    try {
+        // Carica i dati dell'agent CON password per permettere modifica
+        const response = await fetch(`/api/v1/customers/agents/${agentId}?include_password=true`);
+        if (!response.ok) throw new Error('Agent non trovato');
+        const agent = await response.json();
+        
+        // Popola il form
+        document.getElementById('editAgentId').value = agent.id;
+        document.getElementById('editAgentName').value = agent.name || '';
+        document.getElementById('editAgentType').value = agent.agent_type || 'mikrotik';
+        document.getElementById('editAgentAddress').value = agent.address || '';
+        document.getElementById('editAgentPort').value = agent.port || (agent.agent_type === 'docker' ? 8080 : 8728);
+        document.getElementById('editAgentLocation').value = agent.location || '';
+        document.getElementById('editAgentSiteName').value = agent.site_name || '';
+        document.getElementById('editAgentDns').value = agent.dns_server || '';
+        document.getElementById('editAgentActive').value = agent.active ? 'true' : 'false';
+        document.getElementById('editAgentNotes').value = agent.notes || '';
+        
+        // Popola credenziali MikroTik se presente
+        const credentialsDiv = document.getElementById('editMikrotikCredentials');
+        const arpConfigDiv = document.getElementById('editDockerArpConfig');
+        if (agent.agent_type === 'mikrotik' || !agent.agent_type) {
+            credentialsDiv.style.display = 'block';
+            if (arpConfigDiv) arpConfigDiv.style.display = 'none';
+            document.getElementById('editAgentUsername').value = agent.username || '';
+            // Mostra password esistente (già decriptata dal backend) per permettere modifica
+            if (agent.password && agent.password.trim()) {
+                document.getElementById('editAgentPassword').value = agent.password;
+                document.getElementById('editAgentPassword').placeholder = 'Password attuale (modifica per cambiarla)';
+            } else {
+                document.getElementById('editAgentPassword').value = '';
+                document.getElementById('editAgentPassword').placeholder = 'Inserisci password (obbligatoria per MikroTik)';
+            }
+            // Carica agent Docker disponibili per questo MikroTik
+            loadDockerAgentsForMikrotik(agent.customer_id, agent.docker_agent_id);
+        } else {
+            credentialsDiv.style.display = 'none';
+            if (arpConfigDiv) arpConfigDiv.style.display = 'block';
+            // Carica agent MikroTik e configurazione ARP per Docker agent
+            loadArpGatewayOptions(agent.customer_id, agent.arp_gateway_agent_id);
+            if (document.getElementById('editArpGatewaySnmpAddress')) {
+                document.getElementById('editArpGatewaySnmpAddress').value = agent.arp_gateway_snmp_address || '';
+                document.getElementById('editArpGatewaySnmpCommunity').value = agent.arp_gateway_snmp_community || '';
+                document.getElementById('editArpGatewaySnmpVersion').value = agent.arp_gateway_snmp_version || '2c';
+            }
+        }
+        
+        // Mostra il modal
+        new bootstrap.Modal(document.getElementById('editAgentModal')).show();
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+// Submit form modifica agent
+document.getElementById('editAgentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const agentId = document.getElementById('editAgentId').value;
+    const agentType = document.getElementById('editAgentType').value;
+    
+    const data = {
+        name: document.getElementById('editAgentName').value,
+        address: document.getElementById('editAgentAddress').value,
+        port: parseInt(document.getElementById('editAgentPort').value),
+        location: document.getElementById('editAgentLocation').value || null,
+        site_name: document.getElementById('editAgentSiteName').value || null,
+        dns_server: document.getElementById('editAgentDns').value || null,
+        active: document.getElementById('editAgentActive').value === 'true',
+        notes: document.getElementById('editAgentNotes').value || null,
+    };
+    
+    // Aggiungi credenziali MikroTik se presente
+    if (agentType === 'mikrotik' || !agentType) {
+        const username = document.getElementById('editAgentUsername').value;
+        const password = document.getElementById('editAgentPassword').value;
+        
+        // Docker agent ID per MikroTik (opzionale)
+        const dockerAgentIdEl = document.getElementById('editDockerAgentId');
+        if (dockerAgentIdEl && dockerAgentIdEl.value) {
+            data.docker_agent_id = dockerAgentIdEl.value;
+        } else {
+            data.docker_agent_id = null;
+        }
+        
+        // Validazione: username e password obbligatori per MikroTik
+        if (!username || !username.trim()) {
+            alert('⚠️ Username è obbligatorio per agent MikroTik');
+            return;
+        }
+        if (!password || !password.trim()) {
+            alert('⚠️ Password è obbligatoria per agent MikroTik');
+            return;
+        }
+        
+        data.username = username.trim();
+        // Se password è vuota, non includerla (verrà preservata quella esistente)
+        if (password && password.trim()) {
+            data.password = password.trim();
+        }
+    } else if (agentType === 'docker') {
+        // Configurazione ARP gateway per Docker agent
+        const arpGatewayAgentIdEl = document.getElementById('editArpGatewayAgentId');
+        if (arpGatewayAgentIdEl && arpGatewayAgentIdEl.value) {
+            data.arp_gateway_agent_id = arpGatewayAgentIdEl.value;
+            // Se MikroTik è selezionato, cancella SNMP
+            data.arp_gateway_snmp_address = null;
+            data.arp_gateway_snmp_community = null;
+            data.arp_gateway_snmp_version = null;
+        } else {
+            data.arp_gateway_agent_id = null;
+            // Usa SNMP se configurato
+            const snmpAddressEl = document.getElementById('editArpGatewaySnmpAddress');
+            if (snmpAddressEl && snmpAddressEl.value) {
+                data.arp_gateway_snmp_address = snmpAddressEl.value;
+                const snmpCommunityEl = document.getElementById('editArpGatewaySnmpCommunity');
+                const snmpVersionEl = document.getElementById('editArpGatewaySnmpVersion');
+                data.arp_gateway_snmp_community = snmpCommunityEl ? snmpCommunityEl.value || 'public' : 'public';
+                data.arp_gateway_snmp_version = snmpVersionEl ? snmpVersionEl.value || '2c' : '2c';
+            } else {
+                data.arp_gateway_snmp_address = null;
+                data.arp_gateway_snmp_community = null;
+                data.arp_gateway_snmp_version = null;
+            }
+        }
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/customers/agents/${agentId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editAgentModal')).hide();
+            alert('✅ Agent aggiornato con successo');
+            loadAgents();
+        } else {
+            const error = await response.json();
+            alert('❌ Errore: ' + (error.detail || 'Aggiornamento fallito'));
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+});
+
+async function deleteAgent(agentId, agentName) {
+    if (!confirm(`⚠️ Eliminare l'agent "${agentName}"?\n\nL'agent verrà rimosso dal sistema.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/customers/agents/${agentId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (window.toastSuccess) {
+                window.toastSuccess(result.message || 'Agent eliminato con successo');
+            } else {
+                alert(result.message || 'Agent eliminato con successo');
+            }
+            loadAgents();
+        } else {
+            let errorMsg = 'Errore eliminazione';
+            try {
+                const error = await response.json();
+                errorMsg = error.detail || error.error || errorMsg;
+            } catch (e) {
+                errorMsg = `Errore ${response.status}: ${response.statusText}`;
+            }
+            if (window.toastError) {
+                window.toastError(errorMsg);
+            } else {
+                alert('Errore: ' + errorMsg);
+            }
+        }
+    } catch (e) {
+        const errorMsg = 'Errore: ' + e.message;
+        if (window.toastError) {
+            window.toastError(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
+    }
+}
+
+function showReassignModal(agentId, agentName, currentCustomerId) {
+    document.getElementById('reassign-agent-id').value = agentId;
+    document.getElementById('reassign-agent-name').value = agentName;
+    
+    // Trova nome cliente attuale
+    const currentCustomer = customers.find(c => c.id === currentCustomerId);
+    document.getElementById('reassign-current-customer').value = currentCustomer ? currentCustomer.name : 'N/A';
+    
+    // Popola dropdown clienti (escludi cliente attuale)
+    const select = document.getElementById('reassign-customer-id');
+    select.innerHTML = '<option value="">-- Seleziona Nuovo Cliente --</option>';
+    customers.forEach(c => {
+        if (c.id !== currentCustomerId) {
+            select.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+        }
+    });
+    
+    new bootstrap.Modal(document.getElementById('reassignModal')).show();
+}
+
+async function confirmReassign() {
+    const agentId = document.getElementById('reassign-agent-id').value;
+    const newCustomerId = document.getElementById('reassign-customer-id').value;
+    
+    if (!newCustomerId) {
+        alert('Seleziona un cliente');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/customers/agents/${agentId}/reassign?new_customer_id=${newCustomerId}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('reassignModal')).hide();
+            alert('Agent riassegnato con successo!');
+            loadAgents();
+        } else {
+            const data = await response.json();
+            alert('Errore: ' + (data.detail || 'Riassegnazione fallita'));
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+async function unassignAgent() {
+    const agentId = document.getElementById('reassign-agent-id').value;
+    const agentName = document.getElementById('reassign-agent-name').value;
+    
+    if (!confirm(`Dissociare l'agent "${agentName}" dal cliente?\n\nL'agent tornerà in stato "pending" e dovrà essere riassegnato.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/customers/agents/${agentId}/unassign`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('reassignModal')).hide();
+            alert('Agent dissociato. Ora appare nella lista "In Attesa di Approvazione".');
+            loadAgents();
+        } else {
+            const data = await response.json();
+            alert('Errore: ' + (data.detail || 'Dissociazione fallita'));
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+// ==========================================
+// CONSOLE REMOTA
+// ==========================================
+
+let commandHistory = [];
+
+function showConsoleModal(agentId, agentName) {
+    document.getElementById('console-agent-id').value = agentId;
+    document.getElementById('console-agent-name').textContent = agentName;
+    document.getElementById('console-command').value = '';
+    document.getElementById('console-output').textContent = `Console remota per agent: ${agentName}\nIn attesa di comandi...\n`;
+    
+    new bootstrap.Modal(document.getElementById('consoleModal')).show();
+    
+    // Focus sul campo comando
+    setTimeout(() => document.getElementById('console-command').focus(), 500);
+}
+
+function toggleSSHOptions() {
+    const targetType = document.getElementById('console-target-type').value;
+    const show = targetType === 'ssh';
+    
+    document.getElementById('ssh-host-group').style.display = show ? 'block' : 'none';
+    document.getElementById('ssh-user-group').style.display = show ? 'block' : 'none';
+    document.getElementById('ssh-pass-group').style.display = show ? 'block' : 'none';
+    document.getElementById('ssh-port-group').style.display = show ? 'block' : 'none';
+}
+
+function setCommand(cmd) {
+    document.getElementById('console-command').value = cmd;
+    document.getElementById('console-command').focus();
+}
+
+function clearConsole() {
+    document.getElementById('console-output').textContent = 'Console pulita.\n';
+}
+
+async function execConsoleCommand() {
+    const agentId = document.getElementById('console-agent-id').value;
+    const command = document.getElementById('console-command').value.trim();
+    const targetType = document.getElementById('console-target-type').value;
+    
+    if (!command) {
+        alert('Inserisci un comando');
+        return;
+    }
+    
+    const output = document.getElementById('console-output');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    // Aggiungi prompt
+    if (targetType === 'ssh') {
+        const host = document.getElementById('console-ssh-host').value;
+        output.textContent += `\n[${timestamp}] ${host}$ ${command}\n`;
+    } else {
+        output.textContent += `\n[${timestamp}] agent$ ${command}\n`;
+    }
+    output.textContent += '⏳ Esecuzione in corso...\n';
+    output.scrollTop = output.scrollHeight;
+    
+    try {
+        // Costruisci URL usando endpoint proxy per Admin UI
+        let url = `/api/v1/admin/agents/${agentId}/exec?command=${encodeURIComponent(command)}`;
+
+        if (targetType === 'ssh') {
+            const host = document.getElementById('console-ssh-host').value;
+            const user = document.getElementById('console-ssh-user').value || 'root';
+            const pass = document.getElementById('console-ssh-pass').value;
+            const port = document.getElementById('console-ssh-port').value || 22;
+
+            if (!host) {
+                output.textContent += '❌ Errore: Specificare host remoto\n';
+                return;
+            }
+
+            url += `&target_host=${encodeURIComponent(host)}`;
+            url += `&username=${encodeURIComponent(user)}`;
+            url += `&port=${port}`;
+            if (pass) url += `&password=${encodeURIComponent(pass)}`;
+        }
+
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+        
+        // Rimuovi "Esecuzione in corso..."
+        output.textContent = output.textContent.replace('⏳ Esecuzione in corso...\n', '');
+        
+        if (data.success) {
+            if (data.stdout) {
+                output.textContent += data.stdout;
+                if (!data.stdout.endsWith('\n')) output.textContent += '\n';
+            }
+            if (data.stderr) {
+                output.textContent += `⚠️ STDERR:\n${data.stderr}\n`;
+            }
+            output.textContent += `✅ Exit code: ${data.exit_code}\n`;
+        } else {
+            output.textContent += `❌ Errore: ${data.error || 'Comando fallito'}\n`;
+        }
+        
+        // Aggiungi a storico
+        addToHistory(command);
+        
+        // Pulisci campo comando
+        document.getElementById('console-command').value = '';
+        
+    } catch (e) {
+        output.textContent = output.textContent.replace('⏳ Esecuzione in corso...\n', '');
+        output.textContent += `❌ Errore: ${e.message}\n`;
+    }
+    
+    output.scrollTop = output.scrollHeight;
+}
+
+function addToHistory(cmd) {
+    if (!commandHistory.includes(cmd)) {
+        commandHistory.unshift(cmd);
+        if (commandHistory.length > 10) commandHistory.pop();
+    }
+    
+    const historyDiv = document.getElementById('console-history');
+    historyDiv.innerHTML = commandHistory.map(c => 
+        `<button class="btn btn-sm btn-outline-dark" onclick="setCommand('${c.replace(/'/g, "\\'")}')">${c.length > 30 ? c.substring(0,30)+'...' : c}</button>`
+    ).join('');
+}
+
+async function testAgent(agentId, address, port) {
+    try {
+        // Usa l'API del server per verificare (supporta WebSocket e HTTP)
+        // Use admin proxy endpoint for cross-process WebSocket Hub access
+        const response = await fetch(`/api/v1/admin/agents/${agentId}/verify-version`);
+        const data = await response.json();
+        
+        if (data.success && data.agent_online) {
+            let connType = data.connection_type === 'websocket' ? '🔌 WebSocket' : '🌐 HTTP';
+            alert(`✅ Agent Online!\n\n` +
+                  `Nome: ${data.agent_name}\n` +
+                  `Versione: ${data.real_version}\n` +
+                  `Connessione: ${connType}\n` +
+                  (data.ws_agent_id ? `WS ID: ${data.ws_agent_id}` : `URL: http://${address}:${port}`));
+        } else {
+            alert(`❌ Agent Offline\n\n${data.error || 'Non raggiungibile'}`);
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+async function showAgentCapabilities(agentId) {
+    try {
+        const response = await fetch(`/api/v1/admin/customers/agents/${agentId}/test`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success && result.results) {
+            const info = result.results.websocket || result.results.docker || {};
+            let msg = `🔌 Docker Agent: ${result.status}\n\n`;
+            msg += `Agent ID: ${info.agent_id || 'N/A'}\n`;
+            msg += `Nome: ${info.agent_name || 'N/A'}\n`;
+            msg += `Versione: ${info.version || 'N/A'}\n`;
+            if (info.capabilities && info.capabilities.length > 0) {
+                msg += `\n📋 Capacità:\n`;
+                info.capabilities.forEach(cap => {
+                    msg += `  ✓ ${cap.toUpperCase()}\n`;
+                });
+            }
+            if (info.probes && info.probes.length > 0) {
+                msg += `\n🔍 Probe disponibili:\n`;
+                info.probes.forEach(p => {
+                    msg += `  • ${p}\n`;
+                });
+            }
+            alert(msg);
+        } else {
+            alert('❌ Agent non raggiungibile o non disponibile\n\n' + (result.message || result.error || ''));
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+}
+
+async function restartAgent(agentId) {
+    if (!confirm('Riavviare questo agent?')) return;
+    
+    try {
+        const response = await fetch(`/api/v1/agents/${agentId}/restart`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            alert('Comando di riavvio inviato');
+        } else {
+            alert('Errore nell\'invio del comando');
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+async function updateAgent(agentId) {
+    try {
+        const response = await fetch(`/api/v1/agents/${agentId}/trigger-update`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert('Aggiornamento avviato');
+            setTimeout(loadAgents, 5000);
+        } else {
+            alert('Errore: ' + (data.error || data.message));
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+async function updateAllAgents() {
+    if (!confirm('Aggiornare tutti gli agent?')) return;
+    
+    try {
+        const response = await fetch('/api/v1/agents/update-all', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        alert(`Aggiornati: ${data.total_updated}\nFalliti: ${data.total_failed}`);
+        setTimeout(loadAgents, 5000);
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+// ==========================================
+// VERIFICA VERSIONE AGENT
+// ==========================================
+
+async function verifyAgentVersion(agentId, agentName) {
+    try {
+        // Use admin proxy endpoint for cross-process WebSocket Hub access
+        const response = await fetch(`/api/v1/admin/agents/${agentId}/verify-version`);
+        const data = await response.json();
+        
+        if (data.success) {
+            let message = `📋 Verifica Agent: ${agentName}\n\n`;
+            message += `🔌 Online: ${data.agent_online ? '✅ Sì' : '❌ No'}\n`;
+            message += `📦 Versione DB: ${data.db_version}\n`;
+            message += `🔄 Versione Reale: ${data.real_version}\n`;
+            message += `🆕 Ultima Disponibile: ${data.latest_version}\n\n`;
+            
+            if (data.needs_update) {
+                message += `⚠️ AGGIORNAMENTO DISPONIBILE`;
+            } else if (data.version_match) {
+                message += `✅ Versione aggiornata e confermata`;
+            } else {
+                message += `⚠️ Versione DB non corrispondente (aggiornato a ${data.real_version})`;
+            }
+            
+            alert(message);
+            loadAgents(); // Ricarica per aggiornare versioni
+        } else {
+            alert(`❌ Verifica fallita per ${agentName}\n\n${data.error}`);
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+// ==========================================
+// SERVER UPDATE SYSTEM
+// ==========================================
+
+async function loadServerVersion() {
+    try {
+        // Carica versione corrente
+        const versionResponse = await fetch('/api/v1/agents/server/version');
+        if (!versionResponse.ok) {
+            throw new Error(`HTTP ${versionResponse.status}`);
+        }
+        const versionData = await versionResponse.json();
+        
+        // Aggiorna versione server
+        const serverVersionEl = document.getElementById('server-version');
+        if (serverVersionEl) {
+            serverVersionEl.textContent = `v${versionData.version || 'N/A'}`;
+        }
+        
+        // Aggiorna versione agent (se disponibile)
+        const agentVersionEl = document.getElementById('agent-version');
+        if (agentVersionEl) {
+            if (versionData.agent_version) {
+                agentVersionEl.textContent = `v${versionData.agent_version}`;
+            } else {
+                agentVersionEl.textContent = 'N/A';
+            }
+        }
+        
+        // Controlla aggiornamenti
+        const updateResponse = await fetch('/api/v1/agents/server/check-update');
+        if (!updateResponse.ok) {
+            throw new Error(`HTTP ${updateResponse.status}`);
+        }
+        const updateData = await updateResponse.json();
+        
+        if (updateData.success) {
+            // Mostra versione corrente (da disco se disponibile, altrimenti da memoria)
+            const currentVersion = updateData.current_version_disk || updateData.current_version;
+            document.getElementById('server-version').textContent = `v${currentVersion}`;
+            
+            // Se la versione su disco è diversa da quella in memoria, indica che serve riavvio
+            if (updateData.needs_restart) {
+                document.getElementById('server-version').innerHTML = `v${currentVersion} <span class="badge bg-warning">Riavvio necessario</span>`;
+            }
+            
+            if (updateData.needs_update) {
+                document.getElementById('update-status-container').style.display = 'flex';
+                document.getElementById('up-to-date-container').style.display = 'none';
+                document.getElementById('latest-version').textContent = `v${updateData.latest_version}`;
+            } else {
+                document.getElementById('update-status-container').style.display = 'none';
+                document.getElementById('up-to-date-container').style.display = 'flex';
+                
+                // Se serve riavvio, mostra avviso
+                if (updateData.needs_restart) {
+                    document.getElementById('up-to-date-container').innerHTML = `
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-exclamation-triangle-fill fs-2 me-3 text-warning"></i>
+                            <div>
+                                <small class="text-muted">Stato</small>
+                                <h5 class="mb-0 text-warning">Riavvio necessario</h5>
+                                <small class="text-muted">Versione su disco: v${updateData.current_version_disk}</small>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading server version:', e);
+        document.getElementById('server-version').textContent = 'Errore';
+        document.getElementById('agent-version').textContent = 'Errore';
+    }
+}
+
+async function checkServerUpdate() {
+    const container = document.getElementById('update-status-container');
+    const upToDateContainer = document.getElementById('up-to-date-container');
+    
+    try {
+        container.style.display = 'none';
+        upToDateContainer.style.display = 'none';
+        
+        const response = await fetch('/api/v1/agents/server/check-update');
+        const data = await response.json();
+        
+        if (data.success) {
+            const currentVersion = data.current_version_disk || data.current_version;
+            
+            if (data.needs_update) {
+                container.style.display = 'flex';
+                document.getElementById('latest-version').textContent = `v${data.latest_version}`;
+                
+                let message = `🆕 Aggiornamento disponibile!\n\n`;
+                message += `Versione attuale: v${currentVersion}\n`;
+                if (data.needs_restart) {
+                    message += `⚠️ Versione su disco: v${data.current_version_disk} (serve riavvio)\n`;
+                }
+                message += `Nuova versione: v${data.latest_version}\n`;
+                if (data.release_name) {
+                    message += `Nome: ${data.release_name}\n`;
+                }
+                if (data.release_date) {
+                    message += `Data: ${new Date(data.release_date).toLocaleDateString('it-IT')}\n`;
+                }
+                if (data.changelog) {
+                    message += `\nNote:\n${data.changelog}`;
+                }
+                alert(message);
+            } else {
+                upToDateContainer.style.display = 'flex';
+                
+                if (data.needs_restart) {
+                    alert(`⚠️ Riavvio necessario!\n\n` +
+                          `Versione in memoria: v${data.current_version}\n` +
+                          `Versione su disco: v${data.current_version_disk}\n\n` +
+                          `Esegui git pull e riavvia il server per applicare le modifiche.`);
+                } else {
+                    alert(`✅ Server aggiornato\n\nVersione: v${currentVersion}`);
+                }
+            }
+            
+            // Ricarica la versione per aggiornare l'interfaccia
+            loadServerVersion();
+        } else {
+            alert('⚠️ Impossibile verificare aggiornamenti: ' + data.error);
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+async function updateServer() {
+    if (!confirm('Aggiornare il server DaDude?\n\nQuesto eseguirà git pull e potrebbe richiedere un riavvio.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/v1/agents/server/update', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            let message = '';
+            
+            if (data.already_up_to_date) {
+                if (data.version_disk_different) {
+                    // Repository aggiornato ma serve riavvio
+                    if (data.restart_success) {
+                        message = `✅ Aggiornamento completato!\n\n`;
+                        message += `Versione: v${data.current_version_disk}\n`;
+                        message += `Container riavviato automaticamente.`;
+                        alert(message);
+                    } else {
+                        message = `⚠️ Riavvio necessario!\n\n`;
+                        message += `Versione in memoria: v${data.current_version_memory}\n`;
+                        message += `Versione su disco: v${data.current_version_disk}\n\n`;
+                        message += `Il repository è aggiornato ma il server deve essere riavviato per applicare le modifiche.`;
+                        
+                        if (confirm(message + '\n\nVuoi riavviare il server ora?')) {
+                            await restartServer();
+                        }
+                    }
+                } else {
+                    alert('✅ Server già aggiornato');
+                }
+            } else {
+                message = `✅ Server aggiornato!\n\n${data.output}\n\n`;
+                if (data.version_changed && data.new_version) {
+                    message += `Nuova versione: v${data.new_version}\n`;
+                }
+                if (data.tag_created) {
+                    message += `✅ Tag v${data.new_version} creato\n`;
+                }
+                if (data.release_created) {
+                    message += `✅ Release v${data.new_version} creata su GitHub\n`;
+                }
+                
+                if (data.restart_success) {
+                    message += `\n✅ Container riavviato automaticamente.`;
+                    alert(message);
+                } else if (data.needs_restart) {
+                    message += '\n⚠️ Riavvio necessario per applicare le modifiche.';
+                    alert(message);
+                    
+                    if (confirm('Vuoi riavviare il server ora?')) {
+                        await restartServer();
+                    }
+                } else {
+                    alert(message);
+                }
+            }
+        } else {
+            alert('❌ Aggiornamento fallito:\n\n' + data.error + (data.suggestion ? '\n\nSuggerimento: ' + data.suggestion : ''));
+        }
+        
+        loadServerVersion();
+        
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+async function restartServer() {
+    if (!confirm('Riavviare il server DaDude?\n\nIl server sarà temporaneamente non disponibile durante il riavvio.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/v1/agents/server/restart', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success && data.restarted) {
+            // Riavvio automatico completato, ricarica la pagina
+            alert(data.message);
+            setTimeout(() => window.location.reload(), 5000);
+        } else if (data.success) {
+            alert(data.message);
+        } else {
+            // Riavvio automatico fallito, mostra comando manuale
+            let message = data.message || 'Riavvio fallito';
+            if (data.command) {
+                message += `\n\nEsegui manualmente:\n${data.command}`;
+            }
+            if (data.error) {
+                message += `\n\nErrore: ${data.error}`;
+            }
+            alert(message);
+        }
+    } catch (e) {
+        // Il server potrebbe non rispondere durante il riavvio
+        alert('Comando di riavvio inviato. La pagina si ricaricherà tra 5 secondi...');
+        setTimeout(() => window.location.reload(), 5000);
+    }
+}
+
+async function viewRecentCommits() {
+    try {
+        const response = await fetch('/api/v1/agents/server/commits');
+        const data = await response.json();
+        
+        if (data.success) {
+            let message = '📜 Ultimi Commit su GitHub\n\n';
+            data.commits.forEach((c, i) => {
+                message += `${i+1}. [${c.sha}] ${c.message}\n   ${c.author} - ${new Date(c.date).toLocaleDateString('it-IT')}\n\n`;
+            });
+            alert(message);
+        } else {
+            alert('Errore: ' + data.error);
+        }
+    } catch (e) {
+        alert('Errore: ' + e.message);
+    }
+}
+
+// Funzioni per nuovo agent
+function toggleNewAgentTypeFields() {
+    const agentType = document.getElementById('newAgentType').value;
+    const mikrotikFields = document.getElementById('newMikrotikFields');
+    const dockerFields = document.getElementById('newDockerFields');
+    
+    if (agentType === 'mikrotik') {
+        mikrotikFields.style.display = 'block';
+        dockerFields.style.display = 'none';
+        const usernameField = document.getElementById('newAgentUsername');
+        const passwordField = document.getElementById('newAgentPassword');
+        const tokenField = document.getElementById('newAgentToken');
+        if (usernameField) usernameField.required = true;
+        if (passwordField) passwordField.required = true;
+        if (tokenField) tokenField.required = false;
+    } else {
+        mikrotikFields.style.display = 'none';
+        dockerFields.style.display = 'block';
+        const usernameField = document.getElementById('newAgentUsername');
+        const passwordField = document.getElementById('newAgentPassword');
+        const tokenField = document.getElementById('newAgentToken');
+        if (usernameField) usernameField.required = false;
+        if (passwordField) passwordField.required = false;
+        if (tokenField) tokenField.required = true;
+    }
+    toggleNewConnectionFields();
+}
+
+function toggleNewConnectionFields() {
+    const connTypeEl = document.getElementById('newAgentConnType');
+    if (!connTypeEl) return;
+    const connType = connTypeEl.value;
+    const apiFields = document.getElementById('newApiFields');
+    const sshFields = document.getElementById('newSshFields');
+    
+    if (connType === 'api') {
+        if (apiFields) apiFields.style.display = 'block';
+        if (sshFields) sshFields.style.display = 'none';
+    } else if (connType === 'ssh') {
+        if (apiFields) apiFields.style.display = 'none';
+        if (sshFields) sshFields.style.display = 'block';
+    } else {
+        if (apiFields) apiFields.style.display = 'block';
+        if (sshFields) sshFields.style.display = 'block';
+    }
+}
+
+function generateNewAgentToken() {
+    const tokenField = document.getElementById('newAgentToken');
+    if (!tokenField) return;
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    tokenField.value = token;
+}
+
+function resetNewAgentForm() {
+    const form = document.getElementById('newAgentForm');
+    if (form) form.reset();
+    toggleNewAgentTypeFields();
+}
+
+// Carica clienti nel dropdown
+async function loadCustomersForNewAgent() {
+    try {
+        const response = await fetch('/api/v1/customers?active_only=true&limit=500');
+        const data = await response.json();
+        const customers = Array.isArray(data) ? data : (data.customers || []);
+        
+        const select = document.getElementById('newAgentCustomerId');
+        if (!select) return;
+        select.innerHTML = '<option value="">-- Seleziona Cliente --</option>';
+        customers.forEach(customer => {
+            const option = document.createElement('option');
+            option.value = customer.id;
+            option.textContent = `${customer.name} (${customer.code})`;
+            select.appendChild(option);
+        });
+    } catch (e) {
+        console.error('Error loading customers:', e);
+    }
+}
+
+// Gestione submit nuovo agent
+const newAgentForm = document.getElementById('newAgentForm');
+if (newAgentForm) {
+    newAgentForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
+        
+        // Validazione
+        if (!data.customer_id) {
+            if (window.toastError) {
+                window.toastError('⚠️ Seleziona un cliente');
+            } else {
+                alert('⚠️ Seleziona un cliente');
+            }
+            return;
+        }
+        
+        if (data.agent_type === 'mikrotik') {
+            if (!data.username || !data.password) {
+                if (window.toastError) {
+                    window.toastError('⚠️ Username e password sono obbligatori per agent MikroTik');
+                } else {
+                    alert('⚠️ Username e password sono obbligatori per agent MikroTik');
+                }
+                return;
+            }
+        } else if (data.agent_type === 'docker') {
+            if (!data.agent_token) {
+                if (window.toastError) {
+                    window.toastError('⚠️ Token è obbligatorio per agent Docker');
+                } else {
+                    alert('⚠️ Token è obbligatorio per agent Docker');
+                }
+                return;
+            }
+        }
+        
+        // Converti valori numerici
+        if (data.port) data.port = parseInt(data.port);
+        if (data.ssh_port) data.ssh_port = parseInt(data.ssh_port);
+        if (data.agent_api_port) data.agent_api_port = parseInt(data.agent_api_port);
+        if (data.use_ssl) data.use_ssl = true;
+        
+        // Rimuovi campi vuoti
+        Object.keys(data).forEach(key => {
+            if (data[key] === '' || data[key] === null) {
+                delete data[key];
+            }
+        });
+        
+        try {
+            const response = await fetch(`/api/v1/customers/${data.customer_id}/agents`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (window.toastSuccess) {
+                    window.toastSuccess(`Agent "${data.name}" creato con successo!`);
+                } else {
+                    alert(`✅ Agent "${data.name}" creato con successo!`);
+                }
+                const modal = bootstrap.Modal.getInstance(document.getElementById('newAgentModal'));
+                if (modal) modal.hide();
+                resetNewAgentForm();
+                loadAgents();
+            } else {
+                const error = await response.json();
+                const errorMsg = error.detail || error.error || 'Errore creazione agent';
+                if (window.toastError) {
+                    window.toastError('Errore: ' + errorMsg);
+                } else {
+                    alert('❌ Errore: ' + errorMsg);
+                }
+            }
+        } catch (e) {
+            const errorMsg = e.message || 'Errore di rete';
+            if (window.toastError) {
+                window.toastError('Errore: ' + errorMsg);
+            } else {
+                alert('❌ Errore: ' + errorMsg);
+            }
+        }
+    });
+}
+
+// Carica al load
+document.addEventListener('DOMContentLoaded', () => {
+    loadAgents();
+    loadServerVersion();
+    loadCustomersForNewAgent();
+    
+    // Carica clienti quando si apre il modal
+    const newAgentModal = document.getElementById('newAgentModal');
+    if (newAgentModal) {
+        newAgentModal.addEventListener('show.bs.modal', () => {
+            loadCustomersForNewAgent();
+            toggleNewAgentTypeFields();
+        });
+    }
+    
+    // Gestisci cambio selezione ARP gateway MikroTik
+    const arpGatewaySelect = document.getElementById('editArpGatewayAgentId');
+    if (arpGatewaySelect) {
+        arpGatewaySelect.addEventListener('change', function() {
+            // Se MikroTik è selezionato, disabilita SNMP
+            const snmpFields = ['editArpGatewaySnmpAddress', 'editArpGatewaySnmpCommunity', 'editArpGatewaySnmpVersion'];
+            if (this.value) {
+                snmpFields.forEach(id => {
+                    const field = document.getElementById(id);
+                    if (field) {
+                        field.disabled = true;
+                        field.value = '';
+                    }
+                });
+            } else {
+                snmpFields.forEach(id => {
+                    const field = document.getElementById(id);
+                    if (field) field.disabled = false;
+                });
+            }
+        });
+    }
+});
+
+// Carica agent Docker disponibili per MikroTik
+async function loadDockerAgentsForMikrotik(customerId, selectedId) {
+    if (!customerId) return;
+    try {
+        const response = await fetch(`/api/v1/customers/${customerId}/agents?active_only=true`);
+        const data = await response.json();
+        const agents = Array.isArray(data) ? data : (data.agents || []);
+        const dockerAgents = agents.filter(a => a.agent_type === 'docker');
+        
+        const select = document.getElementById('editDockerAgentId');
+        if (!select) return;
+        select.innerHTML = '<option value="">-- Nessuno (comandi locali) --</option>';
+        dockerAgents.forEach(agent => {
+            const option = document.createElement('option');
+            option.value = agent.id;
+            option.textContent = `${agent.name} (${agent.address})`;
+            if (selectedId && agent.id === selectedId) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    } catch (e) {
+        console.error('Error loading Docker agents:', e);
+    }
+}
+
+// Carica opzioni ARP gateway per Docker agent
+async function loadArpGatewayOptions(customerId, selectedMikrotikId) {
+    if (!customerId) return;
+    try {
+        const response = await fetch(`/api/v1/customers/${customerId}/agents?active_only=true`);
+        const data = await response.json();
+        const agents = Array.isArray(data) ? data : (data.agents || []);
+        const mikrotikAgents = agents.filter(a => a.agent_type === 'mikrotik' || !a.agent_type);
+        
+        const select = document.getElementById('editArpGatewayAgentId');
+        if (!select) return;
+        select.innerHTML = '<option value="">-- Nessuno --</option>';
+        mikrotikAgents.forEach(agent => {
+            const option = document.createElement('option');
+            option.value = agent.id;
+            option.textContent = `${agent.name} (${agent.address})`;
+            if (selectedMikrotikId && agent.id === selectedMikrotikId) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    } catch (e) {
+        console.error('Error loading ARP gateway options:', e);
+    }
+}
+</script>
+{% endblock %}
+
