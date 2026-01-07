@@ -1,5 +1,0 @@
-version: "3.8"
-services:
-  dadude:
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
