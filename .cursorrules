@@ -1,0 +1,1298 @@
+# Cursor Rules per DaDude Project
+
+## 🎯 Principi Fondamentali
+
+### Golden Rules
+1. **NON modificare codice funzionante** - Se funziona, non toccarlo
+2. **Semplicità > Complessità** - La soluzione più semplice è sempre la migliore
+3. **Comprendi prima di modificare** - Leggi tutto il codice rilevante
+4. **Max 2-3 tentativi** - Se non funziona, cambia approccio o fai revert
+5. **Test prima di commit** - Un commit che rompe è peggio di nessun commit
+6. **No Debug Loops** - Max 3 iterazioni su stesso problema, poi cambia strategia
+
+### Workflow Base
+```
+Comprendi → Modifica → Test → Commit → Push → Deploy → Verifica
+```
+
+Se qualcosa si rompe: **REVERT immediatamente**, non aggiungere fix su fix.
+
+---
+
+## 🔍 Anti-Debug Loop Rules
+
+### Riconoscere un Loop
+Sei in un loop se:
+- Stesso errore dopo 3+ tentativi
+- Stai modificando lo stesso file 4+ volte
+- Stai aggiungendo "try-except" su "try-except"
+- Stai aumentando timeout/retry senza capire il problema
+- Stai cercando di "forzare" una soluzione che non funziona
+
+### Uscire dal Loop
+
+#### 1. STOP dopo 3 tentativi
+```
+Tentativo 1: Fix diretto
+Tentativo 2: Fix alternativo
+Tentativo 3: Approccio diverso
+↓
+Se fallisce ancora → REVERT e ANALISI PROFONDA
+```
+
+#### 2. Analisi Profonda (dopo 3 fallimenti)
+```bash
+# 1. Verifica lo stato reale del sistema
+docker ps -a
+docker logs <container> --tail 100
+git status
+git diff
+
+# 2. Verifica prerequisiti
+- Versioni corrette? (Python, dependencies)
+- Variabili ambiente corrette?
+- Permessi filesystem corretti?
+- Network connectivity OK?
+
+# 3. Torna a versione funzionante
+git log --oneline -10
+git checkout <ultimo-commit-funzionante>
+```
+
+#### 3. Strategia Divide & Conquer
+```
+Problema complesso → Scomponi in step minimi
+Test step 1 → OK? → Test step 2 → OK? → ...
+Se uno step fallisce → Focus solo su quello
+```
+
+#### 4. Rubber Duck Debugging
+Prima di ogni tentativo chiedi:
+- **Cosa sto cercando di fare?**
+- **Perché non funziona?** (causa root, non sintomo)
+- **Qual è la soluzione più semplice?**
+- **Ho verificato i prerequisiti?**
+
+### Debug Anti-Patterns da Evitare
+
+| ❌ Anti-Pattern | ✅ Approccio Corretto |
+|-----------------|------------------------|
+| Aumentare retry/timeout a caso | Capire perché serve tempo extra |
+| Aggiungere try-except ovunque | Gestire errori specifici con logica |
+| Modificare 5 file contemporaneamente | Un file alla volta, test incrementale |
+| "Forse se aggiungo questo..." | "Questo risolve il problema perché..." |
+| Copiare soluzioni da Stack Overflow senza capire | Capire la soluzione prima di applicarla |
+| Commentare codice invece di rimuoverlo | Git tiene lo storico, rimuovi codice inutile |
+
+### Max Retry Logic
+```python
+# ❌ BAD: Retry infinito
+while True:
+    try:
+        result = risky_operation()
+        break
+    except:
+        time.sleep(1)
+
+# ✅ GOOD: Max retry con backoff
+MAX_RETRIES = 3
+BACKOFF_SECONDS = [1, 2, 5]
+
+for attempt in range(MAX_RETRIES):
+    try:
+        result = risky_operation()
+        break
+    except SpecificException as e:
+        if attempt == MAX_RETRIES - 1:
+            logger.error(f"Failed after {MAX_RETRIES} attempts: {e}")
+            raise
+        logger.warning(f"Attempt {attempt + 1} failed, retrying in {BACKOFF_SECONDS[attempt]}s")
+        time.sleep(BACKOFF_SECONDS[attempt])
+```
+
+### Timeout Rules
+```python
+# ❌ BAD: Timeout eccessivo o mancante
+result = long_operation()  # Può bloccare per sempre
+
+# ✅ GOOD: Timeout ragionevole con fallback
+import signal
+from contextlib import contextmanager
+
+@contextmanager
+def timeout(seconds):
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Operation timed out after {seconds}s")
+    
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
+try:
+    with timeout(30):
+        result = long_operation()
+except TimeoutError:
+    logger.error("Operation timed out, using fallback")
+    result = fallback_operation()
+```
+
+---
+
+## 🐍 Python Web App Best Practices
+
+### FastAPI/Flask Structure
+```python
+# ✅ GOOD: Dependency injection, type hints, error handling
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, Field
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="DaDude API",
+    version="2.5.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc"
+)
+
+class RequestModel(BaseModel):
+    field: str = Field(..., min_length=1, max_length=100)
+    optional_field: Optional[int] = Field(None, ge=0)
+
+@app.post("/endpoint", response_model=ResponseModel)
+async def endpoint(
+    request: RequestModel,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        result = await service.process(request, db)
+        logger.info(f"Success: {result.id}")
+        return result
+    except SpecificException as e:
+        logger.error(f"Error processing request: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Unexpected error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+```
+
+### Security Rules
+```python
+# ✅ Password Hashing
+from passlib.context import CryptContext
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+# ✅ JWT Token
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+
+SECRET_KEY = os.getenv("SECRET_KEY")  # ❌ MAI hardcodare
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+def create_token(data: dict) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+# ✅ SQL Injection Prevention
+# ❌ BAD
+query = f"SELECT * FROM users WHERE id = {user_id}"  # SQL injection!
+
+# ✅ GOOD
+query = "SELECT * FROM users WHERE id = :user_id"
+result = db.execute(query, {"user_id": user_id})
+```
+
+### Database Best Practices
+```python
+# ✅ Connection Pool
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
+
+engine = create_engine(
+    DATABASE_URL,
+    poolclass=QueuePool,
+    pool_size=20,
+    max_overflow=40,
+    pool_pre_ping=True,  # Verifica connessioni prima dell'uso
+    pool_recycle=3600    # Ricrea connessioni ogni ora
+)
+
+# ✅ Context Manager per Session
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_session():
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+# Usage
+with get_db_session() as db:
+    user = db.query(User).filter(User.id == user_id).first()
+
+# ✅ Bulk Operations
+# ❌ BAD: N+1 queries
+for item in items:
+    db.query(Item).filter(Item.id == item.id).update({"status": "processed"})
+
+# ✅ GOOD: Bulk update
+db.query(Item).filter(Item.id.in_([i.id for i in items])).update(
+    {"status": "processed"}, synchronize_session=False
+)
+db.commit()
+```
+
+### Logging Best Practices
+```python
+# ✅ Structured Logging
+import logging
+import json
+from datetime import datetime
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno
+        }
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_data)
+
+# Setup
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("app.log")
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.handlers[0].setFormatter(JSONFormatter())
+
+# ✅ Log con context
+logger.info("User login", extra={
+    "user_id": user.id,
+    "ip": request.client.host,
+    "user_agent": request.headers.get("user-agent")
+})
+
+# ❌ BAD: Log password/secrets
+logger.info(f"User {user.email} logged in with password {password}")  # MAI!
+
+# ✅ GOOD: Log safe data
+logger.info(f"User {user.email} logged in", extra={"user_id": user.id})
+```
+
+### Async Best Practices
+```python
+# ✅ Async Database Queries
+from databases import Database
+
+database = Database(DATABASE_URL)
+
+@app.on_event("startup")
+async def startup():
+    await database.connect()
+
+@app.on_event("shutdown")
+async def shutdown():
+    await database.disconnect()
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: int):
+    query = "SELECT * FROM users WHERE id = :user_id"
+    return await database.fetch_one(query, values={"user_id": user_id})
+
+# ✅ Concurrent Requests
+import asyncio
+
+async def fetch_multiple(ids: list[int]):
+    tasks = [fetch_user(id) for id in ids]
+    return await asyncio.gather(*tasks)
+
+# ✅ Timeout per operazioni async
+async def risky_async_operation():
+    try:
+        return await asyncio.wait_for(
+            slow_operation(),
+            timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        logger.error("Operation timed out")
+        raise HTTPException(status_code=504, detail="Gateway timeout")
+```
+
+### Error Handling
+```python
+# ✅ Custom Exceptions
+class DaDudeException(Exception):
+    """Base exception"""
+    pass
+
+class AgentNotFoundException(DaDudeException):
+    """Agent not found"""
+    pass
+
+class InvalidCredentialsException(DaDudeException):
+    """Invalid credentials"""
+    pass
+
+# ✅ Exception Handler
+@app.exception_handler(DaDudeException)
+async def dadude_exception_handler(request, exc):
+    logger.error(f"DaDude error: {exc}", extra={
+        "path": request.url.path,
+        "method": request.method
+    })
+    return JSONResponse(
+        status_code=400,
+        content={"error": str(exc), "type": type(exc).__name__}
+    )
+
+# ✅ Validation Errors
+from pydantic import ValidationError
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=422,
+        content={"errors": exc.errors()}
+    )
+```
+
+### Caching
+```python
+# ✅ Redis Cache
+from redis import Redis
+from functools import wraps
+import pickle
+
+redis_client = Redis(host='localhost', port=6379, db=0)
+
+def cache(expire_seconds=300):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            cache_key = f"{func.__name__}:{args}:{kwargs}"
+            
+            # Try cache
+            cached = redis_client.get(cache_key)
+            if cached:
+                logger.debug(f"Cache hit: {cache_key}")
+                return pickle.loads(cached)
+            
+            # Execute and cache
+            result = await func(*args, **kwargs)
+            redis_client.setex(
+                cache_key,
+                expire_seconds,
+                pickle.dumps(result)
+            )
+            return result
+        return wrapper
+    return decorator
+
+@cache(expire_seconds=600)
+async def get_expensive_data(user_id: int):
+    return await database.fetch_one(f"SELECT * FROM users WHERE id = {user_id}")
+```
+
+### Rate Limiting
+```python
+# ✅ Rate Limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.get("/api/data")
+@limiter.limit("10/minute")  # Max 10 requests per minute
+async def get_data(request: Request):
+    return {"data": "value"}
+
+# ✅ Custom Rate Limiting per User
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+class RateLimiter:
+    def __init__(self, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window = timedelta(seconds=window_seconds)
+        self.requests = defaultdict(list)
+    
+    def is_allowed(self, user_id: str) -> bool:
+        now = datetime.utcnow()
+        cutoff = now - self.window
+        
+        # Remove old requests
+        self.requests[user_id] = [
+            req_time for req_time in self.requests[user_id]
+            if req_time > cutoff
+        ]
+        
+        # Check limit
+        if len(self.requests[user_id]) >= self.max_requests:
+            return False
+        
+        self.requests[user_id].append(now)
+        return True
+
+limiter = RateLimiter(max_requests=100, window_seconds=3600)
+
+@app.get("/api/user-data")
+async def get_user_data(current_user: User = Depends(get_current_user)):
+    if not limiter.is_allowed(str(current_user.id)):
+        raise HTTPException(status_code=429, detail="Too many requests")
+    return {"data": "value"}
+```
+
+### Background Tasks
+```python
+# ✅ Background Tasks
+from fastapi import BackgroundTasks
+
+def send_email(email: str, subject: str, body: str):
+    logger.info(f"Sending email to {email}")
+    # Email logic here
+
+@app.post("/register")
+async def register(user: UserCreate, background_tasks: BackgroundTasks):
+    db_user = create_user(user)
+    background_tasks.add_task(
+        send_email,
+        user.email,
+        "Welcome!",
+        "Thanks for registering"
+    )
+    return db_user
+
+# ✅ Celery per task complessi
+from celery import Celery
+
+celery_app = Celery('dadude', broker='redis://localhost:6379/0')
+
+@celery_app.task
+def process_large_file(file_path: str):
+    logger.info(f"Processing {file_path}")
+    # Long processing here
+    return {"status": "completed"}
+
+@app.post("/upload")
+async def upload(file: UploadFile):
+    file_path = save_file(file)
+    task = process_large_file.delay(file_path)
+    return {"task_id": task.id}
+```
+
+---
+
+## 🚀 Proposte Migliorative
+
+### 1. Monitoring e Observability
+
+#### Metrics con Prometheus
+```python
+from prometheus_client import Counter, Histogram, Gauge, make_asgi_app
+
+# Metrics
+request_count = Counter(
+    'dadude_requests_total',
+    'Total requests',
+    ['method', 'endpoint', 'status']
+)
+
+request_duration = Histogram(
+    'dadude_request_duration_seconds',
+    'Request duration',
+    ['method', 'endpoint']
+)
+
+active_agents = Gauge(
+    'dadude_active_agents',
+    'Number of active agents'
+)
+
+# Middleware
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    request_count.labels(
+        method=request.method,
+        endpoint=request.url.path,
+        status=response.status_code
+    ).inc()
+    
+    request_duration.labels(
+        method=request.method,
+        endpoint=request.url.path
+    ).observe(duration)
+    
+    return response
+
+# Expose metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+```
+
+#### Health Checks
+```python
+@app.get("/health")
+async def health_check():
+    checks = {
+        "database": await check_database(),
+        "redis": await check_redis(),
+        "disk_space": check_disk_space(),
+        "memory": check_memory()
+    }
+    
+    healthy = all(checks.values())
+    status_code = 200 if healthy else 503
+    
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "healthy" if healthy else "unhealthy",
+            "checks": checks,
+            "version": AGENT_VERSION,
+            "uptime": get_uptime()
+        }
+    )
+
+async def check_database():
+    try:
+        await database.fetch_one("SELECT 1")
+        return True
+    except Exception as e:
+        logger.error(f"Database check failed: {e}")
+        return False
+```
+
+### 2. Feature Flags
+```python
+# Feature flags per rollout graduale
+class FeatureFlags:
+    def __init__(self):
+        self.flags = {
+            "new_dashboard": False,
+            "advanced_monitoring": False,
+            "beta_features": False
+        }
+    
+    def is_enabled(self, flag: str, user_id: Optional[int] = None) -> bool:
+        if flag not in self.flags:
+            return False
+        
+        # Global flag
+        if self.flags[flag] is True:
+            return True
+        
+        # Per-user rollout (esempio: 10% users)
+        if user_id and isinstance(self.flags[flag], float):
+            return (user_id % 100) < (self.flags[flag] * 100)
+        
+        return False
+
+feature_flags = FeatureFlags()
+
+@app.get("/dashboard")
+async def dashboard(current_user: User = Depends(get_current_user)):
+    if feature_flags.is_enabled("new_dashboard", current_user.id):
+        return new_dashboard_view()
+    return old_dashboard_view()
+```
+
+### 3. Circuit Breaker
+```python
+# Previene cascading failures
+from datetime import datetime, timedelta
+
+class CircuitBreaker:
+    def __init__(self, failure_threshold=5, timeout_seconds=60):
+        self.failure_threshold = failure_threshold
+        self.timeout = timedelta(seconds=timeout_seconds)
+        self.failures = 0
+        self.last_failure_time = None
+        self.state = "closed"  # closed, open, half_open
+    
+    def call(self, func, *args, **kwargs):
+        if self.state == "open":
+            if datetime.now() - self.last_failure_time > self.timeout:
+                self.state = "half_open"
+            else:
+                raise Exception("Circuit breaker is OPEN")
+        
+        try:
+            result = func(*args, **kwargs)
+            self.on_success()
+            return result
+        except Exception as e:
+            self.on_failure()
+            raise
+    
+    def on_success(self):
+        self.failures = 0
+        self.state = "closed"
+    
+    def on_failure(self):
+        self.failures += 1
+        self.last_failure_time = datetime.now()
+        if self.failures >= self.failure_threshold:
+            self.state = "open"
+            logger.error("Circuit breaker opened")
+
+# Usage
+external_api_breaker = CircuitBreaker(failure_threshold=3, timeout_seconds=30)
+
+async def call_external_api():
+    return external_api_breaker.call(requests.get, "https://api.example.com")
+```
+
+### 4. Request ID Tracing
+```python
+# Traccia request attraverso microservizi
+import uuid
+from contextvars import ContextVar
+
+request_id_ctx: ContextVar[str] = ContextVar('request_id', default=None)
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
+    request_id_ctx.set(request_id)
+    
+    response = await call_next(request)
+    response.headers['X-Request-ID'] = request_id
+    return response
+
+# Custom Logger
+class RequestIDFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = request_id_ctx.get()
+        return True
+
+logger.addFilter(RequestIDFilter())
+
+# Log format
+logging.basicConfig(
+    format='%(asctime)s [%(request_id)s] %(levelname)s: %(message)s'
+)
+```
+
+### 5. Database Migration Strategy
+```bash
+# Alembic setup
+pip install alembic
+
+# Init
+alembic init migrations
+
+# Create migration
+alembic revision --autogenerate -m "Add user table"
+
+# Apply migration
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+```
+```python
+# migrations/env.py - Auto-detect models
+from app.models import Base
+
+target_metadata = Base.metadata
+
+# Migration script template
+"""Add user table
+
+Revision ID: abc123
+Revises: xyz789
+Create Date: 2024-01-01
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+def upgrade():
+    op.create_table(
+        'users',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('email', sa.String(), nullable=False),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('email')
+    )
+
+def downgrade():
+    op.drop_table('users')
+```
+
+### 6. API Versioning
+```python
+# API versioning per backward compatibility
+from fastapi import APIRouter
+
+# Version 1
+router_v1 = APIRouter(prefix="/api/v1")
+
+@router_v1.get("/users")
+async def get_users_v1():
+    return {"version": "v1", "users": [...]}
+
+# Version 2
+router_v2 = APIRouter(prefix="/api/v2")
+
+@router_v2.get("/users")
+async def get_users_v2():
+    return {
+        "version": "v2",
+        "users": [...],
+        "pagination": {...}  # New feature
+    }
+
+app.include_router(router_v1)
+app.include_router(router_v2)
+
+# Default to latest
+app.include_router(router_v2, prefix="/api")
+```
+
+### 7. WebSocket Connection Pool
+```python
+# Connection pool per WebSocket
+from collections import defaultdict
+from typing import Dict, Set
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = defaultdict(set)
+        self.connection_metadata: Dict[WebSocket, dict] = {}
+    
+    async def connect(self, websocket: WebSocket, customer_id: str, agent_id: str):
+        await websocket.accept()
+        self.active_connections[customer_id].add(websocket)
+        self.connection_metadata[websocket] = {
+            "customer_id": customer_id,
+            "agent_id": agent_id,
+            "connected_at": datetime.utcnow()
+        }
+        logger.info(f"Agent {agent_id} connected (customer: {customer_id})")
+    
+    def disconnect(self, websocket: WebSocket):
+        metadata = self.connection_metadata.pop(websocket, {})
+        customer_id = metadata.get("customer_id")
+        if customer_id:
+            self.active_connections[customer_id].discard(websocket)
+            logger.info(f"Agent {metadata.get('agent_id')} disconnected")
+    
+    async def broadcast(self, customer_id: str, message: dict):
+        for connection in self.active_connections[customer_id]:
+            await connection.send_json(message)
+    
+    def get_stats(self) -> dict:
+        return {
+            "total_connections": sum(len(conns) for conns in self.active_connections.values()),
+            "customers": len(self.active_connections),
+            "connections_by_customer": {
+                customer: len(conns)
+                for customer, conns in self.active_connections.items()
+            }
+        }
+
+manager = ConnectionManager()
+```
+
+### 8. Graceful Shutdown
+```python
+# Graceful shutdown per evitare perdita dati
+import signal
+import sys
+
+class GracefulShutdown:
+    def __init__(self):
+        self.shutdown_requested = False
+        signal.signal(signal.SIGTERM, self.handle_signal)
+        signal.signal(signal.SIGINT, self.handle_signal)
+    
+    def handle_signal(self, signum, frame):
+        logger.info(f"Received signal {signum}, shutting down gracefully...")
+        self.shutdown_requested = True
+    
+    async def cleanup(self):
+        logger.info("Starting cleanup...")
+        
+        # Close database connections
+        await database.disconnect()
+        
+        # Close WebSocket connections
+        for customer_connections in manager.active_connections.values():
+            for ws in customer_connections:
+                await ws.close(code=1001, reason="Server shutting down")
+        
+        # Wait for background tasks
+        await asyncio.sleep(5)
+        
+        logger.info("Cleanup completed")
+        sys.exit(0)
+
+shutdown_handler = GracefulShutdown()
+
+@app.on_event("shutdown")
+async def shutdown():
+    await shutdown_handler.cleanup()
+```
+
+### 9. Performance Testing
+```python
+# Load testing con Locust
+from locust import HttpUser, task, between
+
+class DaDudeUser(HttpUser):
+    wait_time = between(1, 3)
+    
+    def on_start(self):
+        # Login
+        response = self.client.post("/api/v1/login", json={
+            "username": "test@example.com",
+            "password": "password"
+        })
+        self.token = response.json()["access_token"]
+    
+    @task(3)
+    def get_agents(self):
+        self.client.get(
+            "/api/v1/agents",
+            headers={"Authorization": f"Bearer {self.token}"}
+        )
+    
+    @task(1)
+    def get_agent_detail(self):
+        self.client.get(
+            "/api/v1/agents/1",
+            headers={"Authorization": f"Bearer {self.token}"}
+        )
+
+# Run: locust -f locustfile.py --host=http://localhost:8000
+```
+
+### 10. Documentation Auto-Generation
+```python
+# OpenAPI schema enhancement
+from fastapi.openapi.utils import get_openapi
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="DaDude API",
+        version="2.5.0",
+        description="""
+        ## Features
+        - Agent management
+        - WebSocket real-time communication
+        - Customer management
+        
+        ## Authentication
+        Use Bearer token in Authorization header
+        """,
+        routes=app.routes,
+    )
+    
+    openapi_schema["info"]["x-logo"] = {
+        "url": "https://example.com/logo.png"
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+```
+
+---
+
+## 📊 Proposte Architetturali
+
+### 1. Separazione Backend/Worker
+```
+dadude/
+├── api/              # FastAPI app (REST endpoints)
+├── workers/          # Celery workers (task pesanti)
+├── websocket/        # WebSocket server separato
+└── shared/           # Models, utilities condivise
+```
+
+**Benefici:**
+- Scalabilità indipendente
+- Resilienza (worker crash ≠ API down)
+- Performance (CPU-intensive tasks su worker dedicati)
+
+### 2. Event-Driven Architecture
+```python
+# Event bus con Redis Streams
+class EventBus:
+    def __init__(self):
+        self.redis = Redis()
+    
+    async def publish(self, event: str, data: dict):
+        await self.redis.xadd(
+            f"events:{event}",
+            {"data": json.dumps(data)}
+        )
+    
+    async def subscribe(self, event: str, handler):
+        while True:
+            messages = await self.redis.xread(
+                {f"events:{event}": "$"},
+                block=5000
+            )
+            for message in messages:
+                await handler(json.loads(message["data"]))
+
+# Usage
+event_bus = EventBus()
+
+# Publisher
+await event_bus.publish("agent.connected", {
+    "agent_id": agent.id,
+    "customer_id": agent.customer_id
+})
+
+# Subscriber
+async def handle_agent_connected(data):
+    logger.info(f"Agent {data['agent_id']} connected")
+    await notify_customer(data['customer_id'])
+
+await event_bus.subscribe("agent.connected", handle_agent_connected)
+```
+
+### 3. Read/Write DB Separation
+```python
+# Master-Slave database setup
+DB_WRITE = "postgresql://master:5432/dadude"
+DB_READ = "postgresql://slave:5432/dadude"
+
+write_engine = create_engine(DB_WRITE)
+read_engine = create_engine(DB_READ)
+
+# Service layer
+class UserService:
+    async def create_user(self, user_data):
+        # Write to master
+        async with get_db_session(write_engine) as db:
+            user = User(**user_data)
+            db.add(user)
+            return user
+    
+    async def get_user(self, user_id):
+        # Read from slave
+        async with get_db_session(read_engine) as db:
+            return db.query(User).filter(User.id == user_id).first()
+```
+
+### 4. API Gateway Pattern
+```
+Client → Nginx (API Gateway) → {
+    /api/v1/agents → Agent Service
+    /api/v1/customers → Customer Service
+    /ws → WebSocket Service
+}
+```
+
+**nginx.conf:**
+```nginx
+upstream agent_service {
+    server agent-service:8000;
+}
+
+upstream customer_service {
+    server customer-service:8001;
+}
+
+upstream websocket_service {
+    server ws-service:8002;
+}
+
+server {
+    listen 80;
+    
+    location /api/v1/agents {
+        proxy_pass http://agent_service;
+    }
+    
+    location /api/v1/customers {
+        proxy_pass http://customer_service;
+    }
+    
+    location /ws {
+        proxy_pass http://websocket_service;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+### 5. Caching Layer
+```
+Request → API → Redis Cache → Database
+                    ↓ (if miss)
+                Database
+```
+
+**Implementazione:**
+```python
+async def get_agent_with_cache(agent_id: int):
+    # Try cache
+    cache_key = f"agent:{agent_id}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return json.loads(cached)
+    
+    # Fetch from DB
+    agent = await db.fetch_one(
+        "SELECT * FROM agents WHERE id = :id",
+        {"id": agent_id}
+    )
+    
+    # Cache for 5 minutes
+    await redis.setex(cache_key, 300, json.dumps(agent))
+    return agent
+```
+
+---
+
+## 🔒 Codice Critico - NON MODIFICARE
+
+[... resto del documento invariato ...]
+
+---
+
+## ✅ Checklist Rapida
+
+### Prima di Ogni Modifica
+- [ ] Codice funziona? → Non toccarlo
+- [ ] È davvero necessario?
+- [ ] Soluzione più semplice possibile?
+- [ ] **Ho già tentato 3+ volte?** → Cambia approccio
+- [ ] Backup necessario?
+- [ ] Versione incrementata?
+
+### Durante Debug
+- [ ] **Tentativo 1** → Fix diretto
+- [ ] **Tentativo 2** → Fix alternativo
+- [ ] **Tentativo 3** → Approccio diverso
+- [ ] **Se ancora fallisce** → REVERT e analisi profonda
+- [ ] Sto aggiungendo complessità inutile?
+- [ ] Ho verificato i prerequisiti?
+
+### Dopo Ogni Modifica
+- [ ] Test locale funziona?
+- [ ] Nessun warning/errore nei log?
+- [ ] Performance accettabile? (< 500ms per request API)
+- [ ] Memory leak check? (`docker stats`)
+- [ ] Commit con messaggio chiaro
+- [ ] Push su origin/main
+- [ ] Server PCT 600 aggiornato
+- [ ] Agent remoti aggiornati (se necessario)
+- [ ] Verifica log e funzionalità
+
+### Se Qualcosa Si Rompe
+- [ ] **REVERT immediatamente**
+- [ ] Non aggiungere fix su fix
+- [ ] Verifica tag stabile funziona
+- [ ] Analisi root cause
+- [ ] Riparti da versione funzionante
+
+### Security Checklist
+- [ ] Password NON in plaintext
+- [ ] SQL queries con parametri (no string interpolation)
+- [ ] JWT token con expiry
+- [ ] Rate limiting attivo
+- [ ] Input validation con Pydantic
+- [ ] HTTPS in produzione
+- [ ] Secrets in environment variables
+
+### Performance Checklist
+- [ ] Database query < 100ms
+- [ ] API response < 500ms
+- [ ] WebSocket latency < 50ms
+- [ ] Memory usage stable (no leaks)
+- [ ] Connection pool correttamente dimensionato
+- [ ] Cache hit rate > 80% (per dati cacheable)
+
+---
+
+## ❌ Mai Fare | ✅ Sempre Fare
+
+| ❌ MAI | ✅ SEMPRE |
+|--------|-----------|
+| Modificare codice funzionante | Chiedere cosa funzionava prima |
+| Aggiungere complessità non richiesta | Usare soluzione più semplice |
+| Più di 3 tentativi sullo stesso problema | Cambiare approccio dopo 3 fallimenti |
+| Commit multipli per stessa cosa | Testare prima di committare |
+| Fix su fix invece di revert | REVERT se qualcosa si rompe |
+| Aumentare timeout/retry senza capire | Capire la causa root |
+| Try-except su tutto il codice | Gestire errori specifici |
+| Hardcodare password/secrets | Usare environment variables |
+| SQL injection con string interpolation | Query parametrizzate |
+| Log di password/secrets | Log di dati safe (user_id, email) |
+| Operazioni sincrone bloccanti | Async per I/O operations |
+| N+1 queries | Bulk operations |
+| Commit senza aggiornare server | Aggiornare immediatamente server |
+| Modifiche senza incrementare versione | Incrementare versione ad ogni modifica |
+
+---
+
+## 🎓 Python Anti-Patterns da Evitare
+```python
+# ❌ BAD: Mutable default arguments
+def add_item(item, items=[]):  # BUG: lista condivisa tra chiamate
+    items.append(item)
+    return items
+
+# ✅ GOOD
+def add_item(item, items=None):
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+
+# ❌ BAD: Catching all exceptions
+try:
+    result = risky_operation()
+except:  # Nasconde anche KeyboardInterrupt, SystemExit!
+    pass
+
+# ✅ GOOD
+try:
+    result = risky_operation()
+except (ValueError, TypeError) as e:
+    logger.error(f"Expected error: {e}")
+    raise
+
+# ❌ BAD: Late binding closures
+functions = [lambda: i for i in range(5)]
+[f() for f in functions]  # [4, 4, 4, 4, 4] - BUG!
+
+# ✅ GOOD
+functions = [lambda i=i: i for i in range(5)]
+[f() for f in functions]  # [0, 1, 2, 3, 4]
+
+# ❌ BAD: Using is for value comparison
+if x is True:  # Solo se x è esattamente l'oggetto True
+    pass
+
+# ✅ GOOD
+if x:  # Truthiness check
+    pass
+if x == True:  # Value comparison (se necessario)
+    pass
+
+# ❌ BAD: Not closing resources
+file = open("data.txt")
+data = file.read()
+# File mai chiuso se errore
+
+# ✅ GOOD
+with open("data.txt") as file:
+    data = file.read()
+# File sempre chiuso
+
+# ❌ BAD: Modifying list during iteration
+items = [1, 2, 3, 4, 5]
+for item in items:
+    if item % 2 == 0:
+        items.remove(item)  # BUG: skip elementi
+
+# ✅ GOOD
+items = [1, 2, 3, 4, 5]
+items = [item for item in items if item % 2 != 0]
+```
+
+---
+
+## 📈 Monitoring Dashboard Proposte
+
+### Grafana Dashboard Essentials
+```yaml
+# Panels da implementare:
+1. Request Rate (requests/sec)
+2. Response Time (p50, p95, p99)
+3. Error Rate (4xx, 5xx)
+4. Active Agents Count
+5. Database Connection Pool Usage
+6. Memory Usage
+7. CPU Usage
+8. WebSocket Active Connections
+9. Cache Hit Rate
+10. Background Task Queue Size
+```
+
+### Alerting Rules
+```yaml
+# Prometheus alerts
+groups:
+  - name: dadude_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(dadude_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        annotations:
+          summary: "High error rate detected"
+      
+      - alert: SlowResponseTime
+        expr: histogram_quantile(0.95, dadude_request_duration_seconds) > 2
+        for: 5m
+        annotations:
+          summary: "95th percentile response time > 2s"
+      
+      - alert: NoActiveAgents
+        expr: dadude_active_agents == 0
+        for: 10m
+        annotations:
+          summary: "No active agents for 10 minutes"
+      
+      - alert: DatabaseConnectionPoolExhausted
+        expr: dadude_db_pool_connections_in_use / dadude_db_pool_size > 0.9
+        for: 5m
+        annotations:
+          summary: "Database connection pool > 90% utilized"
+```
+
+---
+
+Vuoi che approfondisca qualche sezione specifica o aggiunga altri pattern/best practices?
