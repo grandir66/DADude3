@@ -725,22 +725,16 @@ async function loadActiveAgents() {
         }
 
         // Ottieni lista agent connessi via WebSocket (real-time)
-        let wsConnected = new Set();
-        let wsConnectedByName = new Set();
+        let wsConnectedIds = new Set();
         try {
             const wsResp = await fetch('/api/v1/admin/agents/ws/connected');
             if (wsResp.ok) {
                 const wsData = await wsResp.json();
                 wsData.agents.forEach(wsAgent => {
-                    wsConnected.add(wsAgent.agent_id);
-                    // Extract name from agent_id (format: "agent-{name}" or "agent-{name}-{number}")
-                    const match = wsAgent.agent_id.match(/^agent-(.+?)(?:-\d+)?$/);
-                    if (match) {
-                        wsConnectedByName.add(match[1]);
-                    }
+                    // Usa direttamente l'agent_id completo (è il dude_agent_id)
+                    wsConnectedIds.add(wsAgent.agent_id);
                 });
-                console.log(`WebSocket connected agents: ${wsConnected.size}`, Array.from(wsConnected));
-                console.log(`WebSocket connected names: ${wsConnectedByName.size}`, Array.from(wsConnectedByName));
+                console.log(`WebSocket connected agents: ${wsConnectedIds.size}`, Array.from(wsConnectedIds));
             }
         } catch (e) {
             console.warn('Could not fetch WebSocket status:', e);
@@ -750,7 +744,8 @@ async function loadActiveAgents() {
         // Prima identifica i Docker agents connessi per ogni cliente
         const connectedDockerByCustomer = {};
         allAgents.forEach(a => {
-            if (a.agent_type === 'docker' && wsConnectedByName.has(a.name)) {
+            // Confronta con dude_agent_id, non con il nome
+            if (a.agent_type === 'docker' && a.dude_agent_id && wsConnectedIds.has(a.dude_agent_id)) {
                 a.ws_connected = true;
                 if (!connectedDockerByCustomer[a.customer_id]) {
                     connectedDockerByCustomer[a.customer_id] = a.name;

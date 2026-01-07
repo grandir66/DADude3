@@ -61,12 +61,12 @@ systemctl start postgresql
 systemctl enable postgresql
 
 # Crea utente e database
-sudo -u postgres psql <<EOF
+su - postgres -c "psql <<EOF
 CREATE USER dadude WITH PASSWORD 'dadude_temp_password_change_me';
 CREATE DATABASE dadude OWNER dadude;
 GRANT ALL PRIVILEGES ON DATABASE dadude TO dadude;
 \q
-EOF
+EOF"
 
 log "PostgreSQL configurato. Password temporanea: dadude_temp_password_change_me"
 warn "IMPORTANTE: Cambiare la password PostgreSQL dopo l'installazione!"
@@ -81,11 +81,15 @@ mkdir -p /etc/dadude
 if [[ ! -d "/opt/dadude-server/dadude-server" ]]; then
     log "Copia codice sorgente..."
     # Se eseguito da dentro la directory del progetto:
-    if [[ -d "dadude-server" ]]; then
+    if [[ -d "dadude-server" ]] && [[ "$(pwd)" != "/opt/dadude-server" ]]; then
         cp -r dadude-server /opt/dadude-server/
+    elif [[ -d "/opt/dadude-server/dadude-server" ]]; then
+        log "Codice già presente in /opt/dadude-server/dadude-server"
     else
         error "Directory dadude-server non trovata. Eseguire lo script dalla root del progetto."
     fi
+else
+    log "Codice già presente in /opt/dadude-server/dadude-server"
 fi
 
 # 6. Creazione virtualenv
@@ -97,12 +101,35 @@ source venv/bin/activate
 # 7. Installazione dipendenze Python
 log "Installazione dipendenze Python..."
 pip install --upgrade pip
-pip install -r dadude-server/requirements.txt
+if [[ -f "dadude-server/requirements.txt" ]]; then
+    pip install -r dadude-server/requirements.txt
+elif [[ -f "/opt/dadude-server/dadude-server/requirements.txt" ]]; then
+    pip install -r /opt/dadude-server/dadude-server/requirements.txt
+elif [[ -f "requirements.txt" ]]; then
+    pip install -r requirements.txt
+else
+    error "File requirements.txt non trovato!"
+fi
 
 # 8. Configurazione .env
 log "Configurazione file .env..."
-if [[ ! -f "/opt/dadude-server/dadude-server/data/.env" ]]; then
-    cat > /opt/dadude-server/dadude-server/data/.env <<EOF
+ENV_PATH=""
+if [[ -d "dadude-server/data" ]]; then
+    ENV_PATH="dadude-server/data/.env"
+    mkdir -p dadude-server/data
+elif [[ -d "/opt/dadude-server/dadude-server/data" ]]; then
+    ENV_PATH="/opt/dadude-server/dadude-server/data/.env"
+    mkdir -p /opt/dadude-server/dadude-server/data
+elif [[ -d "data" ]]; then
+    ENV_PATH="data/.env"
+    mkdir -p data
+else
+    mkdir -p /opt/dadude-server/dadude-server/data
+    ENV_PATH="/opt/dadude-server/dadude-server/data/.env"
+fi
+
+if [[ ! -f "$ENV_PATH" ]]; then
+    cat > "$ENV_PATH" <<EOF
 # DaDude Server Configuration
 DATABASE_URL=postgresql://dadude:dadude_temp_password_change_me@localhost:5432/dadude
 SECRET_KEY=$(openssl rand -hex 32)
@@ -110,25 +137,28 @@ ENCRYPTION_KEY=$(openssl rand -hex 32)
 SSL_ENABLED=false
 LOG_LEVEL=INFO
 EOF
-    log "File .env creato in /opt/dadude-server/dadude-server/data/.env"
+    log "File .env creato in $ENV_PATH"
     warn "IMPORTANTE: Modificare DATABASE_URL con password corretta!"
 fi
 
 # 9. Setup database (migrazioni)
 log "Esecuzione migrazioni database..."
-cd /opt/dadude-server/dadude-server
 # Le migrazioni verranno eseguite al primo avvio o manualmente
 # python -m alembic upgrade head  # Se usando Alembic
 
 # 10. Installazione systemd service
 log "Installazione servizio systemd..."
+SERVICE_FILE=""
 if [[ -f "dadude-server/dadude-server.service" ]]; then
-    cp dadude-server/dadude-server.service /etc/systemd/system/
+    SERVICE_FILE="dadude-server/dadude-server.service"
 elif [[ -f "/opt/dadude-server/dadude-server/dadude-server.service" ]]; then
-    cp /opt/dadude-server/dadude-server/dadude-server.service /etc/systemd/system/
+    SERVICE_FILE="/opt/dadude-server/dadude-server/dadude-server.service"
+elif [[ -f "dadude-server.service" ]]; then
+    SERVICE_FILE="dadude-server.service"
 else
     error "File dadude-server.service non trovato!"
 fi
+cp "$SERVICE_FILE" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable dadude-server.service
 

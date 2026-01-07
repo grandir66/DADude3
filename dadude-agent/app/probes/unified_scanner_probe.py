@@ -88,8 +88,17 @@ async def probe(
     
     try:
         # 1. Port scan SEMPRE per verificare porte aperte
-        logger.info(f"[UNIFIED] Starting port scan for {target}")
-        open_ports = await _scan_ports(target)
+        # Passa le community SNMP del cliente per il test UDP
+        snmp_communities = []
+        snmp_creds = credentials.get("snmp", {})
+        if snmp_creds.get("community"):
+            snmp_communities.append(snmp_creds["community"])
+        # Aggiungi sempre public come fallback
+        if "public" not in snmp_communities:
+            snmp_communities.append("public")
+        
+        logger.info(f"[UNIFIED] Starting port scan for {target} (SNMP communities: {snmp_communities})")
+        open_ports = await _scan_ports(target, snmp_communities=snmp_communities)
         result["open_ports"] = open_ports
         
         # Determina porte aperte
@@ -271,8 +280,19 @@ async def probe(
     end_time = datetime.utcnow()
     result["scan_duration_seconds"] = (end_time - start_time).total_seconds()
     
-    # Alias per compatibilità con interfaccia web (usa "interfaces" invece di "network_interfaces")
-    result["interfaces"] = result.get("network_interfaces", [])
+    # Alias per compatibilità - preferisci "interfaces" dal probe vendor se presente e più completo
+    vendor_interfaces = result.get("interfaces", [])
+    network_interfaces = result.get("network_interfaces", [])
+    
+    # Usa interfaces dal vendor se è più completo (ha più dati come mac_address, ipv4)
+    if vendor_interfaces and len(vendor_interfaces) > 0:
+        # Verifica se vendor_interfaces ha dati più completi (es. mac_address)
+        has_details = any(iface.get("mac_address") or iface.get("ipv4") for iface in vendor_interfaces)
+        if has_details or not network_interfaces:
+            result["network_interfaces"] = vendor_interfaces
+            result["interfaces"] = vendor_interfaces
+    elif network_interfaces:
+        result["interfaces"] = network_interfaces
     
     # Flatten system_info nel risultato principale per compatibilità
     for key, value in result.get("system_info", {}).items():
@@ -282,56 +302,78 @@ async def probe(
     return result
 
 
-async def _scan_ports(target: str) -> List[Dict]:
-    """Scansione porte veloce per determinare protocolli"""
+async def _scan_ports(target: str, snmp_communities: List[str] = None) -> List[Dict]:
+    """Scansione porte veloce per determinare protocolli
+    
+    Args:
+        target: IP o hostname da scansionare
+        snmp_communities: Lista di community SNMP da provare per il test UDP (default: ["public"])
+    """
     # Porte rilevanti per unified scan
     ports = [22, 135, 161, 443, 5985, 5986, 8728]
+    
+    if snmp_communities is None:
+        snmp_communities = ["public"]
     
     try:
         # Prova prima con port_scanner interno
         try:
-            from .port_scanner import scan
+            from ..scanners.port_scanner import scan
+            results = await asyncio.wait_for(
+                scan(target, ports=ports, timeout=2.0, include_udp=True, snmp_communities=snmp_communities),
+                timeout=30
+            )
+            logger.debug(f"[PORTSCAN] Full scan with port_scanner: {len(results)} ports open for {target}")
+            return results
+        except ImportError as e:
+            logger.warning(f"[PORTSCAN] Could not import port_scanner: {e}, using fallback")
+        except TypeError as e:
+            # Port scanner potrebbe non supportare snmp_communities (vecchia versione)
+            logger.warning(f"[PORTSCAN] Port scanner doesn't support snmp_communities: {e}")
+            from ..scanners.port_scanner import scan
             results = await asyncio.wait_for(
                 scan(target, ports=ports, timeout=2.0, include_udp=True),
                 timeout=30
             )
             return results
-        except ImportError:
-            pass
         
         # Fallback: scan manuale TCP con timeout aumentato
         results = []
         for port in ports:
             try:
                 conn = asyncio.open_connection(target, port)
-                _, writer = await asyncio.wait_for(conn, timeout=5.0)  # Aumentato timeout a 5 secondi
+                _, writer = await asyncio.wait_for(conn, timeout=5.0)
                 writer.close()
                 await writer.wait_closed()
-                results.append({"port": port, "protocol": "tcp", "open": True})
+                results.append({"port": port, "protocol": "tcp", "open": True, "service": _get_service_name(port)})
                 logger.debug(f"[PORTSCAN] {target}:{port} TCP open")
             except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
                 results.append({"port": port, "protocol": "tcp", "open": False})
                 logger.debug(f"[PORTSCAN] {target}:{port} TCP closed/filtered: {type(e).__name__}")
         
-        # Per SNMP (UDP 161) facciamo un test veloce con socket UDP
-        try:
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(2.0)
-            # Invia richiesta SNMP GET semplice (get sysDescr)
-            snmp_get = bytes.fromhex('302902010104067075626c6963a01c0204010204010201000e300c300a06082b060102010101000500')
-            sock.sendto(snmp_get, (target, 161))
+        # Per SNMP (UDP 161) prova con tutte le community del cliente
+        snmp_found = False
+        for community in snmp_communities:
+            if snmp_found:
+                break
             try:
-                data, _ = sock.recvfrom(1024)
-                if data:
-                    results.append({"port": 161, "protocol": "udp", "open": True})
-                    logger.debug(f"[PORTSCAN] {target}:161 UDP (SNMP) open")
-            except socket.timeout:
-                # Nessuna risposta SNMP
-                pass
-            sock.close()
-        except Exception as e:
-            logger.debug(f"[PORTSCAN] SNMP UDP check failed: {e}")
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(2.0)
+                # Costruisci pacchetto SNMP con la community specificata
+                snmp_get = _build_snmp_packet(community)
+                sock.sendto(snmp_get, (target, 161))
+                try:
+                    data, _ = sock.recvfrom(1024)
+                    if data:
+                        results.append({"port": 161, "protocol": "udp", "open": True, "service": "snmp"})
+                        logger.debug(f"[PORTSCAN] {target}:161 UDP (SNMP) open with community '{community}'")
+                        snmp_found = True
+                except socket.timeout:
+                    pass
+                sock.close()
+            except Exception as e:
+                logger.debug(f"[PORTSCAN] SNMP UDP check with '{community}' failed: {e}")
         
         return results
         
@@ -341,6 +383,46 @@ async def _scan_ports(target: str) -> List[Dict]:
     except Exception as e:
         logger.warning(f"[PORTSCAN] Failed for {target}: {e}")
         return []
+
+
+def _build_snmp_packet(community: str) -> bytes:
+    """Costruisce un pacchetto SNMP GET per sysDescr.0 con la community specificata"""
+    community_bytes = community.encode('ascii')
+    community_len = len(community_bytes)
+    
+    # PDU content (request-id, error-status, error-index, varbind)
+    pdu_content = bytes([
+        0x02, 0x04, 0x00, 0x00, 0x00, 0x01,  # request-id: 1
+        0x02, 0x01, 0x00,  # error-status: 0
+        0x02, 0x01, 0x00,  # error-index: 0
+        0x30, 0x0b,  # varbind list
+        0x30, 0x09,  # varbind
+        0x06, 0x05, 0x2b, 0x06, 0x01, 0x02, 0x01,  # OID: 1.3.6.1.2.1 (sysDescr)
+        0x05, 0x00,  # NULL value
+    ])
+    pdu_len = len(pdu_content)
+    
+    # Costruisci pacchetto completo
+    packet = bytes([0x30])  # SEQUENCE
+    inner_len = 3 + 2 + community_len + 2 + pdu_len
+    packet += bytes([inner_len])
+    packet += bytes([0x02, 0x01, 0x00])  # version: 0 (SNMPv1)
+    packet += bytes([0x04, community_len]) + community_bytes
+    packet += bytes([0xa0, pdu_len]) + pdu_content  # GET-REQUEST
+    
+    return packet
+
+
+def _get_service_name(port: int) -> str:
+    """Restituisce il nome del servizio per una porta nota"""
+    services = {
+        22: "ssh", 23: "telnet", 25: "smtp", 53: "dns", 80: "http",
+        110: "pop3", 135: "wmi", 139: "netbios", 143: "imap", 161: "snmp",
+        389: "ldap", 443: "https", 445: "smb", 636: "ldaps",
+        5985: "winrm", 5986: "winrm-ssl", 8728: "mikrotik-api",
+        8729: "mikrotik-api-ssl", 8291: "winbox",
+    }
+    return services.get(port, f"port-{port}")
 
 
 async def _probe_snmp(

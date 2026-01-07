@@ -59,13 +59,17 @@ mkdir -p /var/log/dadude-agent
 mkdir -p /var/lib/dadude-agent
 
 # 4. Clone/Copy codice
-if [[ ! -d "/opt/dadude-agent/dadude-agent" ]]; then
+if [[ ! -d "/opt/dadude-agent/dadude-agent" ]] && [[ "$(pwd)" != "/opt/dadude-agent" ]]; then
     log "Copia codice sorgente..."
     if [[ -d "dadude-agent" ]]; then
         cp -r dadude-agent /opt/dadude-agent/
+    elif [[ -d "/opt/dadude-agent/dadude-agent" ]]; then
+        log "Codice già presente in /opt/dadude-agent/dadude-agent"
     else
         error "Directory dadude-agent non trovata. Eseguire lo script dalla root del progetto."
     fi
+else
+    log "Codice già presente o script eseguito da /opt/dadude-agent"
 fi
 
 # 5. Creazione virtualenv
@@ -77,7 +81,15 @@ source venv/bin/activate
 # 6. Installazione dipendenze Python
 log "Installazione dipendenze Python..."
 pip install --upgrade pip
-pip install -r dadude-agent/requirements.txt
+if [[ -f "dadude-agent/requirements.txt" ]]; then
+    pip install -r dadude-agent/requirements.txt
+elif [[ -f "/opt/dadude-agent/dadude-agent/requirements.txt" ]]; then
+    pip install -r /opt/dadude-agent/dadude-agent/requirements.txt
+elif [[ -f "requirements.txt" ]]; then
+    pip install -r requirements.txt
+else
+    error "File requirements.txt non trovato!"
+fi
 
 # 7. Configurazione interattiva
 log "Configurazione Agent..."

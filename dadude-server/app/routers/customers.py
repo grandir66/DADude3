@@ -593,25 +593,23 @@ async def list_customer_agents(
     
     # Arricchisci con stato WebSocket real-time
     hub = get_websocket_hub()
-    ws_connected_names = set()
+    ws_connected_ids = set()  # Set di dude_agent_id connessi
     connected_docker_agents = []  # Lista agent Docker connessi
     
     if hub and hub._connections:
-        for conn_id in hub._connections.keys():
-            # Estrai nome base (es: "agent-PX-OVH-51-1234" -> "PX-OVH-51")
-            match = re.match(r'^agent-(.+?)(?:-\d+)?$', conn_id)
-            if match:
-                ws_connected_names.add(match.group(1))
+        # Aggiungi direttamente gli ID connessi (sono già i dude_agent_id)
+        ws_connected_ids = set(hub._connections.keys())
     
     # Prima passata: identifica agent Docker connessi
     result = []
     for agent in agents:
         agent_dict = agent.model_dump() if hasattr(agent, 'model_dump') else dict(agent)
         agent_type = agent_dict.get('agent_type', 'mikrotik')
-        agent_name = agent_dict.get('name', '')
+        dude_agent_id = agent_dict.get('dude_agent_id', '')
         
         if agent_type == 'docker':
-            if agent_name in ws_connected_names:
+            # Confronta con dude_agent_id, non con il nome
+            if dude_agent_id and dude_agent_id in ws_connected_ids:
                 agent_dict['status'] = 'online'
                 agent_dict['ws_connected'] = True
                 connected_docker_agents.append(agent_dict)
@@ -1041,19 +1039,18 @@ async def test_agent_connection(
         ws_info = None
         
         if hub and hub._connections:
-            agent_name = getattr(agent, 'name', '')
-            for conn_id, conn in hub._connections.items():
-                match = re.match(r'^agent-(.+?)(?:-\d+)?$', conn_id)
-                if match and match.group(1) == agent_name:
-                    ws_connected = True
-                    ws_info = {
-                        "agent_id": conn_id,
-                        "connected_at": conn.connected_at.isoformat() if conn.connected_at else None,
-                        "last_heartbeat": conn.last_heartbeat.isoformat() if conn.last_heartbeat else None,
-                        "version": conn.version,
-                        "ip_address": conn.ip_address,
-                    }
-                    break
+            dude_agent_id = getattr(agent, 'dude_agent_id', '')
+            # Confronta direttamente con dude_agent_id
+            if dude_agent_id and dude_agent_id in hub._connections:
+                conn = hub._connections[dude_agent_id]
+                ws_connected = True
+                ws_info = {
+                    "agent_id": dude_agent_id,
+                    "connected_at": conn.connected_at.isoformat() if conn.connected_at else None,
+                    "last_heartbeat": conn.last_heartbeat.isoformat() if conn.last_heartbeat else None,
+                    "version": conn.version,
+                    "ip_address": conn.ip_address,
+                }
         
         if ws_connected:
             service.update_agent_status(agent_id, "online", ws_info.get("version", ""))
@@ -1639,18 +1636,15 @@ async def scan_customer_networks(
         
         hub = get_websocket_hub()
         
-        # Trova connessione WebSocket dell'agent
-        def normalize(s: str) -> str:
-            return s.lower().replace(" ", "").replace("-", "").replace("_", "")
-        
+        # Trova connessione WebSocket dell'agent usando dude_agent_id
         ws_agent_id = None
-        agent_name_norm = normalize(agent.name) if agent.name else ""
+        agent_dude_id = agent.dude_agent_id if agent.dude_agent_id else None
         
-        for conn_id in hub._connections.keys():
-            conn_id_norm = normalize(conn_id)
-            if agent_name_norm and (agent_name_norm in conn_id_norm or conn_id_norm in agent_name_norm):
-                ws_agent_id = conn_id
-                break
+        if agent_dude_id:
+            for conn_id in hub._connections.keys():
+                if conn_id == agent_dude_id:
+                    ws_agent_id = conn_id
+                    break
         
         # Step 1: Ottieni cache ARP da gateway (delegando all'agent remoto)
         arp_cache = {}  # {ip: mac}

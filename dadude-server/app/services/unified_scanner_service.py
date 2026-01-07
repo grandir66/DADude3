@@ -426,6 +426,10 @@ class UnifiedScannerService:
             logger.info(f"[UNIFIED_SCAN] Credentials to try - SSH: {len(ssh_creds_list)}, "
                        f"WMI: {len(wmi_creds_list)}, SNMP: {len(snmp_creds_list)}")
             
+            # Debug: mostra dettagli credenziali SNMP ricevute
+            for idx, snmp_c in enumerate(snmp_creds_list):
+                logger.info(f"[UNIFIED_SCAN] SNMP cred {idx+1}: community={snmp_c.get('community')}, name={snmp_c.get('credential_name')}")
+            
             # Prova le credenziali in sequenza
             agent_result = None
             successful_cred = None
@@ -597,8 +601,8 @@ class UnifiedScannerService:
             result.disk_used_gb += vol.get("used_bytes", 0) / (1024**3)
         result.disk_free_gb = result.disk_total_gb - result.disk_used_gb
         
-        # Network
-        result.interfaces = agent_data.get("network_interfaces", [])
+        # Network - prova network_interfaces, poi interfaces (usato da alcuni probe)
+        result.interfaces = agent_data.get("network_interfaces", []) or agent_data.get("interfaces", [])
         if result.interfaces:
             for iface in result.interfaces:
                 if iface.get("ipv4_addresses"):

@@ -1172,13 +1172,15 @@ async def verify_agent_version(agent_db_id: str):
     from ..services.websocket_hub import get_websocket_hub
     hub = get_websocket_hub()
     
-    # Cerca connessione WebSocket attiva per questo agent
+    # Cerca connessione WebSocket attiva per questo agent usando dude_agent_id
     ws_agent_id = None
-    for conn_id in hub._connections.keys():
-        # L'agent potrebbe essere connesso con un ID tipo "agent-name-12345"
-        if agent.name and agent.name in conn_id:
-            ws_agent_id = conn_id
-            break
+    agent_dude_id = agent.dude_agent_id if agent.dude_agent_id else None
+    
+    if agent_dude_id:
+        for conn_id in hub._connections.keys():
+            if conn_id == agent_dude_id:
+                ws_agent_id = conn_id
+                break
     
     if ws_agent_id and ws_agent_id in hub._connections:
         # Agent connesso via WebSocket - è online
@@ -1294,19 +1296,15 @@ async def trigger_agent_update(agent_db_id: str):
     from ..services.websocket_hub import get_websocket_hub, CommandType
     hub = get_websocket_hub()
     
-    # Trova connessione WebSocket per questo agent
-    def normalize(s: str) -> str:
-        return s.lower().replace(" ", "").replace("-", "").replace("_", "")
-    
+    # Trova connessione WebSocket per questo agent usando dude_agent_id
     ws_agent_id = None
-    agent_name_norm = normalize(agent.name) if agent.name else ""
+    agent_dude_id = agent.dude_agent_id if agent.dude_agent_id else None
     
-    for conn_id in hub._connections.keys():
-        conn_id_norm = normalize(conn_id)
-        # Match se i nomi normalizzati corrispondono o uno contiene l'altro
-        if agent_name_norm and (agent_name_norm in conn_id_norm or conn_id_norm in agent_name_norm):
-            ws_agent_id = conn_id
-            break
+    if agent_dude_id:
+        for conn_id in hub._connections.keys():
+            if conn_id == agent_dude_id:
+                ws_agent_id = conn_id
+                break
     
     if ws_agent_id and ws_agent_id in hub._connections:
         # Agent connesso via WebSocket
@@ -1541,18 +1539,15 @@ async def exec_command_on_agent(
     from ..services.websocket_hub import get_websocket_hub, CommandType
     hub = get_websocket_hub()
     
-    # Trova connessione WebSocket
-    def normalize(s: str) -> str:
-        return s.lower().replace(" ", "").replace("-", "").replace("_", "")
-    
+    # Trova connessione WebSocket usando dude_agent_id
     ws_agent_id = None
-    agent_name_norm = normalize(agent.name) if agent.name else ""
+    agent_dude_id = agent.dude_agent_id if agent.dude_agent_id else None
     
-    for conn_id in hub._connections.keys():
-        conn_id_norm = normalize(conn_id)
-        if agent_name_norm and (agent_name_norm in conn_id_norm or conn_id_norm in agent_name_norm):
-            ws_agent_id = conn_id
-            break
+    if agent_dude_id:
+        for conn_id in hub._connections.keys():
+            if conn_id == agent_dude_id:
+                ws_agent_id = conn_id
+                break
     
     if not ws_agent_id:
         raise HTTPException(

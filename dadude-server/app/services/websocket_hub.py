@@ -215,6 +215,17 @@ class AgentWebSocketHub:
         connection.metrics = message.get("metrics", {})
         connection.missed_heartbeat_count = 0  # Reset contatore quando ricevo heartbeat
         
+        # Aggiorna last_seen nel database
+        try:
+            from .customer_service import get_customer_service
+            service = get_customer_service()
+            # Trova agent per dude_agent_id e aggiorna status
+            agent = service.get_agent_by_unique_id(connection.agent_id)
+            if agent:
+                service.update_agent_status(agent.id, "online", connection.version)
+        except Exception as e:
+            logger.warning(f"Failed to update agent status in DB: {e}")
+        
         # Invia ACK
         await self._send(connection, {
             "type": MessageType.ACK.value,

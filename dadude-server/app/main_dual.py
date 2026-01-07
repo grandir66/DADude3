@@ -482,6 +482,7 @@ async def admin_scan_customer_networks(agent_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@admin_app.post("/api/v1/admin/customers/agents/{agent_id}/test", tags=["Admin"])
 @admin_app.post("/api/v1/customers/agents/{agent_id}/test", tags=["Admin"])
 async def admin_test_agent(agent_id: str, request: Request):
     """
@@ -491,6 +492,7 @@ async def admin_test_agent(agent_id: str, request: Request):
     try:
         base_url = _get_agent_api_base_url()
         query_string = str(request.url.query)
+        # Corretto: endpoint è /api/v1/customers/agents/{id}/test (router customers ha prefix /customers)
         url = f"{base_url}/api/v1/customers/agents/{agent_id}/test"
         if query_string:
             url += f"?{query_string}"

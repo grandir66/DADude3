@@ -234,13 +234,25 @@ async def _save_unified_scan_to_inventory(
         Determina se aggiornare un campo.
         Aggiorna se:
         - new_value è presente e non vuoto
-        - new_value è più lungo/completo di old_value (per stringhe)
+        - old_value è vuoto o è un IP address (preferiamo nomi reali)
+        - new_value è più lungo/completo di old_value (per stringhe non-IP)
         - new_value è maggiore di 0 (per numeri)
         """
+        import re
         if new_value is None:
             return False
         if isinstance(new_value, str):
-            return bool(new_value.strip()) and (not old_value or len(str(new_value)) >= len(str(old_value or "")))
+            if not new_value.strip():
+                return False
+            if not old_value:
+                return True
+            # Se old_value sembra un IP, aggiorna sempre con un nome vero
+            old_str = str(old_value or "")
+            ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+            if re.match(ip_pattern, old_str):
+                return True
+            # Altrimenti aggiorna se nuovo è più lungo
+            return len(str(new_value)) >= len(old_str)
         if isinstance(new_value, (int, float)):
             return new_value > 0
         return bool(new_value)
@@ -829,8 +841,21 @@ async def _save_unified_scan_to_inventory(
                     if not iface_name:
                         continue
                     
-                    # Converti ipv4_addresses in formato ip_addresses (compatibile con modello)
+                    # Converti ipv4/ipv4_addresses in formato ip_addresses (compatibile con modello)
+                    # Supporta vari formati: ipv4_addresses (lista), ipv4 (singolo), address (singolo)
                     ip_addrs = iface_data.get("ipv4_addresses", [])
+                    
+                    # Se non c'è ipv4_addresses, prova ipv4 singolo
+                    if not ip_addrs and iface_data.get("ipv4"):
+                        ip_addrs = [iface_data["ipv4"]]
+                    
+                    # Se non c'è ipv4, prova address (usato da alcuni probe)
+                    if not ip_addrs and iface_data.get("address"):
+                        addr = iface_data["address"]
+                        # Filtra indirizzi IPv6 link-local
+                        if not addr.startswith("fe80") and not addr.startswith("::"):
+                            ip_addrs = [addr]
+                    
                     if ip_addrs and isinstance(ip_addrs, list):
                         # Converti da lista stringhe a lista dict con formato modello
                         ip_addresses_formatted = [
@@ -1137,12 +1162,17 @@ async def _get_all_credentials_for_scan(
         
         # 4. Aggiungi fallback SNMP public se non ci sono credenziali SNMP
         if not credentials_by_type["snmp"] and "snmp" in cred_types_to_fetch:
+            logger.info(f"[CREDENTIALS] No SNMP credentials found, adding public fallback")
             credentials_by_type["snmp"].append({
                 "community": "public",
                 "version": "2c",
                 "port": 161,
                 "credential_name": "public (default)",
             })
+        
+        # Log dettagliato delle credenziali SNMP trovate
+        for snmp_cred in credentials_by_type["snmp"]:
+            logger.info(f"[CREDENTIALS] SNMP credential: community={snmp_cred.get('community')}, name={snmp_cred.get('credential_name')}")
         
         logger.info(f"[CREDENTIALS] Found credentials for scan: "
                    f"SSH={len(credentials_by_type['ssh'])}, "

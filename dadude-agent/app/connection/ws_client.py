@@ -322,9 +322,9 @@ class AgentWebSocketClient:
                 ws_url,
                 ssl=ssl_context,
                 additional_headers=headers,
-                ping_interval=20,
-                ping_timeout=10,
-                close_timeout=5,
+                ping_interval=None,  # Disabilita ping client-side per evitare timeout aggressivi
+                ping_timeout=None,
+                close_timeout=10,
             )
             
             await self._set_state(ConnectionState.CONNECTED)
@@ -389,6 +389,7 @@ class AgentWebSocketClient:
             
             # Avvia task di background
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            logger.info("Heartbeat loop started")
             self._receive_task = asyncio.create_task(self._receive_loop())
             self._retry_task = asyncio.create_task(self._retry_failed_messages())
             
@@ -509,15 +510,19 @@ class AgentWebSocketClient:
     
     async def _heartbeat_loop(self):
         """Loop invio heartbeat periodico"""
+        logger.info(f"Starting heartbeat loop (interval: {self._heartbeat_interval}s)")
         while self._running and self.is_connected:
             try:
+                logger.debug("Sending heartbeat...")
                 await self.send_heartbeat()
                 await asyncio.sleep(self._heartbeat_interval)
             except asyncio.CancelledError:
+                logger.info("Heartbeat loop cancelled")
                 break
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")
                 break
+        logger.info("Heartbeat loop ended")
     
     async def send_heartbeat(self, metrics: Optional[Dict] = None):
         """Invia heartbeat al server"""

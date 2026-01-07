@@ -70,83 +70,122 @@ async def scan_port(target: str, port: int, timeout: float = 1.0) -> Dict[str, A
         }
 
 
-async def scan_udp_port(target: str, port: int, timeout: float = 2.0) -> Dict[str, Any]:
+async def scan_udp_port(target: str, port: int, timeout: float = 2.0, snmp_communities: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Scansiona una singola porta UDP.
     
-    Per SNMP (161), invia una richiesta SNMP GET valida.
+    Per SNMP (161), invia richieste SNMP GET con diverse community.
     Per DNS (53), invia una query DNS valida.
     Per altre porte, invia un pacchetto generico.
     
     v3.0.0: Nuova funzione per supporto UDP
+    v3.1.0: Supporto community SNMP multiple
     """
     loop = asyncio.get_event_loop()
     
-    def check_udp():
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(timeout)
+    # Community SNMP da provare (in ordine)
+    if snmp_communities is None:
+        snmp_communities = ["public", "private", "Domarc", "domarc", "DOMARC"]
+    
+    def build_snmp_packet(community: str) -> bytes:
+        """Costruisce pacchetto SNMP GET con community specificata"""
+        community_bytes = community.encode('ascii')
+        community_len = len(community_bytes)
         
+        # Calcola lunghezza totale del pacchetto
+        # Header: version(3) + community(2+len) + PDU header + varbind
+        pdu_content = bytes([
+            0x02, 0x04, 0x00, 0x00, 0x00, 0x01,  # request-id: 1
+            0x02, 0x01, 0x00,  # error-status: 0
+            0x02, 0x01, 0x00,  # error-index: 0
+            0x30, 0x0b,  # varbind list
+            0x30, 0x09,  # varbind
+            0x06, 0x05, 0x2b, 0x06, 0x01, 0x02, 0x01,  # OID: 1.3.6.1.2.1 (sysDescr)
+            0x05, 0x00,  # NULL value
+        ])
+        pdu_len = len(pdu_content)
+        
+        # Costruisci pacchetto completo
+        packet = bytes([0x30])  # SEQUENCE
+        inner_len = 3 + 2 + community_len + 2 + pdu_len  # version + community + PDU
+        packet += bytes([inner_len])
+        packet += bytes([0x02, 0x01, 0x00])  # version: 0 (SNMPv1)
+        packet += bytes([0x04, community_len]) + community_bytes  # community
+        packet += bytes([0xa0, pdu_len]) + pdu_content  # GET-REQUEST
+        
+        return packet
+    
+    def check_udp():
         try:
             # Payload specifico per ogni porta
             if port == 161:  # SNMP
-                # SNMP GET request per sysDescr.0 (community: public)
-                # Struttura ASN.1/BER semplificata per SNMPv1 GET
-                payload = bytes([
-                    0x30, 0x26,  # SEQUENCE
-                    0x02, 0x01, 0x00,  # version: 0 (v1)
-                    0x04, 0x06, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,  # community: "public"
-                    0xa0, 0x19,  # GET-REQUEST
-                    0x02, 0x04, 0x00, 0x00, 0x00, 0x01,  # request-id: 1
-                    0x02, 0x01, 0x00,  # error-status: 0
-                    0x02, 0x01, 0x00,  # error-index: 0
-                    0x30, 0x0b,  # varbind list
-                    0x30, 0x09,  # varbind
-                    0x06, 0x05, 0x2b, 0x06, 0x01, 0x02, 0x01,  # OID: 1.3.6.1.2.1 (sysDescr.0)
-                    0x05, 0x00,  # NULL value
-                ])
-            elif port == 53:  # DNS
-                # DNS query per "." (root)
-                payload = bytes([
-                    0x00, 0x01,  # Transaction ID
-                    0x01, 0x00,  # Flags: Standard query
-                    0x00, 0x01,  # Questions: 1
-                    0x00, 0x00,  # Answer RRs: 0
-                    0x00, 0x00,  # Authority RRs: 0
-                    0x00, 0x00,  # Additional RRs: 0
-                    0x00,        # Root label (empty)
-                    0x00, 0x01,  # Type: A
-                    0x00, 0x01,  # Class: IN
-                ])
-            elif port == 123:  # NTP
-                # NTP request (mode 3 = client)
-                payload = bytes([
-                    0x1b, 0x00, 0x00, 0x00,  # LI, VN, Mode
-                    0x00, 0x00, 0x00, 0x00,  # Stratum, Poll, Precision
-                    0x00, 0x00, 0x00, 0x00,  # Root Delay
-                    0x00, 0x00, 0x00, 0x00,  # Root Dispersion
-                    0x00, 0x00, 0x00, 0x00,  # Reference ID
-                ] + [0x00] * 32)  # Reference Timestamp, etc.
-            else:
-                # Generic probe
-                payload = b"\x00"
+                # Prova diverse community
+                for community in snmp_communities:
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        sock.settimeout(timeout)
+                        payload = build_snmp_packet(community)
+                        sock.sendto(payload, (target, port))
+                        try:
+                            data, addr = sock.recvfrom(1024)
+                            if len(data) > 0:
+                                logger.debug(f"SNMP port open on {target} with community '{community}'")
+                                return True
+                        except socket.timeout:
+                            pass
+                        finally:
+                            sock.close()
+                    except Exception as e:
+                        logger.debug(f"SNMP check with '{community}' failed: {e}")
+                return False
             
-            sock.sendto(payload, (target, port))
+            # Per altre porte UDP (DNS, NTP, etc.)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(timeout)
             
             try:
-                data, addr = sock.recvfrom(1024)
-                return len(data) > 0  # Risposta ricevuta = porta aperta
-            except socket.timeout:
-                # Timeout può significare porta filtrata o chiusa
-                # Per UDP non c'è modo certo di sapere se chiusa
-                return False
-            except socket.error:
-                return False
+                if port == 53:  # DNS
+                    # DNS query per "." (root)
+                    payload = bytes([
+                        0x00, 0x01,  # Transaction ID
+                        0x01, 0x00,  # Flags: Standard query
+                        0x00, 0x01,  # Questions: 1
+                        0x00, 0x00,  # Answer RRs: 0
+                        0x00, 0x00,  # Authority RRs: 0
+                        0x00, 0x00,  # Additional RRs: 0
+                        0x00,        # Root label (empty)
+                        0x00, 0x01,  # Type: A
+                        0x00, 0x01,  # Class: IN
+                    ])
+                elif port == 123:  # NTP
+                    # NTP request (mode 3 = client)
+                    payload = bytes([
+                        0x1b, 0x00, 0x00, 0x00,  # LI, VN, Mode
+                        0x00, 0x00, 0x00, 0x00,  # Stratum, Poll, Precision
+                        0x00, 0x00, 0x00, 0x00,  # Root Delay
+                        0x00, 0x00, 0x00, 0x00,  # Root Dispersion
+                        0x00, 0x00, 0x00, 0x00,  # Reference ID
+                    ] + [0x00] * 32)  # Reference Timestamp, etc.
+                else:
+                    # Generic probe
+                    payload = b"\x00"
+                
+                sock.sendto(payload, (target, port))
+                
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    return len(data) > 0  # Risposta ricevuta = porta aperta
+                except socket.timeout:
+                    # Timeout può significare porta filtrata o chiusa
+                    return False
+                except socket.error:
+                    return False
+            finally:
+                sock.close()
                 
         except Exception as e:
             logger.debug(f"UDP scan error on {target}:{port}: {e}")
             return False
-        finally:
-            sock.close()
     
     try:
         is_open = await loop.run_in_executor(None, check_udp)
@@ -171,6 +210,7 @@ async def scan(
     ports: Optional[List[int]] = None,
     timeout: float = 1.0,
     include_udp: bool = True,
+    snmp_communities: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Scansiona multiple porte TCP e opzionalmente UDP.
@@ -180,6 +220,7 @@ async def scan(
         ports: Lista porte TCP (default: porte comuni)
         timeout: Timeout per porta in secondi
         include_udp: Se True, scansiona anche porte UDP comuni (v3.0.0)
+        snmp_communities: Lista community SNMP da provare (v3.1.0)
     
     Returns:
         Lista di risultati per ogni porta (TCP + UDP)
@@ -200,9 +241,10 @@ async def scan(
             open_ports.append(result)
     
     # v3.0.0: Scansiona anche porte UDP
+    # v3.1.0: Passa community SNMP del cliente
     if include_udp:
         logger.debug(f"Scanning {len(DEFAULT_UDP_PORTS)} UDP ports on {target}")
-        udp_tasks = [scan_udp_port(target, port, timeout + 1.0) for port in DEFAULT_UDP_PORTS]
+        udp_tasks = [scan_udp_port(target, port, timeout + 1.0, snmp_communities) for port in DEFAULT_UDP_PORTS]
         udp_results = await asyncio.gather(*udp_tasks, return_exceptions=True)
         
         for result in udp_results:

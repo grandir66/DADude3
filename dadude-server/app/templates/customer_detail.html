@@ -1229,10 +1229,11 @@ document.getElementById('editNetworkForm').addEventListener('submit', async func
             location.reload();
         } else {
             const err = await response.json();
-            alert('Errore: ' + (err.detail || 'Salvataggio fallito'));
+            const detail = typeof err.detail === 'object' ? JSON.stringify(err.detail) : (err.detail || err.error || 'Salvataggio fallito');
+            alert('Errore: ' + detail);
         }
     } catch (err) {
-        alert('Errore: ' + err.message);
+        alert('Errore: ' + (err.message || JSON.stringify(err)));
     }
 });
 
@@ -3686,7 +3687,7 @@ async function loadInventory() {
                     const openServices = devPorts.filter(p => p.open);
                     if (openServices.length > 0) {
                         const serviceList = openServices.slice(0, 5).map(s =>
-                            `<span class="badge bg-info" title="Port ${s.port}">${s.service}</span>`
+                            `<span class="badge bg-info" title="Port ${s.port}/${s.protocol || 'tcp'}">${s.service || s.port}</span>`
                         ).join(' ');
                         const moreCount = openServices.length > 5 ? ` <small>(+${openServices.length - 5})</small>` : '';
                         servicesDisplay = serviceList + moreCount;
@@ -4785,7 +4786,15 @@ async function viewInventoryDevice(deviceId) {
                         <tbody>
             `;
             device.network_interfaces.forEach(nic => {
-                const ips = nic.ip_addresses ? JSON.parse(nic.ip_addresses).map(ip => ip.ip || ip).join(', ') : '-';
+                let ips = '-';
+                if (nic.ip_addresses) {
+                    try {
+                        const ipArr = typeof nic.ip_addresses === 'string' ? JSON.parse(nic.ip_addresses) : nic.ip_addresses;
+                        ips = Array.isArray(ipArr) ? ipArr.map(ip => ip.ip || ip).join(', ') : '-';
+                    } catch (e) {
+                        ips = String(nic.ip_addresses);
+                    }
+                }
                 detailsHtml += `
                     <tr>
                         <td><code>${nic.name}</code></td>
@@ -5384,7 +5393,15 @@ async function viewInventoryDevice(deviceId) {
                             </thead>
                             <tbody>
                                 ${device.network_interfaces.map(nic => {
-                                    const ips = nic.ip_addresses ? (typeof nic.ip_addresses === 'string' ? JSON.parse(nic.ip_addresses) : nic.ip_addresses).map(ip => ip.ip || ip).join(', ') : '-';
+                                    let ips = '-';
+                                    if (nic.ip_addresses) {
+                                        try {
+                                            const ipArr = typeof nic.ip_addresses === 'string' ? JSON.parse(nic.ip_addresses) : nic.ip_addresses;
+                                            ips = Array.isArray(ipArr) ? ipArr.map(ip => ip.ip || ip).join(', ') : '-';
+                                        } catch (e) {
+                                            ips = String(nic.ip_addresses);
+                                        }
+                                    }
                                     return `
                                         <tr>
                                             <td><code>${nic.name}</code></td>
