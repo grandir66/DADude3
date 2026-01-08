@@ -502,18 +502,25 @@ class SynologyProbe(SSHVendorProbe):
                             disk_data['temperature'] = int(temp_str)
                         except:
                             pass
-                    elif '>> Slot id:' in line:
+                    elif '>> Slot id:' in line or '>> Slot:' in line or 'slot' in line.lower():
                         try:
-                            disk_data['slot_id'] = int(line.split(':')[1].strip())
+                            slot_val = line.split(':')[1].strip() if ':' in line else line.split()[-1]
+                            disk_data['slot_id'] = int(slot_val)
                         except:
-                            pass
+                            # Prova a cercare il numero nella riga
+                            slot_match = re.search(r'(\d+)', line)
+                            if slot_match:
+                                try:
+                                    disk_data['slot_id'] = int(slot_match.group(1))
+                                except:
+                                    pass
                 
                 if disk_path:
                     disk_details[disk_path] = disk_data
                     # Aggiungi anche senza /dev/ per matching più flessibile
                     if disk_path.startswith('/dev/'):
                         disk_details[disk_path[5:]] = disk_data
-                    self._log_debug(f"Parsed disk: path={disk_path}, id={disk_data.get('disk_id')}, model={disk_data.get('model')}, slot={disk_data.get('slot_id')}")
+                    self._log_debug(f"Parsed disk: path={disk_path}, id={disk_data.get('disk_id')}, model={disk_data.get('model')}, slot={disk_data.get('slot_id', 'N/A')}, temp={disk_data.get('temperature', 'N/A')}")
         
         # Usa lsblk con più colonne per ottenere tipo, modello, seriale
         lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL,SERIAL,TYPE,TRAN 2>/dev/null | tail -n +2", timeout=5)
@@ -731,6 +738,7 @@ class SynologyProbe(SSHVendorProbe):
                 self._log_info("synoshare --enum ALL returned empty, trying alternative methods")
                 # Prova a leggere smb.conf direttamente
                 smb_conf = self.exec_cmd("cat /etc/samba/smb.conf 2>/dev/null | grep -E '^\\[.*\\]' | grep -v '^\\[global\\]' | grep -v '^\\[homes\\]' | grep -v '^\\[printers\\]'", timeout=3)
+                self._log_info(f"smb.conf shares found: {len(smb_conf.split()) if smb_conf else 0}, preview: {smb_conf[:200] if smb_conf else 'None'}")
                 if smb_conf:
                     for line in smb_conf.split('\n'):
                         line = line.strip()
@@ -760,7 +768,37 @@ class SynologyProbe(SSHVendorProbe):
                                     "types": share_types if share_types else ["SMB"],
                                     "path": share_path,
                                 })
-                                self._log_debug(f"Found share via smb.conf: {share_name}, path={share_path}, types={share_types}")
+                                self._log_info(f"Found share via smb.conf: {share_name}, path={share_path}, types={share_types}")
+                
+                # Se ancora non abbiamo trovato shares, prova a leggere direttamente il file
+                if not shares:
+                    self._log_info("No shares found via smb.conf grep, trying direct file read")
+                    smb_conf_full = self.exec_cmd("cat /etc/samba/smb.conf 2>/dev/null", timeout=3)
+                    if smb_conf_full:
+                        self._log_info(f"smb.conf full file length: {len(smb_conf_full)}, preview: {smb_conf_full[:500]}")
+                        # Parse manuale del file
+                        current_section = None
+                        for line in smb_conf_full.split('\n'):
+                            line = line.strip()
+                            if line.startswith('[') and line.endswith(']'):
+                                current_section = line[1:-1]
+                                if current_section not in ['global', 'homes', 'printers']:
+                                    # Nuova share trovata
+                                    share_path = f"/volume1/{current_section}"
+                                    shares.append({
+                                        "name": current_section,
+                                        "types": ["SMB"],
+                                        "path": share_path,
+                                    })
+                                    self._log_info(f"Found share via direct parse: {current_section}")
+                            elif current_section and 'path' in line.lower() and '=' in line:
+                                # Aggiorna path se trovato
+                                path_val = line.split('=')[-1].strip()
+                                if path_val and '/' in path_val:
+                                    for share in shares:
+                                        if share['name'] == current_section:
+                                            share['path'] = path_val
+                                            break
             
             if synoshare and len(synoshare.strip()) > 0:
                 # Il formato di synoshare --enum ALL può essere:
