@@ -602,19 +602,31 @@ async def _probe_ssh(
                 
                 def exec_cmd_sudo(cmd: str, timeout: int = 5) -> str:
                     """Esegue comando con sudo se necessario"""
-                    # Prova prima con sudo, poi senza se sudo non è disponibile
+                    # Prova prima senza sudo (molti comandi Synology funzionano anche senza root)
+                    output = exec_cmd(cmd, timeout=timeout)
+                    if output and len(output.strip()) > 0:
+                        return output
+                    
+                    # Se senza sudo non funziona, prova con sudo
                     sudo_cmd = f"sudo {cmd}"
                     try:
                         stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
                         sudo_output = stdout.read().decode().strip()
                         sudo_error = stderr.read().decode().strip()
+                        
                         # Se sudo funziona (output presente e nessun errore di password), usalo
-                        if sudo_output or (not sudo_error or ("password" not in sudo_error.lower() and "sudo:" not in sudo_error.lower())):
-                            return sudo_output
-                    except:
-                        pass
-                    # Fallback: prova senza sudo
-                    return exec_cmd(cmd, timeout=timeout)
+                        if sudo_output and len(sudo_output.strip()) > 0:
+                            # Verifica che non ci siano errori di password
+                            if "password" not in sudo_error.lower() and "sudo:" not in sudo_error.lower():
+                                logger.debug(f"SSH: sudo command succeeded: {cmd[:50]}...")
+                                return sudo_output
+                            else:
+                                logger.debug(f"SSH: sudo requires password for: {cmd[:50]}...")
+                    except Exception as e:
+                        logger.debug(f"SSH: sudo command failed: {cmd[:50]}... error: {e}")
+                    
+                    # Se entrambi falliscono, ritorna output originale (potrebbe essere vuoto ma corretto)
+                    return output
                 
                 # Istanzia e chiama probe vendor-specific
                 vendor_probe = vendor_probe_class(exec_cmd, exec_cmd_sudo)
