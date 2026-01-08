@@ -109,6 +109,20 @@ class SynologyProbe(SSHVendorProbe):
                     info["model_number"] = value
                 elif key == 'upnpmodeldescription':
                     info["description"] = value
+        
+        # Se serial_number non trovato da 'unique', prova metodi alternativi
+        if not info.get("serial_number"):
+            # Metodo 1: synogetkeyvalue
+            serial = self.exec_cmd("synogetkeyvalue /etc/synoinfo.conf serial 2>/dev/null", timeout=3)
+            if serial and serial.strip():
+                info["serial_number"] = serial.strip()
+        
+        if not info.get("serial_number"):
+            # Metodo 2: /proc/sys/kernel/syno_serial
+            serial = self.exec_cmd("cat /proc/sys/kernel/syno_serial 2>/dev/null", timeout=3)
+            if serial and serial.strip():
+                info["serial_number"] = serial.strip()
+        
         return info
     
     def _parse_version(self, content: str) -> Dict[str, Any]:
