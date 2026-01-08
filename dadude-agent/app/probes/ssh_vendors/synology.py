@@ -190,26 +190,48 @@ class SynologyProbe(SSHVendorProbe):
         volumes = []
         
         try:
-            # Metodo 1: df per ottenere tutti i volumi montati
-            df_out = self.exec_cmd("df -h 2>/dev/null | grep -E '^/dev/|/volume'", timeout=5)
+            # Metodo 1: Usa synospace per ottenere nomi volumi Synology
+            synospace = self.exec_cmd("/usr/syno/bin/synospace --get-volume-list 2>/dev/null", timeout=5)
+            volume_names = {}
+            if synospace:
+                for line in synospace.split('\n'):
+                    if line.strip() and 'volume' in line.lower():
+                        # Estrai nome volume (es: "volume1" o "volume_1")
+                        parts = line.strip().split()
+                        if parts:
+                            vol_id = parts[0]
+                            vol_name = parts[-1] if len(parts) > 1 else vol_id
+                            volume_names[vol_id] = vol_name
+            
+            # Metodo 2: df -T per ottenere volumi con tipo filesystem
+            df_out = self.exec_cmd("df -T 2>/dev/null | grep -E '^/dev/|/volume'", timeout=5)
             if df_out:
                 for line in df_out.split('\n'):
                     parts = line.split()
-                    if len(parts) >= 6 and '/volume' in line:
-                        mount_point = parts[5]
-                        vol_name = mount_point.replace('/', '_').strip('_') or mount_point
+                    if len(parts) >= 7 and '/volume' in line:
+                        mount_point = parts[6]
+                        filesystem = parts[1] if len(parts) > 1 else "ext4"
+                        
+                        # Estrai nome volume dal mount_point o da synospace
+                        vol_id = mount_point.replace('/', '').replace('volume', 'volume')
+                        vol_name = volume_names.get(vol_id, vol_id)
+                        if not vol_name or vol_name == vol_id:
+                            # Fallback: usa ultima parte del path
+                            vol_name = mount_point.split('/')[-1] or mount_point.replace('/', '_').strip('_')
                         
                         volumes.append({
                             "name": vol_name,
+                            "mount_point": mount_point,
                             "path": mount_point,
                             "device": parts[0],
-                            "total": parts[1],
-                            "used": parts[2],
-                            "available": parts[3],
-                            "use_percent": parts[4],
-                            "total_bytes": self._parse_size(parts[1]),
-                            "used_bytes": self._parse_size(parts[2]),
-                            "available_bytes": self._parse_size(parts[3]),
+                            "filesystem": filesystem,
+                            "total": parts[3],
+                            "used": parts[4],
+                            "available": parts[5],
+                            "use_percent": parts[5] if len(parts) > 5 else "",
+                            "total_bytes": self._parse_size(parts[3]),
+                            "used_bytes": self._parse_size(parts[4]),
+                            "available_bytes": self._parse_size(parts[5]),
                         })
             
             # Metodo 2: Cerca volumi esplicitamente
@@ -279,37 +301,72 @@ class SynologyProbe(SSHVendorProbe):
             info["raid_arrays"] = raid_info
             info["raid_count"] = len(raid_info)
         
-        # Dischi fisici
+        # Dischi fisici - migliorato con più dettagli hardware
         disks = []
-        lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL,SERIAL 2>/dev/null | tail -n +2", timeout=5)
+        # Usa lsblk con più colonne per ottenere tipo, modello, seriale
+        lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL,SERIAL,TYPE,TRAN 2>/dev/null | tail -n +2", timeout=5)
         if lsblk:
             for line in lsblk.split('\n'):
                 if line.strip() and not line.startswith('NAME'):
                     parts = line.split()
-                    if parts and parts[0].startswith('sd'):
+                    if parts and (parts[0].startswith('sd') or parts[0].startswith('nvme') or parts[0].startswith('hd')):
                         disk = {
-                            "name": parts[0],
+                            "name": f"/dev/{parts[0]}",
+                            "device": parts[0],
                             "size": parts[1] if len(parts) > 1 else "",
-                            "model": ' '.join(parts[2:-1]) if len(parts) > 3 else (parts[2] if len(parts) > 2 else ""),
-                            "serial": parts[-1] if len(parts) > 3 else "",
+                            "size_bytes": self._parse_size(parts[1]) if len(parts) > 1 else 0,
+                            "model": ' '.join(parts[2:-3]) if len(parts) > 5 else (parts[2] if len(parts) > 2 else ""),
+                            "serial": parts[-3] if len(parts) > 5 else (parts[-1] if len(parts) > 3 else ""),
+                            "type": parts[-2] if len(parts) > 4 else "",
+                            "transport": parts[-1] if len(parts) > 5 else "",
                         }
                         
+                        # Determina tipo disco (SSD/HDD) da modello o transport
+                        model_lower = disk["model"].lower() if disk["model"] else ""
+                        transport_lower = disk["transport"].lower() if disk["transport"] else ""
+                        if "ssd" in model_lower or "nvme" in transport_lower or disk["name"].startswith("/dev/nvme"):
+                            disk["disk_type"] = "SSD"
+                        elif "hdd" in model_lower or "sata" in transport_lower:
+                            disk["disk_type"] = "HDD"
+                        else:
+                            disk["disk_type"] = disk["type"] or "Unknown"
+                        
                         # Temperatura e salute via smartctl
-                        smart = self.exec_cmd_sudo(f"smartctl -a /dev/{parts[0]} 2>/dev/null | grep -E '(Temperature|Health|PASSED|FAILED)' | head -3", timeout=5)
+                        smart = self.exec_cmd_sudo(f"smartctl -a /dev/{parts[0]} 2>/dev/null | grep -E '(Temperature|Health|PASSED|FAILED|SMART)' | head -5", timeout=5)
                         if smart:
                             for sline in smart.split('\n'):
-                                if 'temperature' in sline.lower():
+                                sline_lower = sline.lower()
+                                if 'temperature' in sline_lower:
                                     try:
                                         for word in sline.split():
                                             if word.isdigit():
                                                 disk["temperature"] = int(word)
+                                                disk["temperature_celsius"] = int(word)
                                                 break
                                     except:
                                         pass
-                                elif 'passed' in sline.lower():
+                                elif 'passed' in sline_lower or 'healthy' in sline_lower:
                                     disk["health"] = "healthy"
-                                elif 'failed' in sline.lower():
+                                    disk["health_status"] = "healthy"
+                                    disk["smart_status"] = "PASSED"
+                                elif 'failed' in sline_lower or 'failing' in sline_lower:
                                     disk["health"] = "failing"
+                                    disk["health_status"] = "failing"
+                                    disk["smart_status"] = "FAILED"
+                        
+                        # Informazioni aggiuntive da /sys/block
+                        if parts[0]:
+                            sys_model = self.exec_cmd(f"cat /sys/block/{parts[0]}/device/model 2>/dev/null | tr -d '\\n'", timeout=2)
+                            if sys_model:
+                                disk["model"] = sys_model.strip()
+                            
+                            sys_serial = self.exec_cmd(f"cat /sys/block/{parts[0]}/device/serial 2>/dev/null | tr -d '\\n'", timeout=2)
+                            if sys_serial:
+                                disk["serial"] = sys_serial.strip()
+                            
+                            sys_vendor = self.exec_cmd(f"cat /sys/block/{parts[0]}/device/vendor 2>/dev/null | tr -d '\\n'", timeout=2)
+                            if sys_vendor:
+                                disk["vendor"] = sys_vendor.strip()
                         
                         disks.append(disk)
         
@@ -357,18 +414,54 @@ class SynologyProbe(SSHVendorProbe):
         """Ottiene servizi Synology attivi"""
         services = []
         
-        # Servizi specifici Synology
-        syno_services = [
-            "nginx", "smbd", "nfsd", "sshd", "rsync", 
-            "synoscgi", "synologyd", "synomount", "synolog"
-        ]
-        
-        for svc in syno_services:
-            status = self.exec_cmd(f"pgrep -x {svc} >/dev/null 2>&1 && echo 'running' || echo 'stopped'", timeout=2)
-            if status:
+        # Metodo 1: Usa synoservicectl se disponibile (metodo Synology nativo)
+        synoservicectl = self.exec_cmd("which synoservicectl 2>/dev/null || which /usr/syno/bin/synoservicectl 2>/dev/null", timeout=2)
+        if synoservicectl:
+            # Lista servizi Synology
+            syno_services = [
+                "nginx", "smbd", "nfsd", "sshd", "rsync", 
+                "synoscgi", "synologyd", "synomount", "synolog"
+            ]
+            
+            for svc in syno_services:
+                # Verifica stato con synoservicectl
+                status_cmd = f"/usr/syno/bin/synoservicectl --status {svc} 2>/dev/null || synoservicectl --status {svc} 2>/dev/null"
+                status_out = self.exec_cmd(status_cmd, timeout=3)
+                if status_out:
+                    status_lower = status_out.lower()
+                    if 'running' in status_lower or 'started' in status_lower or 'active' in status_lower:
+                        status = "running"
+                    else:
+                        status = "stopped"
+                else:
+                    # Fallback: usa pgrep
+                    pgrep_out = self.exec_cmd(f"pgrep -x {svc} >/dev/null 2>&1 && echo 'running' || echo 'stopped'", timeout=2)
+                    status = pgrep_out.strip() if pgrep_out else "stopped"
+                
                 services.append({
                     "name": svc,
-                    "status": status.strip(),
+                    "status": status,
+                })
+        else:
+            # Metodo 2: Fallback con pgrep e systemctl
+            syno_services = [
+                "nginx", "smbd", "nfsd", "sshd", "rsync", 
+                "synoscgi", "synologyd", "synomount", "synolog"
+            ]
+            
+            for svc in syno_services:
+                # Prova systemctl prima
+                systemctl_status = self.exec_cmd(f"systemctl is-active {svc} 2>/dev/null", timeout=2)
+                if systemctl_status and systemctl_status.strip() == "active":
+                    status = "running"
+                else:
+                    # Fallback pgrep
+                    pgrep_out = self.exec_cmd(f"pgrep -x {svc} >/dev/null 2>&1 && echo 'running' || echo 'stopped'", timeout=2)
+                    status = pgrep_out.strip() if pgrep_out else "stopped"
+                
+                services.append({
+                    "name": svc,
+                    "status": status,
                 })
         
         return services
