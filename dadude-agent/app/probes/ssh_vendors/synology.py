@@ -839,30 +839,32 @@ class SynologyProbe(SSHVendorProbe):
                                             break
             
             if synoshare and len(synoshare.strip()) > 0:
-                # Il formato di synoshare --enum ALL può essere:
-                # - Una lista di share, una per riga
-                # - Formato con sezioni [share_name]
+                # Il formato di synoshare -enum ALL è:
+                # Share Enum Arguments: [0x3FF0F]  ALL ENC DEC C2 COLD-STORAGE MISSING-VOL OFFLINE-VOL CEPH WORM
+                # 13 Listed:
+                # BACKUP_APPARATI
+                # CLIENTI
+                # DATI
+                # ...
                 lines = synoshare.split('\n')
-                current_share = None
+                in_list_section = False
                 
                 for line in lines:
                     line = line.strip()
                     if not line or line.startswith('#'):
                         continue
                     
-                    # Se la riga inizia con [ e finisce con ], è il nome di una share
-                    if line.startswith('[') and line.endswith(']'):
-                        current_share = line[1:-1].strip()
+                    # Salta le righe di header
+                    if 'Share Enum Arguments' in line:
+                        continue
+                    if 'Listed:' in line:
+                        in_list_section = True
                         continue
                     
-                    # Se abbiamo una share corrente e la riga contiene informazioni
-                    if current_share:
-                        share_name = current_share
-                    else:
-                        # Altrimenti, il nome della share è la prima parte della riga
-                        share_name = line.split()[0] if line.split() else None
-                    
-                    if share_name:
+                    # Se siamo nella sezione delle liste, ogni riga è un nome di share
+                    if in_list_section:
+                        share_name = line
+                        if share_name:
                         # Verifica tipo share con synoshare --get
                         share_info = self.exec_cmd_sudo(f"/usr/syno/bin/synoshare -get {share_name} 2>/dev/null", timeout=3)
                         share_type = []
