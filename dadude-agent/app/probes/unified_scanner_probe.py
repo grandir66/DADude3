@@ -784,6 +784,11 @@ def _normalize_ssh_result(data: Dict) -> Dict:
         "volumes": _safe_list(data.get("volumes") or data.get("filesystems") or (data.get("storage_info", {}).get("volumes") if isinstance(data.get("storage_info"), dict) else [])),
         "raid_arrays": _safe_list(data.get("raid_arrays") or (data.get("storage_info", {}).get("raid_arrays") if isinstance(data.get("storage_info"), dict) else [])),
         "shares": _safe_list(data.get("shares") or []),
+        # Mantieni anche i campi originali se presenti
+        "volumes_count": data.get("volumes_count", 0),
+        "disks_count": data.get("disks_count", 0),
+        "raid_count": data.get("raid_count", 0),
+        "shares_count": data.get("shares_count", 0),
         "disk_total_gb": data.get("disk_total_gb", 0),
         "disk_used_gb": data.get("disk_used_gb", 0),
         "disk_free_gb": data.get("disk_free_gb", 0),
