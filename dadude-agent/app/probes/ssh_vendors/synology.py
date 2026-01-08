@@ -465,8 +465,47 @@ class SynologyProbe(SSHVendorProbe):
             info["raid_arrays"] = raid_info
             info["raid_count"] = len(raid_info)
         
-        # Dischi fisici - migliorato con più dettagli hardware
+        # Dischi fisici - usa synodisk --enum -t internal per informazioni native Synology
         disks = []
+        synodisk_output = self.exec_cmd("/usr/syno/bin/synodisk --enum -t internal 2>/dev/null", timeout=5)
+        disk_details = {}
+        
+        if synodisk_output:
+            # Parse synodisk output
+            import re
+            disk_blocks = synodisk_output.split('************ Disk Info ***************')
+            for block in disk_blocks[1:]:  # Skip first empty block
+                disk_data = {}
+                disk_path = None
+                for line in block.strip().split('\n'):
+                    if '>> Disk id:' in line:
+                        disk_data['disk_id'] = int(line.split(':')[1].strip())
+                    elif '>> Disk path:' in line:
+                        disk_path = line.split(':')[1].strip()
+                        disk_data['disk_path'] = disk_path
+                    elif '>> Disk model:' in line:
+                        disk_data['model'] = line.split(':', 1)[1].strip()
+                    elif '>> Total capacity:' in line:
+                        capacity_str = line.split(':')[1].strip().split()[0]
+                        try:
+                            disk_data['capacity_gb'] = float(capacity_str)
+                        except:
+                            pass
+                    elif '>> Tempeture:' in line or '>> Temperature:' in line:  # Typo nel comando Synology
+                        temp_str = line.split(':')[1].strip().split()[0]
+                        try:
+                            disk_data['temperature'] = int(temp_str)
+                        except:
+                            pass
+                    elif '>> Slot id:' in line:
+                        try:
+                            disk_data['slot_id'] = int(line.split(':')[1].strip())
+                        except:
+                            pass
+                
+                if disk_path:
+                    disk_details[disk_path] = disk_data
+        
         # Usa lsblk con più colonne per ottenere tipo, modello, seriale
         lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL,SERIAL,TYPE,TRAN 2>/dev/null | tail -n +2", timeout=5)
         if lsblk:
