@@ -584,7 +584,6 @@
                                 </th>
                                 <th>Servizi</th>
                                 <th>Credenziali</th>
-                                <th>Monitoraggio</th>
                                 <th>Azioni</th>
                             </tr>
                         </thead>
@@ -3590,7 +3589,6 @@ async function loadInventory() {
                 
                 if (isMikroTik) {
                     buttons += '<button class="btn btn-outline-primary btn-sm" onclick="backupMikroTikDevice(\'' + dev.id + '\', \'' + (dev.primary_ip || '') + '\')" title="Backup Configurazione"><i class="bi bi-download"></i></button>';
-                    buttons += '<button class="btn btn-outline-success btn-sm" onclick="manageMikroTikDevice(\'' + dev.id + '\', \'' + (dev.primary_ip || '') + '\')" title="Gestione MikroTik"><i class="bi bi-router"></i></button>';
                 }
                 
                 // Verifica se è HP/Aruba
@@ -3717,7 +3715,7 @@ async function loadInventory() {
 
                 tbody.innerHTML += `
                     <tr data-device-id="${dev.id}">
-                        <td>
+                        <td style="white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
                             ${deviceNameHtml}
                         </td>
                         <td><code class="small">${dev.primary_ip || '-'}</code></td>
@@ -3780,7 +3778,6 @@ async function loadInventory() {
                         </td>
                         <td style="min-width: 120px;">${servicesDisplay}</td>
                         <td>${credSelect}</td>
-                        <td>${monitoringHtml}</td>
                         <td>
                             <div class="d-flex justify-content-between align-items-center">
                                 <div class="btn-group btn-group-sm">
@@ -3790,12 +3787,10 @@ async function loadInventory() {
                                     <button class="btn btn-warning" onclick="autoDetectDevice('${dev.id}', '${dev.primary_ip}')" title="Auto-Detect">
                                         <i class="bi bi-bullseye"></i>
                                     </button>
-                                    <button class="btn btn-outline-primary" onclick="sshAdvancedScan('${dev.id}', '${dev.primary_ip}')" title="SSH Advanced Scan">
-                                        <i class="bi bi-terminal"></i>
-                                    </button>
                                     <button class="btn btn-info" onclick="unifiedScan('${dev.id}', '${dev.primary_ip}')" title="Unified Scanner">
                                         <i class="bi bi-layers"></i>
                                     </button>
+                                    ${monitoringHtml}
                                     ${getDeviceActionButtons(dev)}
                                 </div>
                                 <button class="btn btn-outline-danger btn-sm ms-2 delete-inventory-device-btn" data-device-id="${dev.id || ''}" title="Elimina">
@@ -5566,20 +5561,8 @@ async function viewInventoryDevice(deviceId) {
             </div>
         `;
 
-        // Determina se è un dispositivo Linux/Storage/Hypervisor per mostrare pulsante SSH Advanced Scan
-        const isLinuxStorageHypervisor = device.os_family === 'Linux' || 
-                                         device.device_type === 'storage' || 
-                                         device.device_type === 'hypervisor' ||
-                                         (device.linux_details !== null && device.linux_details !== undefined);
-        
-        // Mostra modal con pulsante SSH Advanced Scan se applicabile
-        showModal('Dettagli Dispositivo: ' + device.name, modalContent, 'xl', isLinuxStorageHypervisor ? {
-            buttons: [{
-                text: '<i class="bi bi-terminal"></i> SSH Advanced Scan',
-                class: 'btn btn-outline-primary',
-                onclick: `sshAdvancedScan('${deviceId}', '${device.primary_ip || ''}')`
-            }]
-        } : null);
+        // Mostra modal con dettagli dispositivo
+        showModal('Dettagli Dispositivo: ' + device.name, modalContent, 'xl');
 
     } catch (e) {
         alert('Errore caricamento dettagli: ' + e.message);
@@ -6915,106 +6898,6 @@ async function createVmInventoryDevices(deviceId) {
     }
 }
 
-// SSH Advanced Scan (ora supporta multi-protocollo)
-async function sshAdvancedScan(deviceId, address) {
-    // Chiudi modal dettagli se aperto
-    const detailModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
-    if (detailModal) {
-        detailModal.hide();
-    }
-    
-    const btn = event?.target?.closest('button');
-    const originalHtml = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-        btn.disabled = true;
-    }
-    
-    try {
-        // Ottieni protocollo selezionato dal modal (se già aperto) o usa default
-        const protocolSelect = document.getElementById('scanProtocol');
-        const protocol = protocolSelect ? protocolSelect.value : 'auto';
-        
-        const response = await fetch(`/api/v1/inventory/ssh-advanced-scan?customer_id=${customerId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                device_id: deviceId,
-                address: address,
-                protocol: protocol,
-                use_assigned_credential: true,
-                use_default_credentials: true,
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success && result.data) {
-            // Mostra modal con dati raw
-            const modal = new bootstrap.Modal(document.getElementById('sshAdvancedScanModal'));
-            const modalBody = document.getElementById('sshAdvancedScanData');
-            
-            // Formatta JSON con indentazione
-            const jsonStr = JSON.stringify(result.data, null, 2);
-            modalBody.innerHTML = `<pre class="bg-dark text-light p-3 rounded" style="max-height: 70vh; overflow: auto;"><code>${escapeHtml(jsonStr)}</code></pre>`;
-            
-            // Aggiorna header con indirizzo
-            document.getElementById('sshAdvancedScanAddress').textContent = address;
-            
-            // Mostra protocolli utilizzati
-            if (result.protocols_used && result.protocols_used.length > 0) {
-                const protocolsUsedDiv = document.getElementById('sshAdvancedScanProtocolsUsed');
-                const protocolsUsedList = document.getElementById('protocolsUsedList');
-                protocolsUsedList.textContent = result.protocols_used.join(', ');
-                protocolsUsedDiv.classList.remove('d-none');
-            } else {
-                document.getElementById('sshAdvancedScanProtocolsUsed').classList.add('d-none');
-            }
-            
-            // Salva JSON per copia
-            window.lastScanJson = jsonStr;
-            
-            modal.show();
-        } else {
-            // Mostra errore formattato con line breaks
-            const errorMsg = result.error || 'Errore sconosciuto';
-            const formattedError = errorMsg.replace(/\n/g, '\n');
-            alert(`❌ Scan Avanzato Fallito\n\n${formattedError}`);
-        }
-    } catch (e) {
-        alert('Errore: ' + e.message);
-    } finally {
-        if (btn) {
-            btn.innerHTML = originalHtml;
-            btn.disabled = false;
-        }
-    }
-}
-
-function copyScanJson() {
-    if (window.lastScanJson) {
-        navigator.clipboard.writeText(window.lastScanJson).then(() => {
-            const btn = document.getElementById('copyJsonBtn');
-            const originalHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="bi bi-check"></i> Copiato!';
-            btn.classList.add('btn-success');
-            btn.classList.remove('btn-outline-primary');
-            setTimeout(() => {
-                btn.innerHTML = originalHtml;
-                btn.classList.remove('btn-success');
-                btn.classList.add('btn-outline-primary');
-            }, 2000);
-        }).catch(err => {
-            alert('Errore durante la copia: ' + err.message);
-        });
-    }
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
 
 // ============================================================================
 // UNIFIED SCANNER - Multi-Protocol Advanced Scan
@@ -7373,40 +7256,5 @@ async function saveUnifiedScanToInventory(deviceId) {
 }
 </script>
 
-<!-- Modal SSH Advanced Scan -->
-<div class="modal fade" id="sshAdvancedScanModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-terminal"></i> Advanced Scan - <span id="sshAdvancedScanAddress"></span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label for="scanProtocol" class="form-label">Protocollo:</label>
-                    <select id="scanProtocol" class="form-select">
-                        <option value="auto">Auto (Rilevamento automatico)</option>
-                        <option value="ssh">SSH</option>
-                        <option value="snmp">SNMP</option>
-                        <option value="winrm">WinRM/WMI</option>
-                    </select>
-                    <small class="form-text text-muted">Seleziona un protocollo specifico o "Auto" per rilevamento automatico</small>
-                </div>
-                <div id="sshAdvancedScanProtocolsUsed" class="alert alert-info d-none mb-3">
-                    <strong>Protocolli utilizzati:</strong> <span id="protocolsUsedList"></span>
-                </div>
-                <div id="sshAdvancedScanData"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-primary" id="copyJsonBtn" onclick="copyScanJson()">
-                    <i class="bi bi-clipboard"></i> Copia JSON
-                </button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 {% endblock %}
