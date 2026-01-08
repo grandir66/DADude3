@@ -884,11 +884,17 @@ async def _save_unified_scan_to_inventory(
                                     state = getattr(svc, 'status', None) or getattr(svc, 'state', None) or ""
                                 
                                 if svc_name:
-                                    all_services.append(str(svc_name))
-                                    # Verifica se il servizio è in esecuzione
-                                    state_str = str(state).lower() if state else ""
-                                    if state_str in ["running", "active", "enabled", "up", "started"]:
-                                        running_services.append(str(svc_name))
+                                    svc_name_str = str(svc_name).strip()
+                                    if svc_name_str:
+                                        all_services.append(svc_name_str)
+                                        # Verifica se il servizio è in esecuzione
+                                        # Per Synology, il comando pgrep restituisce "running" o "stopped"
+                                        state_str = str(state).strip().lower() if state else ""
+                                        if state_str in ["running", "active", "enabled", "up", "started"]:
+                                            running_services.append(svc_name_str)
+                                            logger.debug(f"[SAVE_UNIFIED] Service {svc_name_str} is running (status={state_str})")
+                                        else:
+                                            logger.debug(f"[SAVE_UNIFIED] Service {svc_name_str} is not running (status={state_str})")
                             
                             if all_services:
                                 device.custom_fields["running_services"] = running_services
