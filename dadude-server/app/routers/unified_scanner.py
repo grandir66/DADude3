@@ -874,20 +874,30 @@ async def _save_unified_scan_to_inventory(
                             running_services = []
                             all_services = []
                             for svc in services_list:
-                                svc_name = svc.get("name") or svc.get("service") or str(svc)
-                                all_services.append(svc_name)
-                                # Verifica se il servizio è in esecuzione
-                                state = svc.get("state") or svc.get("status") or ""
-                                if state.lower() in ["running", "active", "enabled", "up"]:
-                                    running_services.append(svc_name)
+                                # Gestisci sia dizionari che oggetti ServiceInfo
+                                if isinstance(svc, dict):
+                                    svc_name = svc.get("name") or svc.get("service") or str(svc)
+                                    state = svc.get("state") or svc.get("status") or ""
+                                else:
+                                    # Oggetto ServiceInfo con attributi
+                                    svc_name = getattr(svc, 'name', None) or getattr(svc, 'service', None) or str(svc)
+                                    state = getattr(svc, 'status', None) or getattr(svc, 'state', None) or ""
+                                
+                                if svc_name:
+                                    all_services.append(str(svc_name))
+                                    # Verifica se il servizio è in esecuzione
+                                    state_str = str(state).lower() if state else ""
+                                    if state_str in ["running", "active", "enabled", "up", "started"]:
+                                        running_services.append(str(svc_name))
                             
-                            device.custom_fields["running_services"] = running_services
-                            device.custom_fields["running_services_count"] = len(running_services)
-                            device.custom_fields["all_services"] = all_services
-                            device.custom_fields["services_count"] = len(all_services)
-                            flag_modified(device, "custom_fields")
-                            logger.info(f"[SAVE_UNIFIED] Saved services for {manufacturer} device {device_id}: "
-                                      f"running={len(running_services)}, total={len(all_services)}")
+                            if all_services:
+                                device.custom_fields["running_services"] = running_services
+                                device.custom_fields["running_services_count"] = len(running_services)
+                                device.custom_fields["all_services"] = all_services
+                                device.custom_fields["services_count"] = len(all_services)
+                                flag_modified(device, "custom_fields")
+                                logger.info(f"[SAVE_UNIFIED] Saved services for {manufacturer} device {device_id}: "
+                                          f"running={len(running_services)}, total={len(all_services)}")
                     
                 except Exception as e:
                     logger.error(f"Error saving Linux/NAS data: {e}", exc_info=True)
