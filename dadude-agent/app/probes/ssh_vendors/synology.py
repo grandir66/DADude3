@@ -79,10 +79,17 @@ class SynologyProbe(SSHVendorProbe):
             if packages:
                 info["packages"] = packages
                 info["packages_count"] = len(packages)
+            
+            # Shares (SMB/NFS/AFP)
+            shares = self._get_shares()
+            if shares:
+                info["shares"] = shares
+                info["shares_count"] = len(shares)
+                self._log_info(f"shares collected: {len(shares)}")
         except Exception as e:
             self._log_error(f"Error during probe: {e}")
         
-        self._log_info(f"Synology probe complete: hostname={info.get('hostname')}, model={info.get('model')}, fields={len(info)}")
+        self._log_info(f"Synology probe complete: hostname={info.get('hostname')}, model={info.get('model')}, fields={len(info)}, volumes={len(info.get('volumes', []))}, disks={len(info.get('disks', []))}, shares={len(info.get('shares', []))}")
         return info
     
     def _parse_synoinfo(self, content: str) -> Dict[str, Any]:
