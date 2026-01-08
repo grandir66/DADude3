@@ -272,10 +272,10 @@ async def _save_unified_scan_to_inventory(
             return new_value > 0
         return bool(new_value)
     
-    def update_field(device, field_name: str, new_value, summary: dict):
-        """Aggiorna un campo se il nuovo valore è più completo"""
+    def update_field(device, field_name: str, new_value, summary: dict, force: bool = False):
+        """Aggiorna un campo se il nuovo valore è più completo (o force=True)"""
         old_value = getattr(device, field_name, None)
-        if should_update(new_value, old_value):
+        if force or should_update(new_value, old_value):
             setattr(device, field_name, new_value)
             summary["fields_updated"].append(field_name)
             return True
@@ -297,9 +297,9 @@ async def _save_unified_scan_to_inventory(
             update_field(device, "name", scan_result.hostname, summary)
             update_field(device, "hostname", scan_result.hostname, summary)
         
-        # OS info
+        # OS info - forza aggiornamento per evitare che "DSM" venga ignorato perché più corto di "Windows"
         if scan_result.os_name:
-            update_field(device, "os_family", scan_result.os_name, summary)  # os_family per compatibilità
+            update_field(device, "os_family", scan_result.os_name, summary, force=True)  # os_family per compatibilità
         if scan_result.os_version:
             update_field(device, "os_version", scan_result.os_version, summary)
         
