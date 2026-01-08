@@ -7144,6 +7144,13 @@ function showUnifiedScanResults(address, data, alreadySaved = false) {
     showModal('<i class="bi bi-layers"></i> Unified Scanner - ' + address, html, 'xl');
 }
 
+// Utility function per escape HTML (usata in unified scanner)
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Download JSON as file
 function downloadUnifiedScanJson(hostname) {
     if (unifiedScanResultJson) {
