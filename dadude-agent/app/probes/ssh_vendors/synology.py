@@ -768,7 +768,13 @@ class SynologyProbe(SSHVendorProbe):
         
         try:
             # Metodo 1: Usa synoshare se disponibile (NOTA: usa -enum non --enum)
-            synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
+            # synoshare richiede sempre sudo, quindi proviamo direttamente con sudo
+            synoshare = None
+            # Prova prima senza sudo (per compatibilità)
+            synoshare = self.exec_cmd("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
+            # Se non funziona, prova con sudo (richiede password SSH)
+            if not synoshare or len(synoshare.strip()) == 0:
+                synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
             self._log_info(f"synoshare -enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
             
             # Metodo alternativo: Leggi direttamente /etc/samba/smb.conf se synoshare non funziona
