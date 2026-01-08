@@ -506,14 +506,26 @@ class SynologyProbe(SSHVendorProbe):
                         try:
                             slot_val = line.split(':')[1].strip() if ':' in line else line.split()[-1]
                             disk_data['slot_id'] = int(slot_val)
+                            self._log_debug(f"Found slot_id from line '{line}': {disk_data['slot_id']}")
                         except:
                             # Prova a cercare il numero nella riga
                             slot_match = re.search(r'(\d+)', line)
                             if slot_match:
                                 try:
                                     disk_data['slot_id'] = int(slot_match.group(1))
+                                    self._log_debug(f"Found slot_id via regex from line '{line}': {disk_data['slot_id']}")
                                 except:
                                     pass
+                    # Cerca anche "Slot" senza "id" o altri formati
+                    elif 'slot' in line.lower() and ('id' in line.lower() or 'number' in line.lower() or 'position' in line.lower()):
+                        self._log_debug(f"Potential slot line found: '{line}'")
+                        slot_match = re.search(r'(\d+)', line)
+                        if slot_match:
+                            try:
+                                disk_data['slot_id'] = int(slot_match.group(1))
+                                self._log_debug(f"Found slot_id from potential slot line: {disk_data['slot_id']}")
+                            except:
+                                pass
                 
                 if disk_path:
                     disk_details[disk_path] = disk_data
