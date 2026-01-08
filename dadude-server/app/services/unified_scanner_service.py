@@ -562,6 +562,10 @@ class UnifiedScannerService:
         if not agent_data:
             return
         
+        # Log per debug
+        logger.info(f"[MERGE_AGENT] agent_data keys: {sorted(list(agent_data.keys()))[:20]}")
+        logger.info(f"[MERGE_AGENT] volumes={len(agent_data.get('volumes', []))}, disks={len(agent_data.get('disks', []))}, raid_arrays={len(agent_data.get('raid_arrays', []))}, shares={len(agent_data.get('shares', []))}")
+        
         # Protocollo usato
         result.protocol_used = agent_data.get("protocol_used", ",".join(protocols))
         
@@ -598,6 +602,9 @@ class UnifiedScannerService:
         result.disks = agent_data.get("disks", [])
         result.volumes = agent_data.get("volumes", [])
         result.raid_arrays = agent_data.get("raid_arrays", [])
+        
+        # Log dopo merge
+        logger.info(f"[MERGE_AGENT] After merge: volumes={len(result.volumes)}, disks={len(result.disks)}, raid_arrays={len(result.raid_arrays)}, shares={len(result.shares)}")
         
         # Calculate totals
         for vol in result.volumes:
