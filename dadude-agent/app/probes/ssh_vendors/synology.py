@@ -219,19 +219,55 @@ class SynologyProbe(SSHVendorProbe):
                             # Fallback: usa ultima parte del path
                             vol_name = mount_point.split('/')[-1] or mount_point.replace('/', '_').strip('_')
                         
+                        # Parse use_percent (rimuovi % se presente) - parts[5] contiene Use%
+                        use_percent_str = parts[5].replace('%', '') if len(parts) > 5 else "0"
+                        try:
+                            use_percent = float(use_percent_str)
+                        except (ValueError, TypeError):
+                            use_percent = 0
+                        
+                        # Parse sizes - Synology df -T: parts[2]=1K-blocks, parts[3]=Used, parts[4]=Available
+                        # Se i valori sono molto grandi, potrebbero essere già in bytes invece di KB
+                        try:
+                            total_val = parts[2] if len(parts) > 2 else "0"
+                            used_val = parts[3] if len(parts) > 3 else "0"
+                            available_val = parts[4] if len(parts) > 4 else "0"
+                            
+                            # Prova a parsare come interi
+                            total_int = int(total_val)
+                            used_int = int(used_val)
+                            available_int = int(available_val)
+                            
+                            # Se i valori sono molto grandi (>1TB), probabilmente sono già in bytes
+                            # Altrimenti sono in KB (1K-blocks)
+                            if total_int > 1000000000:  # > 1TB in bytes
+                                total_bytes = total_int
+                                used_bytes = used_int
+                                available_bytes = available_int
+                            else:
+                                # Sono in KB, converti in bytes
+                                total_bytes = total_int * 1024
+                                used_bytes = used_int * 1024
+                                available_bytes = available_int * 1024
+                        except (ValueError, TypeError):
+                            # Fallback: usa _parse_size
+                            total_bytes = self._parse_size(total_val)
+                            used_bytes = self._parse_size(used_val)
+                            available_bytes = self._parse_size(available_val)
+                        
                         volumes.append({
                             "name": vol_name,
                             "mount_point": mount_point,
                             "path": mount_point,
                             "device": parts[0],
                             "filesystem": filesystem,
-                            "total": parts[3],
-                            "used": parts[4],
-                            "available": parts[5],
-                            "use_percent": parts[5] if len(parts) > 5 else "",
-                            "total_bytes": self._parse_size(parts[3]),
-                            "used_bytes": self._parse_size(parts[4]),
-                            "available_bytes": self._parse_size(parts[5]),
+                            "total": parts[2] if len(parts) > 2 else "",
+                            "used": parts[3] if len(parts) > 3 else "",
+                            "available": parts[4] if len(parts) > 4 else "",
+                            "use_percent": use_percent,
+                            "total_bytes": total_bytes,
+                            "used_bytes": used_bytes,
+                            "available_bytes": available_bytes,
                         })
             
             # Metodo 2: Cerca volumi esplicitamente
