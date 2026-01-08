@@ -198,7 +198,7 @@ class SynologyProbe(SSHVendorProbe):
         
         try:
             # Metodo 1: Usa synospace --enum volume per informazioni dettagliate volumi
-            synospace_enum = self.exec_cmd("/usr/syno/bin/synospace --enum volume 2>/dev/null", timeout=5)
+            synospace_enum = self.exec_cmd_sudo("/usr/syno/bin/synospace --enum volume 2>/dev/null", timeout=5)
             if synospace_enum:
                 self._log_info(f"synospace --enum volume output length: {len(synospace_enum)}, preview: {synospace_enum[:500]}")
             else:
@@ -247,7 +247,7 @@ class SynologyProbe(SSHVendorProbe):
                         volume_details[vol_data['mount_point']] = vol_data
             
             # Metodo 2: Usa synospace --get-volume-list per nomi volumi
-            synospace = self.exec_cmd("/usr/syno/bin/synospace --get-volume-list 2>/dev/null", timeout=5)
+            synospace = self.exec_cmd_sudo("/usr/syno/bin/synospace --get-volume-list 2>/dev/null", timeout=5)
             volume_names = {}
             if synospace:
                 for line in synospace.split('\n'):
@@ -471,7 +471,7 @@ class SynologyProbe(SSHVendorProbe):
         
         # Dischi fisici - usa synodisk --enum -t internal per informazioni native Synology
         disks = []
-        synodisk_output = self.exec_cmd("/usr/syno/bin/synodisk --enum -t internal 2>/dev/null", timeout=5)
+        synodisk_output = self.exec_cmd_sudo("/usr/syno/bin/synodisk --enum -t internal 2>/dev/null", timeout=5)
         self._log_info(f"synodisk --enum -t internal output length: {len(synodisk_output) if synodisk_output else 0}, preview: {synodisk_output[:500] if synodisk_output else 'None'}")
         disk_details = {}
         
@@ -730,7 +730,7 @@ class SynologyProbe(SSHVendorProbe):
         
         try:
             # Metodo 1: Usa synoshare se disponibile
-            synoshare = self.exec_cmd("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
+            synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
             self._log_info(f"synoshare --enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
             
             # Metodo alternativo: Leggi direttamente /etc/samba/smb.conf se synoshare non funziona
@@ -826,7 +826,7 @@ class SynologyProbe(SSHVendorProbe):
                     
                     if share_name:
                             # Verifica tipo share con synoshare --get
-                            share_info = self.exec_cmd(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
+                                share_info = self.exec_cmd_sudo(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
                             share_type = []
                             share_path = f"/volume1/{share_name}"  # Default path
                             

@@ -602,6 +602,18 @@ async def _probe_ssh(
                 
                 def exec_cmd_sudo(cmd: str, timeout: int = 5) -> str:
                     """Esegue comando con sudo se necessario"""
+                    # Prova prima con sudo, poi senza se sudo non è disponibile
+                    sudo_cmd = f"sudo {cmd}"
+                    try:
+                        stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
+                        sudo_output = stdout.read().decode().strip()
+                        sudo_error = stderr.read().decode().strip()
+                        # Se sudo funziona (output presente e nessun errore di password), usalo
+                        if sudo_output or (not sudo_error or ("password" not in sudo_error.lower() and "sudo:" not in sudo_error.lower())):
+                            return sudo_output
+                    except:
+                        pass
+                    # Fallback: prova senza sudo
                     return exec_cmd(cmd, timeout=timeout)
                 
                 # Istanzia e chiama probe vendor-specific
