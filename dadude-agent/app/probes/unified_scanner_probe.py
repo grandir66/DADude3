@@ -617,12 +617,26 @@ async def _probe_ssh(
                     
                     # Merge dati vendor-specific con risultato base
                     if vendor_result:
+                        # Estrai storage_info se presente (Synology/QNAP)
+                        storage_info = vendor_result.get("storage_info", {})
+                        if storage_info:
+                            # Estrai volumes, disks, raid_arrays da storage_info
+                            if storage_info.get("volumes"):
+                                result["volumes"] = storage_info["volumes"]
+                            if storage_info.get("disks"):
+                                result["disks"] = storage_info["disks"]
+                            if storage_info.get("raid_arrays"):
+                                result["raid_arrays"] = storage_info["raid_arrays"]
+                            # Estrai anche shares se presente
+                            if vendor_result.get("shares"):
+                                result["shares"] = vendor_result["shares"]
+                        
                         # I dati vendor-specific hanno priorità
                         for key, value in vendor_result.items():
-                            if value:  # Solo se il valore non è vuoto/None
+                            if value and key != "storage_info":  # storage_info già processato sopra
                                 result[key] = value
                         
-                        logger.info(f"[UNIFIED] Vendor-specific probe collected: device_type={vendor_result.get('device_type')}, routing_table={bool(vendor_result.get('routing_table'))}, arp_table={bool(vendor_result.get('arp_table'))}, neighbors={len(vendor_result.get('neighbors', []))}")
+                        logger.info(f"[UNIFIED] Vendor-specific probe collected: device_type={vendor_result.get('device_type')}, volumes={len(result.get('volumes', []))}, disks={len(result.get('disks', []))}, raid_arrays={len(result.get('raid_arrays', []))}, shares={len(result.get('shares', []))}")
                         logger.info(f"[UNIFIED] After merge: result.device_type={result.get('device_type')}")
                 else:
                     logger.debug(f"[UNIFIED] Vendor {vendor_probe_class.VENDOR_NAME} detection failed, skipping vendor-specific probe")
