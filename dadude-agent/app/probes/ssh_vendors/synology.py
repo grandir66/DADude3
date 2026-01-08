@@ -199,6 +199,10 @@ class SynologyProbe(SSHVendorProbe):
         try:
             # Metodo 1: Usa synospace --enum volume per informazioni dettagliate volumi
             synospace_enum = self.exec_cmd("/usr/syno/bin/synospace --enum volume 2>/dev/null", timeout=5)
+            if synospace_enum:
+                self._log_info(f"synospace --enum volume output length: {len(synospace_enum)}, preview: {synospace_enum[:500]}")
+            else:
+                self._log_info(f"synospace --enum volume output: None")
             volume_details = {}
             if synospace_enum:
                 # Parse synospace --enum volume output
