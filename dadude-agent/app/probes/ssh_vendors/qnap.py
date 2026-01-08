@@ -86,6 +86,12 @@ class QNAPProbe(SSHVendorProbe):
             if services:
                 info["services"] = services
                 info["services_count"] = len(services)
+            
+            # Shares (SMB/NFS)
+            shares = self._get_shares()
+            if shares:
+                info["shares"] = shares
+                info["shares_count"] = len(shares)
         
         except Exception as e:
             self._log_error(f"Error during probe: {e}")
@@ -178,26 +184,36 @@ class QNAPProbe(SSHVendorProbe):
         volumes = []
         
         try:
-            # Metodo 1: df per tutti i filesystem
-            df_out = self.exec_cmd("df -h 2>/dev/null | grep -E '/share|CACHEDEV|/mnt/|DataVol'", timeout=5)
+            # Metodo 1: df -T per ottenere tipo filesystem
+            df_out = self.exec_cmd("df -T 2>/dev/null | grep -E '/share|CACHEDEV|/mnt/|DataVol'", timeout=5)
             if df_out:
                 for line in df_out.split('\n'):
                     parts = line.split()
-                    if len(parts) >= 6:
-                        mount_point = parts[5]
+                    if len(parts) >= 7:
+                        mount_point = parts[6]
+                        filesystem = parts[1] if len(parts) > 1 else "ext4"
                         vol_name = mount_point.split('/')[-1] or mount_point
+                        
+                        # Migliora nome volume per QNAP
+                        if '/share/CACHEDEV' in mount_point:
+                            # Estrai nome volume da path QNAP
+                            vol_parts = mount_point.split('/')
+                            if len(vol_parts) >= 3:
+                                vol_name = vol_parts[2]  # CACHEDEV1_DATA, MD0_DATA, etc.
                         
                         volumes.append({
                             "name": vol_name,
+                            "mount_point": mount_point,
                             "path": mount_point,
                             "device": parts[0],
-                            "total": parts[1],
-                            "used": parts[2],
-                            "available": parts[3],
-                            "use_percent": parts[4],
-                            "total_bytes": self._parse_size(parts[1]),
-                            "used_bytes": self._parse_size(parts[2]),
-                            "available_bytes": self._parse_size(parts[3]),
+                            "filesystem": filesystem,
+                            "total": parts[3],
+                            "used": parts[4],
+                            "available": parts[5],
+                            "use_percent": parts[5] if len(parts) > 5 else "",
+                            "total_bytes": self._parse_size(parts[3]),
+                            "used_bytes": self._parse_size(parts[4]),
+                            "available_bytes": self._parse_size(parts[5]),
                         })
             
             # Metodo 2: Cerca volumi QNAP esplicitamente
@@ -269,27 +285,72 @@ class QNAPProbe(SSHVendorProbe):
         if pool:
             info["storage_pool_config"] = "configured"
         
-        # Dischi fisici
+        # Dischi fisici - migliorato con più dettagli hardware
         disks = []
-        lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL 2>/dev/null | tail -n +2", timeout=5)
+        # Usa lsblk con più colonne per ottenere tipo, modello, seriale
+        lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL,SERIAL,TYPE,TRAN 2>/dev/null | tail -n +2", timeout=5)
         if lsblk:
             for line in lsblk.split('\n'):
                 if line.strip() and not line.startswith('NAME'):
                     parts = line.split()
-                    if parts and parts[0].startswith('sd'):
+                    if parts and (parts[0].startswith('sd') or parts[0].startswith('nvme') or parts[0].startswith('hd')):
                         disk = {
-                            "name": parts[0],
+                            "name": f"/dev/{parts[0]}",
+                            "device": parts[0],
                             "size": parts[1] if len(parts) > 1 else "",
-                            "model": ' '.join(parts[2:]) if len(parts) > 2 else "",
+                            "size_bytes": self._parse_size(parts[1]) if len(parts) > 1 else 0,
+                            "model": ' '.join(parts[2:-3]) if len(parts) > 5 else (parts[2] if len(parts) > 2 else ""),
+                            "serial": parts[-3] if len(parts) > 5 else (parts[-1] if len(parts) > 3 else ""),
+                            "type": parts[-2] if len(parts) > 4 else "",
+                            "transport": parts[-1] if len(parts) > 5 else "",
                         }
                         
-                        # Health check
-                        health = self.exec_cmd_sudo(f"smartctl -H /dev/{parts[0]} 2>/dev/null | grep -i 'health\\|passed\\|failed'", timeout=3)
-                        if health:
-                            if 'passed' in health.lower():
-                                disk["health"] = "healthy"
-                            elif 'failed' in health.lower():
-                                disk["health"] = "failing"
+                        # Determina tipo disco (SSD/HDD) da modello o transport
+                        model_lower = disk["model"].lower() if disk["model"] else ""
+                        transport_lower = disk["transport"].lower() if disk["transport"] else ""
+                        if "ssd" in model_lower or "nvme" in transport_lower or disk["name"].startswith("/dev/nvme"):
+                            disk["disk_type"] = "SSD"
+                        elif "hdd" in model_lower or "sata" in transport_lower:
+                            disk["disk_type"] = "HDD"
+                        else:
+                            disk["disk_type"] = disk["type"] or "Unknown"
+                        
+                        # Temperatura e salute via smartctl
+                        smart = self.exec_cmd_sudo(f"smartctl -a /dev/{parts[0]} 2>/dev/null | grep -E '(Temperature|Health|PASSED|FAILED|SMART)' | head -5", timeout=5)
+                        if smart:
+                            for sline in smart.split('\n'):
+                                sline_lower = sline.lower()
+                                if 'temperature' in sline_lower:
+                                    try:
+                                        for word in sline.split():
+                                            if word.isdigit():
+                                                disk["temperature"] = int(word)
+                                                disk["temperature_celsius"] = int(word)
+                                                break
+                                    except:
+                                        pass
+                                elif 'passed' in sline_lower or 'healthy' in sline_lower:
+                                    disk["health"] = "healthy"
+                                    disk["health_status"] = "healthy"
+                                    disk["smart_status"] = "PASSED"
+                                elif 'failed' in sline_lower or 'failing' in sline_lower:
+                                    disk["health"] = "failing"
+                                    disk["health_status"] = "failing"
+                                    disk["smart_status"] = "FAILED"
+                        
+                        # Informazioni aggiuntive da /sys/block
+                        if parts[0]:
+                            sys_model = self.exec_cmd(f"cat /sys/block/{parts[0]}/device/model 2>/dev/null | tr -d '\\n'", timeout=2)
+                            if sys_model:
+                                disk["model"] = sys_model.strip()
+                            
+                            sys_serial = self.exec_cmd(f"cat /sys/block/{parts[0]}/device/serial 2>/dev/null | tr -d '\\n'", timeout=2)
+                            if sys_serial:
+                                disk["serial"] = sys_serial.strip()
+                            
+                            sys_vendor = self.exec_cmd(f"cat /sys/block/{parts[0]}/device/vendor 2>/dev/null | tr -d '\\n'", timeout=2)
+                            if sys_vendor:
+                                disk["vendor"] = sys_vendor.strip()
                         
                         disks.append(disk)
         
@@ -331,6 +392,66 @@ class QNAPProbe(SSHVendorProbe):
         
         return [i for i in interfaces if not i["name"].startswith("lo") and not i["name"].startswith("docker")]
     
+    def _get_shares(self) -> List[Dict[str, Any]]:
+        """Ottiene share SMB/NFS esposte"""
+        shares = []
+        
+        try:
+            # Metodo 1: Leggi configurazione QNAP
+            # QNAP usa /etc/config/smb.conf o /etc/config/samba/smb.conf
+            smb_conf = self.exec_cmd("cat /etc/config/smb.conf 2>/dev/null || cat /etc/config/samba/smb.conf 2>/dev/null || cat /etc/samba/smb.conf 2>/dev/null", timeout=3)
+            if smb_conf:
+                for line in smb_conf.split('\n'):
+                    if line.strip().startswith('[') and line.strip().endswith(']'):
+                        share_name = line.strip()[1:-1]
+                        if share_name not in ['global', 'homes', 'printers', 'print$']:
+                            shares.append({
+                                "name": share_name,
+                                "types": ["SMB"],
+                                "path": f"/share/{share_name}",
+                            })
+            
+            # Metodo 2: Lista directory /share
+            if not shares:
+                share_dirs = self.exec_cmd("ls -d /share/* 2>/dev/null | grep -v CACHEDEV | grep -v MD | head -20", timeout=3)
+                if share_dirs:
+                    for path in share_dirs.split('\n'):
+                        if path.strip():
+                            share_name = path.strip().split('/')[-1]
+                            shares.append({
+                                "name": share_name,
+                                "types": ["SMB"],  # Default per QNAP
+                                "path": path.strip(),
+                            })
+            
+            # Verifica NFS se disponibile
+            nfs_exports = self.exec_cmd("cat /etc/exports 2>/dev/null | grep -v '^#' | grep -v '^$'", timeout=3)
+            if nfs_exports:
+                for line in nfs_exports.split('\n'):
+                    if line.strip():
+                        parts = line.split()
+                        if parts:
+                            nfs_path = parts[0]
+                            if '/share/' in nfs_path:
+                                share_name = nfs_path.split('/')[-1]
+                                # Trova share esistente e aggiungi NFS
+                                for share in shares:
+                                    if share["name"] == share_name:
+                                        if "NFS" not in share["types"]:
+                                            share["types"].append("NFS")
+                                        break
+                                else:
+                                    # Nuova share solo NFS
+                                    shares.append({
+                                        "name": share_name,
+                                        "types": ["NFS"],
+                                        "path": nfs_path,
+                                    })
+        except Exception as e:
+            self._log_warning(f"Error getting shares: {e}")
+        
+        return shares
+    
     def _get_services(self) -> List[Dict[str, Any]]:
         """Ottiene servizi QNAP attivi"""
         services = []
@@ -341,11 +462,18 @@ class QNAPProbe(SSHVendorProbe):
         ]
         
         for svc in qnap_services:
-            status = self.exec_cmd(f"pgrep -x {svc} >/dev/null 2>&1 && echo 'running' || echo 'stopped'", timeout=2)
-            if status:
-                services.append({
-                    "name": svc,
-                    "status": status.strip(),
-                })
+            # Metodo 1: Prova systemctl
+            systemctl_status = self.exec_cmd(f"systemctl is-active {svc} 2>/dev/null", timeout=2)
+            if systemctl_status and systemctl_status.strip() == "active":
+                status = "running"
+            else:
+                # Metodo 2: Fallback pgrep
+                pgrep_out = self.exec_cmd(f"pgrep -x {svc} >/dev/null 2>&1 && echo 'running' || echo 'stopped'", timeout=2)
+                status = pgrep_out.strip() if pgrep_out else "stopped"
+            
+            services.append({
+                "name": svc,
+                "status": status,
+            })
         
         return services
