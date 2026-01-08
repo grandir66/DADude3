@@ -62,6 +62,8 @@ async def probe(
         "memory": {},
         "disks": [],
         "volumes": [],
+        "raid_arrays": [],
+        "shares": [],
         "network_interfaces": [],
         "lldp_neighbors": [],
         "services": [],
@@ -991,6 +993,10 @@ def _merge_results(target: Dict, source: Dict):
         target["disks"].extend(source["disks"])
     if source.get("volumes"):
         target["volumes"].extend(source["volumes"])
+    if source.get("raid_arrays"):
+        target["raid_arrays"].extend(source["raid_arrays"])
+    if source.get("shares"):
+        target["shares"].extend(source["shares"])
     
     # Network interfaces - merge per nome interfaccia
     if source.get("network_interfaces"):
