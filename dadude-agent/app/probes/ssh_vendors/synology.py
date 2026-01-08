@@ -190,7 +190,52 @@ class SynologyProbe(SSHVendorProbe):
         volumes = []
         
         try:
-            # Metodo 1: Usa synospace per ottenere nomi volumi Synology
+            # Metodo 1: Usa synospace --enum volume per informazioni dettagliate volumi
+            synospace_enum = self.exec_cmd("/usr/syno/bin/synospace --enum volume 2>/dev/null", timeout=5)
+            volume_details = {}
+            if synospace_enum:
+                # Parse synospace --enum volume output
+                import re
+                volume_blocks = re.split(r'<<<<<<<<<<<<\s+\[([^\]]+)\]\s+>>>>>>>>>>>>', synospace_enum)
+                for i in range(1, len(volume_blocks), 2):
+                    mount_point = volume_blocks[i].strip()
+                    block = volume_blocks[i+1] if i+1 < len(volume_blocks) else ""
+                    
+                    vol_data = {"mount_point": mount_point}
+                    for line in block.split('\n'):
+                        if 'Device Type:' in line:
+                            match = re.search(r'\[(.*?)\]', line)
+                            if match:
+                                vol_data['device_type'] = match.group(1)
+                        elif 'Status:' in line:
+                            match = re.search(r'\[(.*?)\]', line)
+                            if match:
+                                vol_data['status'] = match.group(1)
+                        elif 'Pool Path:' in line:
+                            match = re.search(r'\[(.*?)\]', line)
+                            if match:
+                                vol_data['pool_path'] = match.group(1)
+                        elif 'Device Size:' in line:
+                            match = re.search(r'\[(\d+)\]', line)
+                            if match:
+                                vol_data['size_bytes'] = int(match.group(1))
+                        elif 'UUID:' in line:
+                            match = re.search(r'\[(.*?)\]', line)
+                            if match:
+                                vol_data['uuid'] = match.group(1)
+                        elif 'raid type=' in line:
+                            match = re.search(r'raid type=\[(.*?)\]', line)
+                            if match:
+                                vol_data['raid_type'] = match.group(1)
+                        elif 'device path = ' in line:
+                            match = re.search(r'device path = \[(.*?)\]', line)
+                            if match:
+                                vol_data['raid_device'] = match.group(1)
+                    
+                    if vol_data.get('mount_point', '').startswith('/volume'):
+                        volume_details[vol_data['mount_point']] = vol_data
+            
+            # Metodo 2: Usa synospace --get-volume-list per nomi volumi
             synospace = self.exec_cmd("/usr/syno/bin/synospace --get-volume-list 2>/dev/null", timeout=5)
             volume_names = {}
             if synospace:
@@ -307,31 +352,74 @@ class SynologyProbe(SSHVendorProbe):
         except Exception as e:
             self._log_warning(f"Error getting volumes: {e}")
         
-        # RAID info via mdstat o synoraid
+        # RAID info via mdstat + mdadm --detail per informazioni complete
         raid_info = []
         mdstat = self.exec_cmd("cat /proc/mdstat 2>/dev/null", timeout=3)
         if mdstat and 'md' in mdstat:
+            import re
             current_md = None
+            md_devices = []
+            
             for line in mdstat.split('\n'):
                 if line.startswith('md'):
                     parts = line.split()
                     if parts:
-                        current_md = {
-                            "name": parts[0].rstrip(':'),
-                            "status": parts[1] if len(parts) > 1 else "",
-                            "type": "",
-                            "devices": [],
-                        }
-                        # Cerca tipo RAID (raid1, raid5, raid6, etc.)
-                        for p in parts:
-                            if p.startswith('raid'):
-                                current_md["type"] = p
-                        raid_info.append(current_md)
-                elif current_md and '[' in line:
-                    # Riga con stato dischi [UUU]
-                    if '[' in line and ']' in line:
-                        status = line[line.index('['):line.index(']')+1]
-                        current_md["disk_status"] = status
+                        md_name = parts[0].rstrip(':')
+                        md_devices.append(md_name)
+            
+            # Per ogni dispositivo md, ottieni dettagli con mdadm --detail
+            for md_name in md_devices:
+                md_detail = self.exec_cmd(f"mdadm --detail /dev/{md_name} 2>/dev/null", timeout=5)
+                if md_detail:
+                    raid_data = {
+                        "name": f"/dev/{md_name}",
+                        "devices": [],
+                    }
+                    
+                    for detail_line in md_detail.split('\n'):
+                        detail_lower = detail_line.lower()
+                        if 'raid level' in detail_lower:
+                            raid_data["level"] = detail_line.split(':')[1].strip() if ':' in detail_line else ""
+                        elif 'state' in detail_lower and 'update time' not in detail_lower:
+                            raid_data["status"] = detail_line.split(':')[1].strip() if ':' in detail_line else ""
+                        elif 'array size' in detail_lower:
+                            size_match = re.search(r'\(([\d.]+)\s+GiB', detail_line)
+                            if size_match:
+                                raid_data["total_size_gb"] = float(size_match.group(1))
+                        elif 'raid devices' in detail_lower:
+                            raid_data["disk_count"] = int(detail_line.split(':')[1].strip()) if ':' in detail_line else 0
+                        elif 'active devices' in detail_lower:
+                            raid_data["active_devices"] = int(detail_line.split(':')[1].strip()) if ':' in detail_line else 0
+                        elif 'failed devices' in detail_lower:
+                            raid_data["failed_devices"] = int(detail_line.split(':')[1].strip()) if ':' in detail_line else 0
+                        elif '/dev/sd' in detail_line and 'active sync' in detail_line:
+                            disk_match = re.search(r'(/dev/sd[a-z]+\d*)', detail_line)
+                            if disk_match:
+                                raid_data["devices"].append({
+                                    "device": disk_match.group(1),
+                                    "status": "active sync"
+                                })
+                    
+                    if "level" in raid_data:
+                        raid_info.append(raid_data)
+                else:
+                    # Fallback: parsing semplice da mdstat
+                    for line in mdstat.split('\n'):
+                        if line.startswith(md_name):
+                            parts = line.split()
+                            if parts:
+                                current_md = {
+                                    "name": f"/dev/{md_name}",
+                                    "status": parts[1] if len(parts) > 1 else "",
+                                    "level": "",
+                                    "devices": [],
+                                }
+                                # Cerca tipo RAID (raid1, raid5, raid6, etc.)
+                                for p in parts:
+                                    if p.startswith('raid'):
+                                        current_md["level"] = p
+                                raid_info.append(current_md)
+                                break
         
         if raid_info:
             info["raid_arrays"] = raid_info
@@ -346,8 +434,11 @@ class SynologyProbe(SSHVendorProbe):
                 if line.strip() and not line.startswith('NAME'):
                     parts = line.split()
                     if parts and (parts[0].startswith('sd') or parts[0].startswith('nvme') or parts[0].startswith('hd')):
+                        disk_path = f"/dev/{parts[0]}"
+                        syno_disk = disk_details.get(disk_path, {})
+                        
                         disk = {
-                            "name": f"/dev/{parts[0]}",
+                            "name": disk_path,
                             "device": parts[0],
                             "size": parts[1] if len(parts) > 1 else "",
                             "size_bytes": self._parse_size(parts[1]) if len(parts) > 1 else 0,
@@ -356,6 +447,21 @@ class SynologyProbe(SSHVendorProbe):
                             "type": parts[-2] if len(parts) > 4 else "",
                             "transport": parts[-1] if len(parts) > 5 else "",
                         }
+                        
+                        # Arricchisci con dati da synodisk
+                        if syno_disk:
+                            if syno_disk.get('disk_id') is not None:
+                                disk["disk_id"] = syno_disk['disk_id']
+                            if syno_disk.get('slot_id') is not None:
+                                disk["slot_id"] = syno_disk['slot_id']
+                            if syno_disk.get('model'):
+                                disk["model"] = syno_disk['model']
+                            if syno_disk.get('capacity_gb'):
+                                disk["capacity_gb"] = syno_disk['capacity_gb']
+                                disk["size_bytes"] = int(syno_disk['capacity_gb'] * 1024 * 1024 * 1024)
+                            if syno_disk.get('temperature') is not None:
+                                disk["temperature"] = syno_disk['temperature']
+                                disk["temperature_celsius"] = syno_disk['temperature']
                         
                         # Determina tipo disco (SSD/HDD) da modello o transport
                         model_lower = disk["model"].lower() if disk["model"] else ""
