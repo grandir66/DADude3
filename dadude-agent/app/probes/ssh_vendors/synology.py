@@ -769,11 +769,11 @@ class SynologyProbe(SSHVendorProbe):
         try:
             # Metodo 1: Usa synoshare se disponibile (NOTA: usa -enum non --enum)
             synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
-            self._log_info(f"synoshare --enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
+            self._log_info(f"synoshare -enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
             
             # Metodo alternativo: Leggi direttamente /etc/samba/smb.conf se synoshare non funziona
             if not synoshare or len(synoshare.strip()) == 0:
-                self._log_info("synoshare --enum ALL returned empty, trying alternative methods")
+                self._log_info("synoshare -enum ALL returned empty, trying alternative methods")
                 # Prova a leggere smb.conf direttamente
                 smb_conf = self.exec_cmd("cat /etc/samba/smb.conf 2>/dev/null | grep -E '^\\[.*\\]' | grep -v '^\\[global\\]' | grep -v '^\\[homes\\]' | grep -v '^\\[printers\\]'", timeout=3)
                 self._log_info(f"smb.conf shares found: {len(smb_conf.split()) if smb_conf else 0}, preview: {smb_conf[:200] if smb_conf else 'None'}")
