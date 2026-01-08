@@ -644,7 +644,7 @@ async def _probe_ssh(
                                 result[key] = value
                         
                         logger.info(f"[UNIFIED] Vendor-specific probe collected: device_type={vendor_result.get('device_type')}, volumes={len(result.get('volumes', []))}, disks={len(result.get('disks', []))}, raid_arrays={len(result.get('raid_arrays', []))}, shares={len(result.get('shares', []))}")
-                        logger.info(f"[UNIFIED] After merge: result.device_type={result.get('device_type')}")
+                        logger.info(f"[UNIFIED] After merge: result.device_type={result.get('device_type')}, volumes={len(result.get('volumes', []))}, disks={len(result.get('disks', []))}, raid_arrays={len(result.get('raid_arrays', []))}, shares={len(result.get('shares', []))}")
                 else:
                     logger.debug(f"[UNIFIED] Vendor {vendor_probe_class.VENDOR_NAME} detection failed, skipping vendor-specific probe")
                 
@@ -658,7 +658,9 @@ async def _probe_ssh(
                 except:
                     pass
         
-        return _normalize_ssh_result(result)
+        normalized = _normalize_ssh_result(result)
+        logger.info(f"[UNIFIED] After normalization: volumes={len(normalized.get('volumes', []))}, disks={len(normalized.get('disks', []))}, raid_arrays={len(normalized.get('raid_arrays', []))}, shares={len(normalized.get('shares', []))}")
+        return normalized
         
     except asyncio.TimeoutError:
         logger.warning(f"SSH probe timeout for {target}")
