@@ -767,8 +767,8 @@ class SynologyProbe(SSHVendorProbe):
         shares = []
         
         try:
-            # Metodo 1: Usa synoshare se disponibile
-            synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
+            # Metodo 1: Usa synoshare se disponibile (NOTA: usa -enum non --enum)
+            synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
             self._log_info(f"synoshare --enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
             
             # Metodo alternativo: Leggi direttamente /etc/samba/smb.conf se synoshare non funziona
@@ -864,7 +864,7 @@ class SynologyProbe(SSHVendorProbe):
                     
                     if share_name:
                         # Verifica tipo share con synoshare --get
-                        share_info = self.exec_cmd_sudo(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
+                        share_info = self.exec_cmd_sudo(f"/usr/syno/bin/synoshare -get {share_name} 2>/dev/null", timeout=3)
                         share_type = []
                         share_path = f"/volume1/{share_name}"  # Default path
                         
