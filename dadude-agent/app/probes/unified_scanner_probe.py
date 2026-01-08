@@ -611,12 +611,14 @@ async def _probe_ssh(
                     # Se abbiamo la password SSH, usala per sudo
                     ssh_password = credentials.get("password")
                     if ssh_password:
-                        # Metodo 1: Prova con printf (più compatibile)
+                        # Metodo 1: Prova con printf e sh -c (per gestire redirect e pipe correttamente)
                         import shlex
                         # Escapa caratteri speciali nella password per printf
                         # printf interpreta % come formato, quindi dobbiamo raddoppiarlo
                         escaped_password = ssh_password.replace('%', '%%').replace('\\', '\\\\').replace("'", "'\"'\"'")
-                        sudo_cmd = f"printf '%s\\n' '{escaped_password}' | sudo -S {shlex.quote(cmd)}"
+                        # Escapa anche il comando per sh -c
+                        escaped_cmd = cmd.replace("'", "'\"'\"'")
+                        sudo_cmd = f"printf '%s\\n' '{escaped_password}' | sudo -S sh -c {shlex.quote(cmd)}"
                         try:
                             stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
                             sudo_output = stdout.read().decode().strip()
@@ -632,22 +634,23 @@ async def _probe_ssh(
                             
                             # Se sudo funziona (output presente), usalo
                             if sudo_output and len(sudo_output.strip()) > 0:
-                                logger.debug(f"SSH: sudo command succeeded with password (printf): {cmd[:50]}...")
+                                logger.debug(f"SSH: sudo command succeeded with password (printf+sh): {cmd[:50]}...")
                                 return sudo_output
-                            elif sudo_error and "password" not in sudo_error.lower() and "sudo:" not in sudo_error.lower() and "incorrect password" not in sudo_error.lower():
+                            elif sudo_error and "password" not in sudo_error.lower() and "sudo:" not in sudo_error.lower() and "incorrect password" not in sudo_error.lower() and "command not found" not in sudo_error.lower():
                                 # Potrebbe essere che l'output sia vuoto ma il comando sia riuscito
                                 logger.debug(f"SSH: sudo command executed (empty output): {cmd[:50]}...")
                                 return sudo_output
                             else:
-                                logger.debug(f"SSH: sudo with printf failed, error: {sudo_error[:100]}")
+                                logger.debug(f"SSH: sudo with printf+sh failed, error: {sudo_error[:100]}")
                         except Exception as e:
-                            logger.debug(f"SSH: sudo command with printf failed: {cmd[:50]}... error: {e}")
+                            logger.debug(f"SSH: sudo command with printf+sh failed: {cmd[:50]}... error: {e}")
                         
-                        # Metodo 2: Prova con base64 se printf non funziona
+                        # Metodo 2: Prova con base64 e sh -c se printf non funziona
                         try:
                             import base64
                             password_b64 = base64.b64encode(ssh_password.encode()).decode()
-                            sudo_cmd = f"echo '{password_b64}' | base64 -d 2>/dev/null | sudo -S {shlex.quote(cmd)}"
+                            escaped_cmd = cmd.replace("'", "'\"'\"'")
+                            sudo_cmd = f"echo '{password_b64}' | base64 -d 2>/dev/null | sudo -S sh -c {shlex.quote(cmd)}"
                             stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
                             sudo_output = stdout.read().decode().strip()
                             sudo_error = stderr.read().decode().strip()
@@ -661,10 +664,10 @@ async def _probe_ssh(
                             sudo_output = '\n'.join(lines)
                             
                             if sudo_output and len(sudo_output.strip()) > 0:
-                                logger.debug(f"SSH: sudo command succeeded with password (base64): {cmd[:50]}...")
+                                logger.debug(f"SSH: sudo command succeeded with password (base64+sh): {cmd[:50]}...")
                                 return sudo_output
                         except Exception as e:
-                            logger.debug(f"SSH: sudo command with base64 failed: {cmd[:50]}... error: {e}")
+                            logger.debug(f"SSH: sudo command with base64+sh failed: {cmd[:50]}... error: {e}")
                     
                     # Fallback: prova sudo senza password (se configurato NOPASSWD)
                     sudo_cmd = f"sudo {cmd}"
