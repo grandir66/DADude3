@@ -628,9 +628,35 @@ class SynologyProbe(SSHVendorProbe):
                         
                         disks.append(disk)
         
+        # Se lsblk non ha trovato dischi ma synodisk sì, aggiungi i dischi da disk_details
+        if not disks and disk_details:
+            self._log_info(f"lsblk found no disks, but synodisk found {len(disk_details)} disks, adding them")
+            for disk_path, disk_data in disk_details.items():
+                disk = {
+                    "name": disk_path,
+                    "device": disk_path.replace("/dev/", ""),
+                    "model": disk_data.get("model", ""),
+                    "disk_id": disk_data.get("disk_id"),
+                    "slot_id": disk_data.get("slot_id", -1),
+                    "temperature": disk_data.get("temperature"),
+                    "temperature_celsius": disk_data.get("temperature"),
+                    "capacity_gb": disk_data.get("capacity_gb", 0),
+                    "size_bytes": int(disk_data.get("capacity_gb", 0) * 1024 * 1024 * 1024) if disk_data.get("capacity_gb") else 0,
+                }
+                # Determina tipo disco da modello
+                model_lower = disk["model"].lower() if disk["model"] else ""
+                if "ssd" in model_lower or "nvme" in model_lower:
+                    disk["disk_type"] = "SSD"
+                else:
+                    disk["disk_type"] = "HDD"
+                disks.append(disk)
+        
         if disks:
             info["disks"] = disks
             info["disks_count"] = len(disks)
+            self._log_info(f"Total disks added: {len(disks)}")
+        else:
+            self._log_warning("No disks found via lsblk or synodisk")
         
         return info
     
