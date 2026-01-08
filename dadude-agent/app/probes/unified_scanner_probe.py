@@ -619,7 +619,8 @@ async def _probe_ssh(
                         # Rimuovi redirect dal comando per sudo
                         cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
                         # Usa sudo con PATH preservato per trovare comandi Synology/QNAP
-                        sudo_cmd = f'echo "{escaped_password}" | sudo -S env "PATH=$PATH:/usr/syno/bin:/usr/local/bin:/usr/sbin" {cmd_clean}'
+                        # Include /usr/syno/sbin dove si trovano molti tool Synology
+                        sudo_cmd = f'echo "{escaped_password}" | sudo -S env "PATH=$PATH:/usr/syno/bin:/usr/syno/sbin:/usr/local/bin:/usr/sbin:/sbin" {cmd_clean}'
                         logger.debug(f"SSH: trying sudo with echo, cmd_clean: {cmd_clean[:80]}...")
                         try:
                             stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
@@ -655,7 +656,7 @@ async def _probe_ssh(
                         try:
                             cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
                             # Usa sudo con PATH preservato per trovare comandi Synology/QNAP
-                            sudo_cmd = f'sudo -S env "PATH=$PATH:/usr/syno/bin:/usr/local/bin:/usr/sbin" {cmd_clean}'
+                            sudo_cmd = f'sudo -S env "PATH=$PATH:/usr/syno/bin:/usr/syno/sbin:/usr/local/bin:/usr/sbin:/sbin" {cmd_clean}'
                             logger.debug(f"SSH: trying sudo with stdin/pty, cmd_clean: {cmd_clean[:80]}...")
                             stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout, get_pty=True)
                             # Invia password direttamente via stdin
@@ -757,8 +758,9 @@ async def _probe_ssh(
                 except:
                     pass
         
+        logger.debug(f"[UNIFIED] Before normalization: os_name={result.get('os_name')}, manufacturer={result.get('manufacturer')}, device_type={result.get('device_type')}")
         normalized = _normalize_ssh_result(result)
-        logger.info(f"[UNIFIED] After normalization: volumes={len(normalized.get('volumes', []))}, disks={len(normalized.get('disks', []))}, raid_arrays={len(normalized.get('raid_arrays', []))}, shares={len(normalized.get('shares', []))}")
+        logger.info(f"[UNIFIED] After normalization: os_name={normalized.get('system_info', {}).get('os_name')}, volumes={len(normalized.get('volumes', []))}, disks={len(normalized.get('disks', []))}, raid_arrays={len(normalized.get('raid_arrays', []))}, shares={len(normalized.get('shares', []))}")
         return normalized
         
     except asyncio.TimeoutError:
@@ -856,11 +858,13 @@ def _safe_list(value, default=None):
 
 def _normalize_ssh_result(data: Dict) -> Dict:
     """Normalizza risultato SSH nel formato unificato"""
+    # Preserva os_name se già impostato dal vendor probe (es. DSM per Synology)
+    os_name = data.get("os_name") or data.get("os") or data.get("distro", "")
     result = {
         "system_info": {
             "hostname": data.get("hostname", ""),
             "device_type": _detect_device_type_from_ssh(data),
-            "os_name": data.get("os") or data.get("distro", ""),
+            "os_name": os_name,
             "os_version": data.get("version") or data.get("os_version", ""),
             "kernel_version": data.get("kernel", ""),
             "manufacturer": data.get("manufacturer", ""),
