@@ -902,6 +902,7 @@ async def _save_unified_scan_to_inventory(
                                 device.custom_fields["all_services"] = all_services
                                 device.custom_fields["services_count"] = len(all_services)
                                 flag_modified(device, "custom_fields")
+                                summary["custom_fields_updated"] = True
                                 logger.info(f"[SAVE_UNIFIED] Saved services for {manufacturer} device {device_id}: "
                                           f"running={len(running_services)}, total={len(all_services)}")
                     
