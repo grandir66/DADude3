@@ -1085,15 +1085,35 @@ def _merge_results(target: Dict, source: Dict):
     if source.get("memory"):
         target["memory"].update(source["memory"])
     
-    # Liste - estendi (con deduplicazione per alcune)
+    # Liste - estendi con deduplicazione
     if source.get("disks"):
-        target["disks"].extend(source["disks"])
+        existing_disks = {d.get("name") or d.get("device") for d in target["disks"]}
+        for disk in source["disks"]:
+            disk_id = disk.get("name") or disk.get("device")
+            if disk_id not in existing_disks:
+                target["disks"].append(disk)
+                existing_disks.add(disk_id)
     if source.get("volumes"):
-        target["volumes"].extend(source["volumes"])
+        existing_volumes = {v.get("mount_point") or v.get("path") for v in target["volumes"]}
+        for vol in source["volumes"]:
+            vol_id = vol.get("mount_point") or vol.get("path")
+            if vol_id not in existing_volumes:
+                target["volumes"].append(vol)
+                existing_volumes.add(vol_id)
     if source.get("raid_arrays"):
-        target["raid_arrays"].extend(source["raid_arrays"])
+        existing_raids = {r.get("name") or r.get("device") for r in target["raid_arrays"]}
+        for raid in source["raid_arrays"]:
+            raid_id = raid.get("name") or raid.get("device")
+            if raid_id not in existing_raids:
+                target["raid_arrays"].append(raid)
+                existing_raids.add(raid_id)
     if source.get("shares"):
-        target["shares"].extend(source["shares"])
+        existing_shares = {s.get("name") for s in target["shares"]}
+        for share in source["shares"]:
+            share_id = share.get("name")
+            if share_id not in existing_shares:
+                target["shares"].append(share)
+                existing_shares.add(share_id)
     
     # Network interfaces - merge per nome interfaccia
     if source.get("network_interfaces"):
