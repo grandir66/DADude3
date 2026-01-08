@@ -825,37 +825,37 @@ class SynologyProbe(SSHVendorProbe):
                         share_name = line.split()[0] if line.split() else None
                     
                     if share_name:
-                            # Verifica tipo share con synoshare --get
-                                share_info = self.exec_cmd_sudo(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
-                            share_type = []
-                            share_path = f"/volume1/{share_name}"  # Default path
-                            
-                            if share_info:
-                                # Estrai informazioni dalla risposta
-                                for info_line in share_info.split('\n'):
-                                    info_lower = info_line.lower()
-                                    if 'smb' in info_lower or 'cifs' in info_lower:
-                                        if "SMB" not in share_type:
-                                            share_type.append("SMB")
-                                    if 'nfs' in info_lower:
-                                        if "NFS" not in share_type:
-                                            share_type.append("NFS")
-                                    if 'afp' in info_lower:
-                                        if "AFP" not in share_type:
-                                            share_type.append("AFP")
-                                    # Cerca path nella risposta
-                                    if 'path' in info_lower or 'volume' in info_lower:
-                                        # Estrai path se presente
-                                        if '=' in info_line:
-                                            path_val = info_line.split('=')[-1].strip()
-                                            if path_val and '/' in path_val:
-                                                share_path = path_val
-                            
-                            shares.append({
-                                "name": share_name,
-                                "types": share_type if share_type else ["SMB"],  # Default SMB
-                                "path": share_path,
-                            })
+                        # Verifica tipo share con synoshare --get
+                        share_info = self.exec_cmd_sudo(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
+                        share_type = []
+                        share_path = f"/volume1/{share_name}"  # Default path
+                        
+                        if share_info:
+                            # Estrai informazioni dalla risposta
+                            for info_line in share_info.split('\n'):
+                                info_lower = info_line.lower()
+                                if 'smb' in info_lower or 'cifs' in info_lower:
+                                    if "SMB" not in share_type:
+                                        share_type.append("SMB")
+                                if 'nfs' in info_lower:
+                                    if "NFS" not in share_type:
+                                        share_type.append("NFS")
+                                if 'afp' in info_lower:
+                                    if "AFP" not in share_type:
+                                        share_type.append("AFP")
+                                # Cerca path nella risposta
+                                if 'path' in info_lower or 'volume' in info_lower:
+                                    # Estrai path se presente
+                                    if '=' in info_line:
+                                        path_val = info_line.split('=')[-1].strip()
+                                        if path_val and '/' in path_val:
+                                            share_path = path_val
+                        
+                        shares.append({
+                            "name": share_name,
+                            "types": share_type if share_type else ["SMB"],  # Default SMB
+                            "path": share_path,
+                        })
             else:
                 # Metodo 2: Leggi /etc/samba/smb.conf
                 smb_conf = self.exec_cmd("cat /etc/samba/smb.conf 2>/dev/null | grep -E '^\\[.*\\]' | grep -v '^\\[global\\]' | grep -v '^\\[homes\\]'", timeout=3)
