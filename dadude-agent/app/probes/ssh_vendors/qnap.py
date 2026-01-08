@@ -75,9 +75,17 @@ class QNAPProbe(SSHVendorProbe):
             if hostname:
                 info["hostname"] = hostname.strip()
             
-            # Serial number
-            serial = self.exec_cmd("getsysinfo serial 2>/dev/null || cat /etc/nas_serial 2>/dev/null", timeout=3)
-            if serial:
+            # Serial number - prova diversi metodi
+            serial = self.exec_cmd("getsysinfo serial 2>/dev/null", timeout=3)
+            if not serial or not serial.strip():
+                # Metodo 2: /etc/nas_serial
+                serial = self.exec_cmd("cat /etc/nas_serial 2>/dev/null", timeout=3)
+            if not serial or not serial.strip():
+                # Metodo 3: SUID da platform.conf
+                suid = self.exec_cmd("cat /etc/platform.conf 2>/dev/null | grep SUID", timeout=3)
+                if suid and '=' in suid:
+                    serial = suid.split('=', 1)[1].strip()
+            if serial and serial.strip():
                 info["serial_number"] = serial.strip()
             
             # QTS version
