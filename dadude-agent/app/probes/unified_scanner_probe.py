@@ -627,13 +627,20 @@ async def _probe_ssh(
                                 result["disks"] = storage_info["disks"]
                             if storage_info.get("raid_arrays"):
                                 result["raid_arrays"] = storage_info["raid_arrays"]
-                            # Estrai anche shares se presente
-                            if vendor_result.get("shares"):
-                                result["shares"] = vendor_result["shares"]
+                        
+                        # Estrai anche direttamente dal dizionario principale (Synology restituisce così)
+                        if vendor_result.get("volumes"):
+                            result["volumes"] = vendor_result["volumes"]
+                        if vendor_result.get("disks"):
+                            result["disks"] = vendor_result["disks"]
+                        if vendor_result.get("raid_arrays"):
+                            result["raid_arrays"] = vendor_result["raid_arrays"]
+                        if vendor_result.get("shares"):
+                            result["shares"] = vendor_result["shares"]
                         
                         # I dati vendor-specific hanno priorità
                         for key, value in vendor_result.items():
-                            if value and key != "storage_info":  # storage_info già processato sopra
+                            if value and key not in ["storage_info", "volumes", "disks", "raid_arrays", "shares"]:  # già processati sopra
                                 result[key] = value
                         
                         logger.info(f"[UNIFIED] Vendor-specific probe collected: device_type={vendor_result.get('device_type')}, volumes={len(result.get('volumes', []))}, disks={len(result.get('disks', []))}, raid_arrays={len(result.get('raid_arrays', []))}, shares={len(result.get('shares', []))}")
