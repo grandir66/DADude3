@@ -4918,23 +4918,31 @@ async function viewInventoryDevice(deviceId) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${storageInfo.volumes.map(v => `
+                                ${storageInfo.volumes.map(v => {
+                                    // Converti usage_percent in numero se necessario
+                                    const usagePercent = typeof v.usage_percent === 'number' ? v.usage_percent : 
+                                                       (typeof v.usage_percent === 'string' ? parseFloat(v.usage_percent) : 
+                                                       (v.total_gb && v.used_gb ? Math.round((parseFloat(v.used_gb) / parseFloat(v.total_gb)) * 100) : 0));
+                                    const usagePercentNum = isNaN(usagePercent) ? 0 : usagePercent;
+                                    
+                                    return `
                                     <tr>
                                         <td><code>${v.name || '-'}</code></td>
                                         <td>${v.mount_point || '-'}</td>
-                                        <td>${v.total_gb ? v.total_gb.toFixed(1) + ' GB' : '-'}</td>
-                                        <td>${v.used_gb ? v.used_gb.toFixed(1) + ' GB' : '-'}</td>
-                                        <td>${v.free_gb ? v.free_gb.toFixed(1) + ' GB' : '-'}</td>
+                                        <td>${v.total_gb ? (typeof v.total_gb === 'number' ? v.total_gb.toFixed(1) : parseFloat(v.total_gb).toFixed(1)) + ' GB' : '-'}</td>
+                                        <td>${v.used_gb ? (typeof v.used_gb === 'number' ? v.used_gb.toFixed(1) : parseFloat(v.used_gb).toFixed(1)) + ' GB' : '-'}</td>
+                                        <td>${v.free_gb ? (typeof v.free_gb === 'number' ? v.free_gb.toFixed(1) : parseFloat(v.free_gb).toFixed(1)) + ' GB' : '-'}</td>
                                         <td>
                                             <div class="progress" style="height: 20px;">
-                                                <div class="progress-bar bg-${v.usage_percent > 90 ? 'danger' : v.usage_percent > 75 ? 'warning' : 'success'}" 
-                                                     style="width: ${v.usage_percent || 0}%">
-                                                    ${v.usage_percent ? v.usage_percent.toFixed(1) + '%' : '-'}
+                                                <div class="progress-bar bg-${usagePercentNum > 90 ? 'danger' : usagePercentNum > 75 ? 'warning' : 'success'}" 
+                                                     style="width: ${usagePercentNum}%">
+                                                    ${usagePercentNum > 0 ? usagePercentNum.toFixed(1) + '%' : '-'}
                                                 </div>
                                             </div>
                                         </td>
                                     </tr>
-                                `).join('')}
+                                `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
