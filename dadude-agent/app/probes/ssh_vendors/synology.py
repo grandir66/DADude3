@@ -506,6 +506,10 @@ class SynologyProbe(SSHVendorProbe):
                 
                 if disk_path:
                     disk_details[disk_path] = disk_data
+                    # Aggiungi anche senza /dev/ per matching più flessibile
+                    if disk_path.startswith('/dev/'):
+                        disk_details[disk_path[5:]] = disk_data
+                    self._log_debug(f"Parsed disk: path={disk_path}, id={disk_data.get('disk_id')}, model={disk_data.get('model')}, slot={disk_data.get('slot_id')}")
         
         # Usa lsblk con più colonne per ottenere tipo, modello, seriale
         lsblk = self.exec_cmd("lsblk -d -o NAME,SIZE,MODEL,SERIAL,TYPE,TRAN 2>/dev/null | tail -n +2", timeout=5)
@@ -515,7 +519,16 @@ class SynologyProbe(SSHVendorProbe):
                     parts = line.split()
                     if parts and (parts[0].startswith('sd') or parts[0].startswith('nvme') or parts[0].startswith('hd')):
                         disk_path = f"/dev/{parts[0]}"
+                        # Cerca match in disk_details con diversi formati
                         syno_disk = disk_details.get(disk_path, {})
+                        if not syno_disk:
+                            syno_disk = disk_details.get(parts[0], {})  # Senza /dev/
+                        if not syno_disk:
+                            # Cerca per device name senza numero (es: sda invece di sda1)
+                            base_name = parts[0].rstrip('0123456789')
+                            syno_disk = disk_details.get(f"/dev/{base_name}", {})
+                            if not syno_disk:
+                                syno_disk = disk_details.get(base_name, {})
                         
                         disk = {
                             "name": disk_path,
@@ -708,7 +721,44 @@ class SynologyProbe(SSHVendorProbe):
             # Metodo 1: Usa synoshare se disponibile
             synoshare = self.exec_cmd("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
             self._log_info(f"synoshare --enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
-            if synoshare:
+            
+            # Metodo alternativo: Leggi direttamente /etc/samba/smb.conf se synoshare non funziona
+            if not synoshare or len(synoshare.strip()) == 0:
+                self._log_info("synoshare --enum ALL returned empty, trying alternative methods")
+                # Prova a leggere smb.conf direttamente
+                smb_conf = self.exec_cmd("cat /etc/samba/smb.conf 2>/dev/null | grep -E '^\\[.*\\]' | grep -v '^\\[global\\]' | grep -v '^\\[homes\\]' | grep -v '^\\[printers\\]'", timeout=3)
+                if smb_conf:
+                    for line in smb_conf.split('\n'):
+                        line = line.strip()
+                        if line.startswith('[') and line.endswith(']'):
+                            share_name = line[1:-1]
+                            if share_name:
+                                # Verifica se la share esiste e ottieni path
+                                share_path_cmd = self.exec_cmd(f"grep -A 5 '^\\[{share_name}\\]' /etc/samba/smb.conf 2>/dev/null | grep 'path\\s*=' | head -1", timeout=2)
+                                share_path = f"/volume1/{share_name}"  # Default
+                                if share_path_cmd:
+                                    path_match = share_path_cmd.split('=')[-1].strip() if '=' in share_path_cmd else None
+                                    if path_match:
+                                        share_path = path_match
+                                
+                                # Verifica protocolli abilitati
+                                share_types = []
+                                # Verifica SMB
+                                if self.exec_cmd(f"grep -q '^\\[{share_name}\\]' /etc/samba/smb.conf 2>/dev/null", timeout=1):
+                                    share_types.append("SMB")
+                                # Verifica NFS
+                                nfs_exports = self.exec_cmd(f"grep -E '^[^#].*{share_name}' /etc/exports 2>/dev/null", timeout=2)
+                                if nfs_exports:
+                                    share_types.append("NFS")
+                                
+                                shares.append({
+                                    "name": share_name,
+                                    "types": share_types if share_types else ["SMB"],
+                                    "path": share_path,
+                                })
+                                self._log_debug(f"Found share via smb.conf: {share_name}, path={share_path}, types={share_types}")
+            
+            if synoshare and len(synoshare.strip()) > 0:
                 # Il formato di synoshare --enum ALL può essere:
                 # - Una lista di share, una per riga
                 # - Formato con sezioni [share_name]
