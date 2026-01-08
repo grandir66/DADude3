@@ -906,6 +906,18 @@ async def _save_unified_scan_to_inventory(
                                 custom_fields_changed = True
                                 logger.info(f"[SAVE_UNIFIED] Saved services for {manufacturer} device {device_id}: "
                                           f"running={len(running_services)}, total={len(all_services)}")
+                        
+                        # Salva shares in custom_fields per Synology/QNAP
+                        shares_list = getattr(scan_result, 'shares', None) or []
+                        if shares_list:
+                            if not device.custom_fields:
+                                device.custom_fields = {}
+                            device.custom_fields["shares"] = shares_list
+                            device.custom_fields["shares_count"] = len(shares_list)
+                            flag_modified(device, "custom_fields")
+                            custom_fields_changed = True
+                            logger.info(f"[SAVE_UNIFIED] Saved shares for {manufacturer} device {device_id}: "
+                                      f"total={len(shares_list)}")
                     
                 except Exception as e:
                     logger.error(f"Error saving Linux/NAS data: {e}", exc_info=True)
