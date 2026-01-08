@@ -609,6 +609,8 @@ class UnifiedScannerService:
         result.disks = agent_data.get("disks", [])
         result.volumes = agent_data.get("volumes", [])
         result.raid_arrays = agent_data.get("raid_arrays", [])
+        result.shares = agent_data.get("shares", [])
+        result.shares_count = len(result.shares)
         
         # Log dopo merge
         logger.info(f"[MERGE_AGENT] After merge: volumes={len(result.volumes)}, disks={len(result.disks)}, raid_arrays={len(result.raid_arrays)}, shares={len(result.shares)}")
