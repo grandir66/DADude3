@@ -860,7 +860,7 @@ async def _save_unified_scan_to_inventory(
                                 device.custom_fields = {}
                             device.custom_fields["storage_info"] = storage_info
                             flag_modified(device, "custom_fields")
-                            summary["custom_fields_updated"] = True
+                            custom_fields_changed = True
                             logger.info(f"[SAVE_UNIFIED] Saved storage_info for {manufacturer} device {device_id}: "
                                       f"volumes={len(storage_info.get('volumes', []))}, "
                                       f"disks={len(storage_info.get('disks', []))}, "
@@ -903,7 +903,7 @@ async def _save_unified_scan_to_inventory(
                                 device.custom_fields["all_services"] = all_services
                                 device.custom_fields["services_count"] = len(all_services)
                                 flag_modified(device, "custom_fields")
-                                summary["custom_fields_updated"] = True
+                                custom_fields_changed = True
                                 logger.info(f"[SAVE_UNIFIED] Saved services for {manufacturer} device {device_id}: "
                                           f"running={len(running_services)}, total={len(all_services)}")
                     
@@ -1034,6 +1034,11 @@ async def _save_unified_scan_to_inventory(
                         summary["interfaces_saved"] += 1
             except Exception as e:
                 logger.error(f"Error saving network interfaces: {e}", exc_info=True)
+        
+        # Aggiorna summary con custom_fields_updated se ci sono state modifiche dopo la riga 397
+        # (servizi e storage_info vengono salvati dopo)
+        if custom_fields_changed:
+            summary["custom_fields_updated"] = True
         
         return summary
         
