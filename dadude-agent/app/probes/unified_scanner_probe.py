@@ -608,6 +608,32 @@ async def _probe_ssh(
                         return output
                     
                     # Se senza sudo non funziona, prova con sudo
+                    # Se abbiamo la password SSH, usala per sudo
+                    password = credentials.get("password")
+                    if password:
+                        # Usa echo per passare password a sudo -S
+                        # Escapa caratteri speciali nella password e nel comando
+                        import shlex
+                        escaped_password = password.replace("'", "'\"'\"'")
+                        escaped_cmd = cmd.replace("'", "'\"'\"'")
+                        sudo_cmd = f"echo '{escaped_password}' | sudo -S {escaped_cmd}"
+                        try:
+                            stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
+                            sudo_output = stdout.read().decode().strip()
+                            sudo_error = stderr.read().decode().strip()
+                            
+                            # Rimuovi eventuali prompt password dall'output
+                            sudo_output = '\n'.join([line for line in sudo_output.split('\n') 
+                                                    if '[sudo]' not in line.lower() and 'password' not in line.lower()])
+                            
+                            # Se sudo funziona (output presente), usalo
+                            if sudo_output and len(sudo_output.strip()) > 0:
+                                logger.debug(f"SSH: sudo command succeeded with password: {cmd[:50]}...")
+                                return sudo_output
+                        except Exception as e:
+                            logger.debug(f"SSH: sudo command with password failed: {cmd[:50]}... error: {e}")
+                    
+                    # Fallback: prova sudo senza password (se configurato NOPASSWD)
                     sudo_cmd = f"sudo {cmd}"
                     try:
                         stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
@@ -618,10 +644,10 @@ async def _probe_ssh(
                         if sudo_output and len(sudo_output.strip()) > 0:
                             # Verifica che non ci siano errori di password
                             if "password" not in sudo_error.lower() and "sudo:" not in sudo_error.lower():
-                                logger.debug(f"SSH: sudo command succeeded: {cmd[:50]}...")
+                                logger.debug(f"SSH: sudo command succeeded without password: {cmd[:50]}...")
                                 return sudo_output
                             else:
-                                logger.debug(f"SSH: sudo requires password for: {cmd[:50]}...")
+                                logger.debug(f"SSH: sudo requires password (not available): {cmd[:50]}...")
                     except Exception as e:
                         logger.debug(f"SSH: sudo command failed: {cmd[:50]}... error: {e}")
                     
