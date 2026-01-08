@@ -300,7 +300,10 @@ class SynologyProbe(SSHVendorProbe):
                             used_bytes = self._parse_size(used_val)
                             available_bytes = self._parse_size(available_val)
                         
-                        volumes.append({
+                        # Arricchisci con dettagli da synospace --enum volume
+                        vol_detail = volume_details.get(mount_point, {})
+                        
+                        volume_data = {
                             "name": vol_name,
                             "mount_point": mount_point,
                             "path": mount_point,
@@ -313,7 +316,20 @@ class SynologyProbe(SSHVendorProbe):
                             "total_bytes": total_bytes,
                             "used_bytes": used_bytes,
                             "available_bytes": available_bytes,
-                        })
+                        }
+                        
+                        # Aggiungi dettagli da synospace --enum volume
+                        if vol_detail:
+                            volume_data["pool_path"] = vol_detail.get("pool_path", "")
+                            volume_data["device_type"] = vol_detail.get("device_type", "")
+                            volume_data["volume_status"] = vol_detail.get("status", "")
+                            volume_data["uuid"] = vol_detail.get("uuid", "")
+                            volume_data["raid_type"] = vol_detail.get("raid_type", "")
+                            volume_data["raid_device"] = vol_detail.get("raid_device", "")
+                            if vol_detail.get("size_bytes"):
+                                volume_data["size_bytes"] = vol_detail["size_bytes"]
+                        
+                        volumes.append(volume_data)
             
             # Metodo 2: Cerca volumi esplicitamente
             if not volumes:
