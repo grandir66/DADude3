@@ -5121,18 +5121,33 @@ async function viewInventoryDevice(deviceId) {
             <div class="tab-content" id="deviceDetailTabContent">
                 <div class="tab-pane fade show active" id="general" role="tabpanel">
                     ${detailsHtml}
-                    ${cf.running_services && cf.running_services.length > 0 ? `
+                    ${(cf.running_services && cf.running_services.length > 0) || (cf.all_services && cf.all_services.length > 0) ? `
                     <hr>
-                    <h6 class="text-muted mb-3"><i class="bi bi-gear-fill"></i> Servizi Attivi (${cf.running_services_count || cf.running_services.length})</h6>
+                    <h6 class="text-muted mb-3"><i class="bi bi-gear-fill"></i> Servizi (${cf.running_services_count || cf.running_services?.length || 0} in esecuzione / ${cf.services_count || cf.all_services?.length || 0} totali)</h6>
+                    ${cf.important_services && cf.important_services.length > 0 ? `
                     <div class="mb-2">
-                        ${cf.important_services ? '<strong>Servizi Importanti:</strong> ' + cf.important_services.map(s => '<span class="badge bg-primary me-1">' + s + '</span>').join('') : ''}
-                </div>
+                        <strong>Servizi Importanti:</strong> ${cf.important_services.map(s => '<span class="badge bg-primary me-1">' + s + '</span>').join('')}
+                    </div>
+                    ` : ''}
+                    ${cf.running_services && cf.running_services.length > 0 ? `
+                    <div class="mb-2">
+                        <strong>Servizi in Esecuzione:</strong>
+                        <div class="mt-1">
+                            ${cf.running_services.map(s => '<span class="badge bg-success me-1 mb-1">' + s + '</span>').join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${cf.all_services && cf.all_services.length > 0 ? `
                     <details class="mb-2">
-                        <summary class="text-muted" style="cursor: pointer;">Mostra tutti i servizi (${cf.running_services.length})</summary>
+                        <summary class="text-muted" style="cursor: pointer;">Mostra tutti i servizi (${cf.all_services.length})</summary>
                         <div class="mt-2" style="max-height: 200px; overflow-y: auto;">
-                            ${cf.running_services.map(s => '<span class="badge bg-secondary me-1 mb-1">' + s + '</span>').join('')}
+                            ${cf.all_services.map(s => {
+                                const isRunning = cf.running_services && cf.running_services.includes(s);
+                                return '<span class="badge bg-' + (isRunning ? 'success' : 'secondary') + ' me-1 mb-1">' + s + '</span>';
+                            }).join('')}
                         </div>
                     </details>
+                    ` : ''}
                     ` : ''}
                     ${cf.cron_jobs && cf.cron_jobs.length > 0 ? `
                     <hr>
