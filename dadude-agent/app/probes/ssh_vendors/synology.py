@@ -484,7 +484,7 @@ class SynologyProbe(SSHVendorProbe):
         
         try:
             # Metodo 1: Usa synoshare se disponibile
-            synoshare = self.exec_cmd("/usr/syno/bin/synoshare --get all 2>/dev/null", timeout=5)
+            synoshare = self.exec_cmd("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
             if synoshare:
                 for line in synoshare.split('\n'):
                     if line.strip() and not line.startswith('['):
