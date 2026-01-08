@@ -520,6 +520,13 @@ class UnifiedScannerService:
                 data_keys = list(agent_result.data.keys()) if isinstance(agent_result.data, dict) else []
                 logger.info(f"[UNIFIED_SCAN] Agent returned {len(data_keys)} fields: {sorted(data_keys)[:15]}")
                 
+                # DEBUG: Log dettagliato storage data
+                volumes = agent_result.data.get("volumes", [])
+                disks = agent_result.data.get("disks", [])
+                raid_arrays = agent_result.data.get("raid_arrays", [])
+                shares = agent_result.data.get("shares", [])
+                logger.info(f"[UNIFIED_SCAN] Storage data from agent: volumes={len(volumes)}, disks={len(disks)}, raid_arrays={len(raid_arrays)}, shares={len(shares)}")
+                
                 # DEBUG: Log dettagliato degli interface e LLDP
                 ni = agent_result.data.get("network_interfaces", [])
                 lldp = agent_result.data.get("lldp_neighbors", [])
