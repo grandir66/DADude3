@@ -4911,6 +4911,7 @@ async function viewInventoryDevice(deviceId) {
                                 <tr>
                                     <th>Nome</th>
                                     <th>Mount Point</th>
+                                    <th>Filesystem</th>
                                     <th>Totale</th>
                                     <th>Utilizzato</th>
                                     <th>Libero</th>
@@ -4921,13 +4922,16 @@ async function viewInventoryDevice(deviceId) {
                                 ${storageInfo.volumes.map(v => {
                                     // Converti usage_percent in numero se necessario
                                     const usagePercent = typeof v.usage_percent === 'number' ? v.usage_percent : 
-                                                       (typeof v.usage_percent === 'string' ? parseFloat(v.usage_percent) : 
+                                                       (typeof v.usage_percent === 'string' ? parseFloat(v.usage_percent.replace('%', '')) : 
                                                        (v.total_gb && v.used_gb ? Math.round((parseFloat(v.used_gb) / parseFloat(v.total_gb)) * 100) : 0));
                                     const usagePercentNum = isNaN(usagePercent) ? 0 : usagePercent;
                                     
+                                    // Estrai nome volume (usa name o ultima parte del mount_point)
+                                    const volName = v.name || v.mount_point?.split('/').pop() || v.path?.split('/').pop() || '-';
+                                    
                                     return `
                                     <tr>
-                                        <td><code>${v.name || v.mount_point?.split('/').pop() || '-'}</code></td>
+                                        <td><code>${volName}</code></td>
                                         <td><small>${v.mount_point || v.path || '-'}</small></td>
                                         <td><span class="badge bg-secondary">${v.filesystem || '-'}</span></td>
                                         <td>${v.total_gb ? (typeof v.total_gb === 'number' ? v.total_gb.toFixed(1) : parseFloat(v.total_gb).toFixed(1)) + ' GB' : '-'}</td>

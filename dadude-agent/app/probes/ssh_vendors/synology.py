@@ -477,3 +477,49 @@ class SynologyProbe(SSHVendorProbe):
                     packages.append({"name": pkg.strip()})
         
         return packages[:50]  # Limita a 50
+    
+    def _get_shares(self) -> List[Dict[str, Any]]:
+        """Ottiene share SMB/NFS esposte"""
+        shares = []
+        
+        try:
+            # Metodo 1: Usa synoshare se disponibile
+            synoshare = self.exec_cmd("/usr/syno/bin/synoshare --get all 2>/dev/null", timeout=5)
+            if synoshare:
+                for line in synoshare.split('\n'):
+                    if line.strip() and not line.startswith('['):
+                        parts = line.split()
+                        if parts:
+                            share_name = parts[0]
+                            # Verifica tipo share
+                            share_info = self.exec_cmd(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
+                            share_type = []
+                            if share_info:
+                                if 'smb' in share_info.lower() or 'cifs' in share_info.lower():
+                                    share_type.append("SMB")
+                                if 'nfs' in share_info.lower():
+                                    share_type.append("NFS")
+                                if 'afp' in share_info.lower():
+                                    share_type.append("AFP")
+                            
+                            shares.append({
+                                "name": share_name,
+                                "types": share_type if share_type else ["SMB"],  # Default SMB
+                                "path": f"/volume1/{share_name}",  # Path tipico Synology
+                            })
+            else:
+                # Metodo 2: Leggi /etc/samba/smb.conf
+                smb_conf = self.exec_cmd("cat /etc/samba/smb.conf 2>/dev/null | grep -E '^\\[.*\\]' | grep -v '^\\[global\\]' | grep -v '^\\[homes\\]'", timeout=3)
+                if smb_conf:
+                    for line in smb_conf.split('\n'):
+                        if line.strip().startswith('[') and line.strip().endswith(']'):
+                            share_name = line.strip()[1:-1]
+                            shares.append({
+                                "name": share_name,
+                                "types": ["SMB"],
+                                "path": f"/volume1/{share_name}",
+                            })
+        except Exception as e:
+            self._log_warning(f"Error getting shares: {e}")
+        
+        return shares
