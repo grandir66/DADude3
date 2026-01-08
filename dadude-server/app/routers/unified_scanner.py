@@ -860,6 +860,7 @@ async def _save_unified_scan_to_inventory(
                                 device.custom_fields = {}
                             device.custom_fields["storage_info"] = storage_info
                             flag_modified(device, "custom_fields")
+                            summary["custom_fields_updated"] = True
                             logger.info(f"[SAVE_UNIFIED] Saved storage_info for {manufacturer} device {device_id}: "
                                       f"volumes={len(storage_info.get('volumes', []))}, "
                                       f"disks={len(storage_info.get('disks', []))}, "
