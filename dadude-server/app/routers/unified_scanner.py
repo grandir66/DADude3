@@ -786,9 +786,10 @@ async def _save_unified_scan_to_inventory(
                         storage_info = {}
                         
                         # Converti volumes nel formato atteso dal frontend
-                        if scan_result.volumes:
+                        volumes_list = getattr(scan_result, 'volumes', None) or []
+                        if volumes_list:
                             storage_info["volumes"] = []
-                            for vol in scan_result.volumes:
+                            for vol in volumes_list:
                                 vol_dict = {
                                     "name": vol.get("name") or vol.get("mount_point") or vol.get("device", ""),
                                     "mount_point": vol.get("mount_point") or vol.get("path") or "",
@@ -802,9 +803,10 @@ async def _save_unified_scan_to_inventory(
                                 storage_info["volumes"].append(vol_dict)
                         
                         # Converti disks nel formato atteso dal frontend
-                        if scan_result.disks:
+                        disks_list = getattr(scan_result, 'disks', None) or []
+                        if disks_list:
                             storage_info["disks"] = []
-                            for disk in scan_result.disks:
+                            for disk in disks_list:
                                 disk_dict = {
                                     "name": disk.get("name") or disk.get("device", ""),
                                     "size": disk.get("size") or disk.get("size_human", ""),
@@ -820,11 +822,12 @@ async def _save_unified_scan_to_inventory(
                                 storage_info["disks"].append(disk_dict)
                         
                         # Converti raid_arrays nel formato atteso dal frontend
-                        if scan_result.raid_arrays:
+                        raid_arrays = getattr(scan_result, 'raid_arrays', None) or []
+                        if raid_arrays:
                             # Prendi il primo RAID array come principale (o combina tutti)
                             raid_info = {}
-                            if len(scan_result.raid_arrays) == 1:
-                                raid = scan_result.raid_arrays[0]
+                            if len(raid_arrays) == 1:
+                                raid = raid_arrays[0]
                                 raid_info = {
                                     "name": raid.get("name", ""),
                                     "level": raid.get("level", ""),
@@ -834,9 +837,9 @@ async def _save_unified_scan_to_inventory(
                                     "healthy_disks": raid.get("healthy_disks", 0),
                                     "degraded": raid.get("status", "").lower() in ["degraded", "warning"],
                                 }
-                            elif len(scan_result.raid_arrays) > 1:
+                            elif len(raid_arrays) > 1:
                                 # Se ci sono più RAID, usa il primo come principale
-                                raid = scan_result.raid_arrays[0]
+                                raid = raid_arrays[0]
                                 raid_info = {
                                     "name": raid.get("name", ""),
                                     "level": raid.get("level", ""),
@@ -845,7 +848,7 @@ async def _save_unified_scan_to_inventory(
                                     "total_disks": raid.get("total_disks", 0),
                                     "healthy_disks": raid.get("healthy_disks", 0),
                                     "degraded": raid.get("status", "").lower() in ["degraded", "warning"],
-                                    "arrays_count": len(scan_result.raid_arrays),
+                                    "arrays_count": len(raid_arrays),
                                 }
                             
                             if raid_info:
