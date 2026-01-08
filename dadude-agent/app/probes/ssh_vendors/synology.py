@@ -415,13 +415,30 @@ class SynologyProbe(SSHVendorProbe):
                             raid_data["active_devices"] = int(detail_line.split(':')[1].strip()) if ':' in detail_line else 0
                         elif 'failed devices' in detail_lower:
                             raid_data["failed_devices"] = int(detail_line.split(':')[1].strip()) if ':' in detail_line else 0
-                        elif '/dev/sd' in detail_line and 'active sync' in detail_line:
-                            disk_match = re.search(r'(/dev/sd[a-z]+\d*)', detail_line)
-                            if disk_match:
-                                raid_data["devices"].append({
-                                    "device": disk_match.group(1),
-                                    "status": "active sync"
-                                })
+                        # Cerca dispositivi in varie forme: /dev/sdX, /dev/sdX[Y], /dev/nvmeXnY, etc.
+                        elif ('/dev/' in detail_line and ('active' in detail_lower or 'sync' in detail_lower or 'spare' in detail_lower)):
+                            # Pattern più flessibile per dispositivi
+                            disk_patterns = [
+                                r'(/dev/sd[a-z]+\d*)',  # /dev/sda, /dev/sda1
+                                r'(/dev/nvme\d+n\d+)',  # /dev/nvme0n1
+                                r'(/dev/nvme\d+n\d+p\d+)',  # /dev/nvme0n1p1
+                                r'(/dev/[a-z]+\d+)',  # Altri dispositivi
+                            ]
+                            for pattern in disk_patterns:
+                                disk_match = re.search(pattern, detail_line)
+                                if disk_match:
+                                    device_name = disk_match.group(1)
+                                    # Estrai status dalla riga
+                                    status = "active sync"
+                                    if 'spare' in detail_lower:
+                                        status = "spare"
+                                    elif 'faulty' in detail_lower or 'failed' in detail_lower:
+                                        status = "faulty"
+                                    raid_data["devices"].append({
+                                        "device": device_name,
+                                        "status": status
+                                    })
+                                    break
                     
                     if "level" in raid_data:
                         raid_info.append(raid_data)
@@ -650,14 +667,32 @@ class SynologyProbe(SSHVendorProbe):
         try:
             # Metodo 1: Usa synoshare se disponibile
             synoshare = self.exec_cmd("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
+            self._log_debug(f"synoshare --enum ALL output: {synoshare[:200] if synoshare else 'None'}")
             if synoshare:
-                # Il formato di synoshare --enum ALL è una lista di share, una per riga
-                for line in synoshare.split('\n'):
+                # Il formato di synoshare --enum ALL può essere:
+                # - Una lista di share, una per riga
+                # - Formato con sezioni [share_name]
+                lines = synoshare.split('\n')
+                current_share = None
+                
+                for line in lines:
                     line = line.strip()
-                    if line and not line.startswith('#') and not line.startswith('['):
-                        # Il nome della share è la prima parte della riga
-                        share_name = line.split()[0] if line.split() else line
-                        if share_name:
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Se la riga inizia con [ e finisce con ], è il nome di una share
+                    if line.startswith('[') and line.endswith(']'):
+                        current_share = line[1:-1].strip()
+                        continue
+                    
+                    # Se abbiamo una share corrente e la riga contiene informazioni
+                    if current_share:
+                        share_name = current_share
+                    else:
+                        # Altrimenti, il nome della share è la prima parte della riga
+                        share_name = line.split()[0] if line.split() else None
+                    
+                    if share_name:
                             # Verifica tipo share con synoshare --get
                             share_info = self.exec_cmd(f"/usr/syno/bin/synoshare --get {share_name} 2>/dev/null", timeout=3)
                             share_type = []
