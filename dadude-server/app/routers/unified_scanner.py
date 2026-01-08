@@ -864,6 +864,30 @@ async def _save_unified_scan_to_inventory(
                                       f"volumes={len(storage_info.get('volumes', []))}, "
                                       f"disks={len(storage_info.get('disks', []))}, "
                                       f"raid={storage_info.get('raid') is not None}")
+                        
+                        # Salva servizi in custom_fields per Synology/QNAP
+                        services_list = getattr(scan_result, 'services', None) or []
+                        if services_list:
+                            if not device.custom_fields:
+                                device.custom_fields = {}
+                            # Estrai nomi servizi e stato
+                            running_services = []
+                            all_services = []
+                            for svc in services_list:
+                                svc_name = svc.get("name") or svc.get("service") or str(svc)
+                                all_services.append(svc_name)
+                                # Verifica se il servizio è in esecuzione
+                                state = svc.get("state") or svc.get("status") or ""
+                                if state.lower() in ["running", "active", "enabled", "up"]:
+                                    running_services.append(svc_name)
+                            
+                            device.custom_fields["running_services"] = running_services
+                            device.custom_fields["running_services_count"] = len(running_services)
+                            device.custom_fields["all_services"] = all_services
+                            device.custom_fields["services_count"] = len(all_services)
+                            flag_modified(device, "custom_fields")
+                            logger.info(f"[SAVE_UNIFIED] Saved services for {manufacturer} device {device_id}: "
+                                      f"running={len(running_services)}, total={len(all_services)}")
                     
                 except Exception as e:
                     logger.error(f"Error saving Linux/NAS data: {e}", exc_info=True)

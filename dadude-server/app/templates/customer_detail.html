@@ -4977,16 +4977,36 @@ async function viewInventoryDevice(deviceId) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${storageInfo.disks.map(d => `
+                                ${storageInfo.disks.map(d => {
+                                    // Converti size in GB se necessario
+                                    let sizeGb = d.size_gb;
+                                    if (!sizeGb && d.size) {
+                                        // Prova a convertire da stringa (es. "2TB" -> 2048)
+                                        const sizeStr = String(d.size).toUpperCase();
+                                        if (sizeStr.includes('TB')) {
+                                            sizeGb = parseFloat(sizeStr) * 1024;
+                                        } else if (sizeStr.includes('GB')) {
+                                            sizeGb = parseFloat(sizeStr);
+                                        } else if (sizeStr.includes('MB')) {
+                                            sizeGb = parseFloat(sizeStr) / 1024;
+                                        } else if (d.size_bytes) {
+                                            sizeGb = d.size_bytes / (1024**3);
+                                        }
+                                    } else if (!sizeGb && d.size_bytes) {
+                                        sizeGb = d.size_bytes / (1024**3);
+                                    }
+                                    
+                                    return `
                                     <tr>
                                         <td><code>${d.name || '-'}</code></td>
                                         <td>${d.model || '-'}</td>
-                                        <td>${d.size_gb ? d.size_gb.toFixed(1) + ' GB' : '-'}</td>
+                                        <td>${sizeGb ? sizeGb.toFixed(1) + ' GB' : (d.size || '-')}</td>
                                         <td><small>${d.serial || '-'}</small></td>
-                                        <td><span class="badge bg-${d.health === 'good' ? 'success' : 'warning'}">${d.health || '-'}</span></td>
+                                        <td><span class="badge bg-${d.health === 'good' || d.health === 'healthy' ? 'success' : d.health === 'warning' || d.health === 'degraded' ? 'warning' : 'secondary'}">${d.health || '-'}</span></td>
                                         <td>${d.temperature ? d.temperature + '°C' : '-'}</td>
                                     </tr>
-                                `).join('')}
+                                `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
