@@ -768,13 +768,35 @@ class SynologyProbe(SSHVendorProbe):
         
         try:
             # Metodo 1: Usa synoshare se disponibile (NOTA: usa -enum non --enum)
-            # synoshare richiede sempre sudo, quindi proviamo direttamente con sudo
+            # Cerca synoshare in diverse posizioni (può variare tra versioni DSM)
             synoshare = None
-            # Prova prima senza sudo (per compatibilità)
-            synoshare = self.exec_cmd("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
-            # Se non funziona, prova con sudo (richiede password SSH)
+            synoshare_paths = [
+                "synoshare",  # Se nel PATH
+                "/usr/syno/bin/synoshare",
+                "/usr/local/bin/synoshare",
+                "/volume1/@appstore/*/bin/synoshare",  # Alcune versioni lo hanno qui
+            ]
+            
+            for spath in synoshare_paths:
+                # Prova prima senza sudo
+                synoshare = self.exec_cmd(f"{spath} -enum ALL 2>/dev/null", timeout=5)
+                if synoshare and len(synoshare.strip()) > 0:
+                    self._log_info(f"synoshare found at {spath}")
+                    break
+                # Se non funziona, prova con sudo
+                synoshare = self.exec_cmd_sudo(f"{spath} -enum ALL", timeout=5)
+                if synoshare and len(synoshare.strip()) > 0:
+                    self._log_info(f"synoshare found at {spath} (with sudo)")
+                    break
+            
+            # Se ancora non trovato, cerca il path con which o find
             if not synoshare or len(synoshare.strip()) == 0:
-                synoshare = self.exec_cmd_sudo("/usr/syno/bin/synoshare -enum ALL 2>/dev/null", timeout=5)
+                synoshare_path = self.exec_cmd("which synoshare 2>/dev/null || find /usr -name 'synoshare' -type f 2>/dev/null | head -1", timeout=5)
+                if synoshare_path and len(synoshare_path.strip()) > 0:
+                    synoshare_path = synoshare_path.strip().split('\n')[0]
+                    self._log_info(f"synoshare discovered at: {synoshare_path}")
+                    synoshare = self.exec_cmd_sudo(f"{synoshare_path} -enum ALL", timeout=5)
+            
             self._log_info(f"synoshare -enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
             
             # Metodo alternativo: Leggi direttamente /etc/samba/smb.conf se synoshare non funziona

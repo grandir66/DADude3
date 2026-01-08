@@ -618,11 +618,14 @@ async def _probe_ssh(
                         escaped_password = ssh_password.replace("\\", "\\\\").replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
                         # Rimuovi redirect dal comando per sudo
                         cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
-                        sudo_cmd = f'echo "{escaped_password}" | sudo -S {cmd_clean}'
+                        # Usa sudo con PATH preservato per trovare comandi Synology/QNAP
+                        sudo_cmd = f'echo "{escaped_password}" | sudo -S env "PATH=$PATH:/usr/syno/bin:/usr/local/bin:/usr/sbin" {cmd_clean}'
+                        logger.debug(f"SSH: trying sudo with echo, cmd_clean: {cmd_clean[:80]}...")
                         try:
                             stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
                             sudo_output = stdout.read().decode().strip()
                             sudo_error = stderr.read().decode().strip()
+                            logger.debug(f"SSH: sudo echo raw output length={len(sudo_output)}, stderr length={len(sudo_error)}, stderr={sudo_error[:150] if sudo_error else 'none'}")
                             
                             # Rimuovi eventuali prompt password dall'output
                             lines = []
@@ -648,10 +651,12 @@ async def _probe_ssh(
                         except Exception as e:
                             logger.debug(f"SSH: sudo command with echo failed: {cmd_clean[:50]}... error: {e}")
                         
-                        # Metodo 2: Usa stdin diretto per password
+                        # Metodo 2: Usa stdin diretto per password con PTY
                         try:
                             cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
-                            sudo_cmd = f'sudo -S {cmd_clean}'
+                            # Usa sudo con PATH preservato per trovare comandi Synology/QNAP
+                            sudo_cmd = f'sudo -S env "PATH=$PATH:/usr/syno/bin:/usr/local/bin:/usr/sbin" {cmd_clean}'
+                            logger.debug(f"SSH: trying sudo with stdin/pty, cmd_clean: {cmd_clean[:80]}...")
                             stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout, get_pty=True)
                             # Invia password direttamente via stdin
                             stdin.write(ssh_password + '\n')
@@ -659,6 +664,7 @@ async def _probe_ssh(
                             
                             sudo_output = stdout.read().decode().strip()
                             sudo_error = stderr.read().decode().strip()
+                            logger.debug(f"SSH: sudo stdin raw output length={len(sudo_output)}, stderr length={len(sudo_error)}, preview={sudo_output[:200] if sudo_output else 'empty'}")
                             
                             # Rimuovi eventuali prompt password dall'output
                             lines = []
