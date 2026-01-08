@@ -261,9 +261,9 @@ class SynologyProbe(SSHVendorProbe):
                             "path": mount_point,
                             "device": parts[0],
                             "filesystem": filesystem,
-                            "total": parts[2] if len(parts) > 2 else "",
-                            "used": parts[3] if len(parts) > 3 else "",
-                            "available": parts[4] if len(parts) > 4 else "",
+                            "total": parts[2] + "K" if len(parts) > 2 else "",  # 1K-blocks
+                            "used": parts[3] + "K" if len(parts) > 3 else "",   # Used in KB
+                            "available": parts[4] + "K" if len(parts) > 4 else "",  # Available in KB
                             "use_percent": use_percent,
                             "total_bytes": total_bytes,
                             "used_bytes": used_bytes,
