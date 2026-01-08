@@ -4927,8 +4927,9 @@ async function viewInventoryDevice(deviceId) {
                                     
                                     return `
                                     <tr>
-                                        <td><code>${v.name || '-'}</code></td>
-                                        <td>${v.mount_point || '-'}</td>
+                                        <td><code>${v.name || v.mount_point?.split('/').pop() || '-'}</code></td>
+                                        <td><small>${v.mount_point || v.path || '-'}</small></td>
+                                        <td><span class="badge bg-secondary">${v.filesystem || '-'}</span></td>
                                         <td>${v.total_gb ? (typeof v.total_gb === 'number' ? v.total_gb.toFixed(1) : parseFloat(v.total_gb).toFixed(1)) + ' GB' : '-'}</td>
                                         <td>${v.used_gb ? (typeof v.used_gb === 'number' ? v.used_gb.toFixed(1) : parseFloat(v.used_gb).toFixed(1)) + ' GB' : '-'}</td>
                                         <td>${v.free_gb ? (typeof v.free_gb === 'number' ? v.free_gb.toFixed(1) : parseFloat(v.free_gb).toFixed(1)) + ' GB' : '-'}</td>
@@ -4970,6 +4971,7 @@ async function viewInventoryDevice(deviceId) {
                                 <tr>
                                     <th>Nome</th>
                                     <th>Modello</th>
+                                    <th>Tipo</th>
                                     <th>Dimensione</th>
                                     <th>Seriale</th>
                                     <th>Salute</th>
@@ -4996,14 +4998,49 @@ async function viewInventoryDevice(deviceId) {
                                         sizeGb = d.size_bytes / (1024**3);
                                     }
                                     
+                                    const diskType = d.disk_type || d.type || '-';
+                                    const healthStatus = d.health || d.health_status || d.smart_status || '-';
+                                    const healthBadge = healthStatus === 'good' || healthStatus === 'healthy' || healthStatus === 'PASSED' ? 'success' : 
+                                                       healthStatus === 'warning' || healthStatus === 'degraded' || healthStatus === 'failing' || healthStatus === 'FAILED' ? 'danger' : 'secondary';
+                                    
                                     return `
                                     <tr>
-                                        <td><code>${d.name || '-'}</code></td>
+                                        <td><code>${d.name || d.device || '-'}</code></td>
                                         <td>${d.model || '-'}</td>
+                                        <td><span class="badge bg-info">${diskType}</span></td>
                                         <td>${sizeGb ? sizeGb.toFixed(1) + ' GB' : (d.size || '-')}</td>
                                         <td><small>${d.serial || '-'}</small></td>
-                                        <td><span class="badge bg-${d.health === 'good' || d.health === 'healthy' ? 'success' : d.health === 'warning' || d.health === 'degraded' ? 'warning' : 'secondary'}">${d.health || '-'}</span></td>
-                                        <td>${d.temperature ? d.temperature + '°C' : '-'}</td>
+                                        <td><span class="badge bg-${healthBadge}">${healthStatus}</span></td>
+                                        <td>${d.temperature || d.temperature_celsius ? (d.temperature || d.temperature_celsius) + '°C' : '-'}</td>
+                                    </tr>
+                                `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+                
+                ${(cf.shares && cf.shares.length > 0) ? `
+                <div class="mb-3">
+                    <strong>Share Condivise (${cf.shares_count || cf.shares.length}):</strong>
+                    <div class="table-responsive mt-2">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Path</th>
+                                    <th>Protocolli</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${cf.shares.map(s => {
+                                    const shareTypes = s.types || [s.type || 'SMB'];
+                                    return `
+                                    <tr>
+                                        <td><code>${s.name || '-'}</code></td>
+                                        <td><small>${s.path || '-'}</small></td>
+                                        <td>${shareTypes.map(t => `<span class="badge bg-primary me-1">${t}</span>`).join('')}</td>
                                     </tr>
                                 `;
                                 }).join('')}
