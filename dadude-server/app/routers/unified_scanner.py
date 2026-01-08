@@ -194,6 +194,21 @@ async def get_scan_result(device_id: str):
         }
 
 
+def _parse_size_string(size_str: str) -> int:
+    """Converte stringa size (es: '8.0T', '500G', '100M') in bytes."""
+    if not size_str:
+        return 0
+    try:
+        size_str = str(size_str).strip().upper()
+        multipliers = {'T': 1024**4, 'G': 1024**3, 'M': 1024**2, 'K': 1024, 'B': 1}
+        for suffix, mult in multipliers.items():
+            if size_str.endswith(suffix):
+                num = float(size_str[:-1].replace(',', '.'))
+                return int(num * mult)
+        return int(float(size_str))
+    except (ValueError, TypeError):
+        return 0
+
 async def _save_unified_scan_to_inventory(
     device_id: str,
     scan_result: UnifiedScanResult,
@@ -790,13 +805,39 @@ async def _save_unified_scan_to_inventory(
                         if volumes_list:
                             storage_info["volumes"] = []
                             for vol in volumes_list:
+                                # Calcola total_gb, used_gb, free_gb
+                                total_bytes = vol.get("total_bytes", 0)
+                                used_bytes = vol.get("used_bytes", 0)
+                                available_bytes = vol.get("available_bytes", 0)
+                                
+                                # Se available_bytes è 0 ma abbiamo available come stringa, prova a parsare
+                                if not available_bytes and vol.get("available"):
+                                    available_str = str(vol.get("available", "")).strip()
+                                    # Se contiene "%", calcola da total e used
+                                    if "%" in available_str:
+                                        if total_bytes and used_bytes:
+                                            available_bytes = total_bytes - used_bytes
+                                    else:
+                                        # Prova a parsare come size string
+                                        available_bytes = _parse_size_string(available_str)
+                                
+                                # Se ancora non abbiamo available_bytes, calcola da total e used
+                                if not available_bytes and total_bytes and used_bytes:
+                                    available_bytes = total_bytes - used_bytes
+                                
+                                # Calcola usage_percent se non presente
+                                usage_percent = vol.get("usage_percent") or vol.get("use_percent", 0)
+                                if not usage_percent and total_bytes and used_bytes:
+                                    usage_percent = round((used_bytes / total_bytes) * 100, 1)
+                                
                                 vol_dict = {
-                                    "name": vol.get("name") or vol.get("mount_point") or vol.get("device", ""),
+                                    "name": vol.get("name") or vol.get("mount_point", "").split('/')[-1] or vol.get("device", ""),
                                     "mount_point": vol.get("mount_point") or vol.get("path") or "",
-                                    "total_gb": round(vol.get("total_bytes", 0) / (1024**3), 2) if vol.get("total_bytes") else vol.get("total_gb", 0),
-                                    "used_gb": round(vol.get("used_bytes", 0) / (1024**3), 2) if vol.get("used_bytes") else vol.get("used_gb", 0),
-                                    "free_gb": round(vol.get("available_bytes", 0) / (1024**3), 2) if vol.get("available_bytes") else vol.get("free_gb", 0),
-                                    "usage_percent": vol.get("usage_percent") or vol.get("use_percent", 0),
+                                    "filesystem": vol.get("filesystem", ""),
+                                    "total_gb": round(total_bytes / (1024**3), 2) if total_bytes else (vol.get("total_gb", 0) if vol.get("total_gb") else 0),
+                                    "used_gb": round(used_bytes / (1024**3), 2) if used_bytes else (vol.get("used_gb", 0) if vol.get("used_gb") else 0),
+                                    "free_gb": round(available_bytes / (1024**3), 2) if available_bytes else (vol.get("free_gb", 0) if vol.get("free_gb") else 0),
+                                    "usage_percent": usage_percent,
                                 }
                                 # Rimuovi valori None o 0 non significativi
                                 vol_dict = {k: v for k, v in vol_dict.items() if v is not None and v != ""}

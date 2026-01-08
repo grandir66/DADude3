@@ -125,6 +125,8 @@ class UnifiedScanResult:
     services_count: int = 0
     software: List[Dict] = field(default_factory=list)
     software_count: int = 0
+    shares: List[Dict] = field(default_factory=list)
+    shares_count: int = 0
     
     # Users
     users: List[Dict] = field(default_factory=list)
@@ -629,6 +631,11 @@ class UnifiedScannerService:
         result.services_count = len(result.services)
         result.software = agent_data.get("software", [])
         result.software_count = len(result.software)
+        
+        # Shares (se presente)
+        if "shares" in agent_data:
+            result.shares = agent_data.get("shares", [])
+            result.shares_count = len(result.shares) if result.shares else 0
         
         # Users
         result.users = agent_data.get("users", [])
