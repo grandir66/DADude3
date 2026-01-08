@@ -299,6 +299,7 @@ async def _save_unified_scan_to_inventory(
         
         # OS info - forza aggiornamento per evitare che "DSM" venga ignorato perché più corto di "Windows"
         if scan_result.os_name:
+            logger.info(f"[SAVE_UNIFIED] Setting os_family from os_name: '{scan_result.os_name}' (was: '{device.os_family}')")
             update_field(device, "os_family", scan_result.os_name, summary, force=True)  # os_family per compatibilità
         if scan_result.os_version:
             update_field(device, "os_version", scan_result.os_version, summary)

@@ -680,6 +680,31 @@ async def _probe_ssh(
                                 return sudo_output
                         except Exception as e:
                             logger.debug(f"SSH: sudo command with stdin failed: {cmd_clean[:50]}... error: {e}")
+                        
+                        # Metodo 3: Prova su -c (per QNAP e altri sistemi che richiedono su invece di sudo)
+                        # Formato: echo 'password' | su -c 'command'
+                        try:
+                            cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
+                            # su -c richiede il comando tra apici
+                            su_cmd = f'echo "{escaped_password}" | su -c \'{cmd_clean}\''
+                            logger.debug(f"SSH: trying su -c, cmd_clean: {cmd_clean[:80]}...")
+                            stdin, stdout, stderr = client.exec_command(su_cmd, timeout=timeout)
+                            su_output = stdout.read().decode().strip()
+                            su_error = stderr.read().decode().strip()
+                            
+                            # Rimuovi prompt password
+                            lines = []
+                            for line in su_output.split('\n'):
+                                line_lower = line.lower()
+                                if 'password' not in line_lower:
+                                    lines.append(line)
+                            su_output = '\n'.join(lines)
+                            
+                            if su_output and len(su_output.strip()) > 0:
+                                logger.debug(f"SSH: su -c command succeeded: {cmd_clean[:50]}...")
+                                return su_output
+                        except Exception as e:
+                            logger.debug(f"SSH: su -c command failed: {cmd_clean[:50]}... error: {e}")
                     
                     # Fallback: prova sudo senza password (se configurato NOPASSWD)
                     sudo_cmd = f"sudo {cmd}"
