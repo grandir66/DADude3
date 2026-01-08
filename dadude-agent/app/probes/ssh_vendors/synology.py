@@ -468,6 +468,7 @@ class SynologyProbe(SSHVendorProbe):
         # Dischi fisici - usa synodisk --enum -t internal per informazioni native Synology
         disks = []
         synodisk_output = self.exec_cmd("/usr/syno/bin/synodisk --enum -t internal 2>/dev/null", timeout=5)
+        self._log_info(f"synodisk --enum -t internal output length: {len(synodisk_output) if synodisk_output else 0}, preview: {synodisk_output[:500] if synodisk_output else 'None'}")
         disk_details = {}
         
         if synodisk_output:
@@ -706,7 +707,7 @@ class SynologyProbe(SSHVendorProbe):
         try:
             # Metodo 1: Usa synoshare se disponibile
             synoshare = self.exec_cmd("/usr/syno/bin/synoshare --enum ALL 2>/dev/null", timeout=5)
-            self._log_debug(f"synoshare --enum ALL output: {synoshare[:200] if synoshare else 'None'}")
+            self._log_info(f"synoshare --enum ALL output length: {len(synoshare) if synoshare else 0}, preview: {synoshare[:500] if synoshare else 'None'}")
             if synoshare:
                 # Il formato di synoshare --enum ALL può essere:
                 # - Una lista di share, una per riga
