@@ -780,6 +780,88 @@ async def _save_unified_scan_to_inventory(
                     # Salva volumes in custom_fields
                     if volumes:
                         device.custom_fields["volumes"] = volumes
+                    
+                    # Costruisci storage_info completo per Synology/QNAP
+                    if manufacturer in ["synology", "qnap", "asustor"]:
+                        storage_info = {}
+                        
+                        # Converti volumes nel formato atteso dal frontend
+                        if scan_result.volumes:
+                            storage_info["volumes"] = []
+                            for vol in scan_result.volumes:
+                                vol_dict = {
+                                    "name": vol.get("name") or vol.get("mount_point") or vol.get("device", ""),
+                                    "mount_point": vol.get("mount_point") or vol.get("path") or "",
+                                    "total_gb": round(vol.get("total_bytes", 0) / (1024**3), 2) if vol.get("total_bytes") else vol.get("total_gb", 0),
+                                    "used_gb": round(vol.get("used_bytes", 0) / (1024**3), 2) if vol.get("used_bytes") else vol.get("used_gb", 0),
+                                    "free_gb": round(vol.get("available_bytes", 0) / (1024**3), 2) if vol.get("available_bytes") else vol.get("free_gb", 0),
+                                    "usage_percent": vol.get("usage_percent") or vol.get("use_percent", 0),
+                                }
+                                # Rimuovi valori None o 0 non significativi
+                                vol_dict = {k: v for k, v in vol_dict.items() if v is not None and v != ""}
+                                storage_info["volumes"].append(vol_dict)
+                        
+                        # Converti disks nel formato atteso dal frontend
+                        if scan_result.disks:
+                            storage_info["disks"] = []
+                            for disk in scan_result.disks:
+                                disk_dict = {
+                                    "name": disk.get("name") or disk.get("device", ""),
+                                    "size": disk.get("size") or disk.get("size_human", ""),
+                                    "size_bytes": disk.get("size_bytes", 0),
+                                    "model": disk.get("model") or disk.get("friendly_name", ""),
+                                    "serial": disk.get("serial") or disk.get("serial_number", ""),
+                                    "type": disk.get("type") or disk.get("disk_type", ""),
+                                    "temperature": disk.get("temperature") or disk.get("temperature_celsius"),
+                                    "health": disk.get("health") or disk.get("health_status") or disk.get("smart_status", ""),
+                                }
+                                # Rimuovi valori None o vuoti
+                                disk_dict = {k: v for k, v in disk_dict.items() if v is not None and v != ""}
+                                storage_info["disks"].append(disk_dict)
+                        
+                        # Converti raid_arrays nel formato atteso dal frontend
+                        if scan_result.raid_arrays:
+                            # Prendi il primo RAID array come principale (o combina tutti)
+                            raid_info = {}
+                            if len(scan_result.raid_arrays) == 1:
+                                raid = scan_result.raid_arrays[0]
+                                raid_info = {
+                                    "name": raid.get("name", ""),
+                                    "level": raid.get("level", ""),
+                                    "status": raid.get("status", ""),
+                                    "devices": raid.get("disks", []),
+                                    "total_disks": raid.get("total_disks", 0),
+                                    "healthy_disks": raid.get("healthy_disks", 0),
+                                    "degraded": raid.get("status", "").lower() in ["degraded", "warning"],
+                                }
+                            elif len(scan_result.raid_arrays) > 1:
+                                # Se ci sono più RAID, usa il primo come principale
+                                raid = scan_result.raid_arrays[0]
+                                raid_info = {
+                                    "name": raid.get("name", ""),
+                                    "level": raid.get("level", ""),
+                                    "status": raid.get("status", ""),
+                                    "devices": raid.get("disks", []),
+                                    "total_disks": raid.get("total_disks", 0),
+                                    "healthy_disks": raid.get("healthy_disks", 0),
+                                    "degraded": raid.get("status", "").lower() in ["degraded", "warning"],
+                                    "arrays_count": len(scan_result.raid_arrays),
+                                }
+                            
+                            if raid_info:
+                                storage_info["raid"] = {k: v for k, v in raid_info.items() if v is not None and v != ""}
+                        
+                        # Salva storage_info in custom_fields solo se abbiamo almeno un dato
+                        if storage_info and (storage_info.get("volumes") or storage_info.get("disks") or storage_info.get("raid")):
+                            if not device.custom_fields:
+                                device.custom_fields = {}
+                            device.custom_fields["storage_info"] = storage_info
+                            flag_modified(device, "custom_fields")
+                            logger.info(f"[SAVE_UNIFIED] Saved storage_info for {manufacturer} device {device_id}: "
+                                      f"volumes={len(storage_info.get('volumes', []))}, "
+                                      f"disks={len(storage_info.get('disks', []))}, "
+                                      f"raid={storage_info.get('raid') is not None}")
+                    
                 except Exception as e:
                     logger.error(f"Error saving Linux/NAS data: {e}", exc_info=True)
             

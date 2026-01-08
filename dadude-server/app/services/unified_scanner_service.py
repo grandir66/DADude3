@@ -104,6 +104,7 @@ class UnifiedScanResult:
     disk_free_gb: float = 0
     disks: List[Dict] = field(default_factory=list)
     volumes: List[Dict] = field(default_factory=list)
+    raid_arrays: List[Dict] = field(default_factory=list)
     
     # Network
     interfaces: List[Dict] = field(default_factory=list)
@@ -594,6 +595,7 @@ class UnifiedScannerService:
         # Disks & Volumes
         result.disks = agent_data.get("disks", [])
         result.volumes = agent_data.get("volumes", [])
+        result.raid_arrays = agent_data.get("raid_arrays", [])
         
         # Calculate totals
         for vol in result.volumes:
