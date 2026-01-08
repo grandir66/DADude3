@@ -1091,10 +1091,15 @@ def _merge_results(target: Dict, source: Dict):
     
     # Liste - estendi con deduplicazione
     if source.get("disks"):
-        existing_disks = {d.get("name") or d.get("device") for d in target["disks"]}
+        # Normalizza nomi dischi (rimuovi /dev/ prefix per confronto)
+        def normalize_disk_name(d):
+            name = d.get("name") or d.get("device") or ""
+            return name.replace("/dev/", "").strip()
+        
+        existing_disks = {normalize_disk_name(d) for d in target["disks"]}
         for disk in source["disks"]:
-            disk_id = disk.get("name") or disk.get("device")
-            if disk_id not in existing_disks:
+            disk_id = normalize_disk_name(disk)
+            if disk_id and disk_id not in existing_disks:
                 target["disks"].append(disk)
                 existing_disks.add(disk_id)
     if source.get("volumes"):
