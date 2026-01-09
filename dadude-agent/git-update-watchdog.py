@@ -139,6 +139,7 @@ class GitUpdateWatchdog:
         self.force = force
         self.state = WatchdogState()
         self.running = True
+        self.check_interval = CHECK_INTERVAL_SECONDS
         
         # Setup signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -146,7 +147,7 @@ class GitUpdateWatchdog:
         
         logger.info(f"Git Update Watchdog avviato")
         logger.info(f"Agent directory: {self.agent_dir}")
-        logger.info(f"Check interval: {CHECK_INTERVAL_SECONDS}s")
+        logger.info(f"Check interval: {self.check_interval}s")
     
     def _signal_handler(self, signum, frame):
         """Gestisce segnali di terminazione."""
@@ -522,7 +523,7 @@ class GitUpdateWatchdog:
     
     def run_loop(self):
         """Esegue il loop principale del watchdog."""
-        logger.info(f"Avvio loop principale (intervallo: {CHECK_INTERVAL_SECONDS}s)")
+        logger.info(f"Avvio loop principale (intervallo: {self.check_interval}s)")
         
         # Prima esecuzione immediata
         self.run_once()
@@ -530,7 +531,7 @@ class GitUpdateWatchdog:
         while self.running:
             try:
                 # Attendi prossimo check
-                for _ in range(CHECK_INTERVAL_SECONDS):
+                for _ in range(self.check_interval):
                     if not self.running:
                         break
                     time.sleep(1)
@@ -576,15 +577,15 @@ def main():
     
     args = parser.parse_args()
     
-    # Aggiorna configurazione globale
-    global CHECK_INTERVAL_SECONDS
-    CHECK_INTERVAL_SECONDS = args.interval
-    
     # Crea e avvia watchdog
     watchdog = GitUpdateWatchdog(
         agent_dir=Path(args.agent_dir),
         force=args.force
     )
+    
+    # Override intervallo se specificato
+    if args.interval != CHECK_INTERVAL_SECONDS:
+        watchdog.check_interval = args.interval
     
     if args.once:
         success = watchdog.run_once()
