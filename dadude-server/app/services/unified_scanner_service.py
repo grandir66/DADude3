@@ -608,7 +608,10 @@ class UnifiedScannerService:
         
         # Log per debug NAS
         if result.manufacturer and result.manufacturer.lower() in ["synology", "qnap"]:
+            # Log dettagliato di TUTTI i campi serial/RAM da agent_data
             logger.info(f"[MERGE_AGENT] NAS data: os_name={result.os_name}, os_version={result.os_version}, serial={result.serial_number}, model={result.model}")
+            logger.info(f"[MERGE_AGENT] agent_data serial_number={agent_data.get('serial_number')}, si.serial_number={si.get('serial_number')}")
+            logger.info(f"[MERGE_AGENT] agent_data ram_total_gb={agent_data.get('ram_total_gb')}, ram_total_mb={agent_data.get('ram_total_mb')}")
         
         # CPU
         if agent_data.get("cpu"):
@@ -621,10 +624,12 @@ class UnifiedScannerService:
         # Memory - cerca in più formati
         if agent_data.get("memory"):
             mem = agent_data["memory"]
-            result.ram_total_gb = mem.get("total_bytes", 0) / (1024**3)
-            result.ram_used_gb = mem.get("used_bytes", 0) / (1024**3)
+            logger.info(f"[MERGE_AGENT] memory dict: {mem}")
             if mem.get("total_bytes"):
+                result.ram_total_gb = mem.get("total_bytes", 0) / (1024**3)
+                result.ram_used_gb = mem.get("used_bytes", 0) / (1024**3)
                 result.ram_usage_percent = (mem.get("used_bytes", 0) / mem["total_bytes"]) * 100
+                logger.info(f"[MERGE_AGENT] RAM from memory.total_bytes: {result.ram_total_gb:.2f}GB")
         
         # Fallback 1: ram_total_gb diretto (usato da QNAP probe aggiornato)
         if result.ram_total_gb == 0:

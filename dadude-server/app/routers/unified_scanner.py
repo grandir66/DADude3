@@ -250,7 +250,7 @@ async def _save_unified_scan_to_inventory(
         Aggiorna se:
         - new_value è presente e non vuoto
         - old_value è vuoto o è un IP address (preferiamo nomi reali)
-        - new_value è più lungo/completo di old_value (per stringhe non-IP)
+        - new_value è diverso da old_value (per stringhe)
         - new_value è maggiore di 0 (per numeri)
         """
         import re
@@ -261,13 +261,13 @@ async def _save_unified_scan_to_inventory(
                 return False
             if not old_value:
                 return True
-            # Se old_value sembra un IP, aggiorna sempre con un nome vero
             old_str = str(old_value or "")
+            # Se old_value sembra un IP, aggiorna sempre con un nome vero
             ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
             if re.match(ip_pattern, old_str):
                 return True
-            # Altrimenti aggiorna se nuovo è più lungo
-            return len(str(new_value)) >= len(old_str)
+            # Aggiorna se il nuovo valore è diverso
+            return new_value.strip() != old_str.strip()
         if isinstance(new_value, (int, float)):
             return new_value > 0
         return bool(new_value)
@@ -307,7 +307,16 @@ async def _save_unified_scan_to_inventory(
         # Manufacturer, Model, Serial
         update_field(device, "manufacturer", scan_result.manufacturer, summary)
         update_field(device, "model", scan_result.model, summary)
-        update_field(device, "serial_number", scan_result.serial_number, summary)
+        
+        # Serial number - forza update se il nuovo seriale è valido (non un placeholder come "synology_xxx")
+        new_serial = scan_result.serial_number
+        if new_serial and not new_serial.startswith("synology_") and not new_serial.startswith("qnap_"):
+            # Se il vecchio seriale era un placeholder, forza l'aggiornamento
+            old_serial = getattr(device, "serial_number", "") or ""
+            force_serial = old_serial.startswith("synology_") or old_serial.startswith("qnap_") or not old_serial
+            update_field(device, "serial_number", new_serial, summary, force=force_serial or (new_serial != old_serial))
+        else:
+            update_field(device, "serial_number", scan_result.serial_number, summary)
         
         # Device type - solo se significativo (non "unknown")
         if scan_result.device_type and scan_result.device_type != "unknown":

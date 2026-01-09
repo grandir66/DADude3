@@ -885,6 +885,18 @@ def _normalize_ssh_result(data: Dict) -> Dict:
     """Normalizza risultato SSH nel formato unificato"""
     # Preserva os_name se già impostato dal vendor probe (es. DSM per Synology)
     os_name = data.get("os_name") or data.get("os") or data.get("distro", "")
+    
+    # Serial number - cerca diverse chiavi usate dai probe vendor
+    serial_number = data.get("serial_number") or data.get("serial") or ""
+    
+    # RAM - cerca diverse chiavi (QNAP/Synology usano ram_total_mb)
+    ram_total_mb = data.get("ram_total_mb") or data.get("memory_total_mb") or 0
+    ram_free_mb = data.get("ram_free_mb") or data.get("memory_free_mb") or 0
+    ram_used_mb = ram_total_mb - ram_free_mb if ram_total_mb else (data.get("memory_used_mb") or 0)
+    
+    # RAM in GB se disponibile direttamente
+    ram_total_gb = data.get("ram_total_gb") or 0
+    
     result = {
         "system_info": {
             "hostname": data.get("hostname", ""),
@@ -894,9 +906,15 @@ def _normalize_ssh_result(data: Dict) -> Dict:
             "kernel_version": data.get("kernel", ""),
             "manufacturer": data.get("manufacturer", ""),
             "model": data.get("model", ""),
-            "serial_number": data.get("serial", ""),
+            "serial_number": serial_number,
             "uptime": data.get("uptime", ""),
         },
+        # Aggiungi serial_number e RAM anche al livello top per il merge sul server
+        "serial_number": serial_number,
+        "ram_total_mb": int(ram_total_mb),
+        "ram_total_gb": float(ram_total_gb) if ram_total_gb else round(int(ram_total_mb) / 1024, 2) if ram_total_mb else 0,
+        "ram_free_mb": int(ram_free_mb),
+        "ram_used_mb": int(ram_used_mb),
         "cpu": {
             "model": data.get("cpu_model", ""),
             "cores_physical": data.get("cpu_cores", 0),
@@ -906,9 +924,9 @@ def _normalize_ssh_result(data: Dict) -> Dict:
             "load_15min": data.get("load_15", 0),
         },
         "memory": {
-            "total_bytes": int(data.get("memory_total_mb", 0) or 0) * 1024 * 1024,
-            "used_bytes": int(data.get("memory_used_mb", 0) or 0) * 1024 * 1024,
-            "free_bytes": int(data.get("memory_free_mb", 0) or 0) * 1024 * 1024,
+            "total_bytes": int(ram_total_mb) * 1024 * 1024 if ram_total_mb else 0,
+            "used_bytes": int(ram_used_mb) * 1024 * 1024 if ram_used_mb else 0,
+            "free_bytes": int(ram_free_mb) * 1024 * 1024 if ram_free_mb else 0,
         },
         "disks": _safe_list(data.get("disks") or (data.get("storage_info", {}).get("disks") if isinstance(data.get("storage_info"), dict) else [])),
         "volumes": _safe_list(data.get("volumes") or data.get("filesystems") or (data.get("storage_info", {}).get("volumes") if isinstance(data.get("storage_info"), dict) else [])),

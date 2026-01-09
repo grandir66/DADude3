@@ -95,6 +95,8 @@ class SynologyProbe(SSHVendorProbe):
     def _parse_synoinfo(self, content: str) -> Dict[str, Any]:
         """Parse /etc/synoinfo.conf"""
         info = {}
+        unique_value = None  # Salva 'unique' come fallback finale
+        
         for line in content.split('\n'):
             if '=' in line and not line.strip().startswith('#'):
                 key, value = line.split('=', 1)
@@ -104,24 +106,51 @@ class SynologyProbe(SSHVendorProbe):
                 if key == 'upnpmodelname':
                     info["model"] = value
                 elif key == 'unique':
-                    info["serial_number"] = value
+                    # NON usare 'unique' come serial - è un identificatore interno
+                    unique_value = value
                 elif key == 'upnpmodelnumber':
                     info["model_number"] = value
                 elif key == 'upnpmodeldescription':
                     info["description"] = value
         
-        # Se serial_number non trovato da 'unique', prova metodi alternativi
-        if not info.get("serial_number"):
-            # Metodo 1: synogetkeyvalue
-            serial = self.exec_cmd("synogetkeyvalue /etc/synoinfo.conf serial 2>/dev/null", timeout=3)
-            if serial and serial.strip():
-                info["serial_number"] = serial.strip()
+        # Cerca il VERO seriale hardware con diversi metodi
+        serial = None
         
-        if not info.get("serial_number"):
-            # Metodo 2: /proc/sys/kernel/syno_serial
-            serial = self.exec_cmd("cat /proc/sys/kernel/syno_serial 2>/dev/null", timeout=3)
-            if serial and serial.strip():
-                info["serial_number"] = serial.strip()
+        # Metodo 1: synogetkeyvalue (più affidabile)
+        serial_cmd = self.exec_cmd("synogetkeyvalue /etc/synoinfo.conf serial 2>/dev/null", timeout=3)
+        if serial_cmd and serial_cmd.strip() and not serial_cmd.strip().startswith("synology_"):
+            serial = serial_cmd.strip()
+            self._log_debug(f"Serial from synogetkeyvalue: {serial}")
+        
+        # Metodo 2: /proc/sys/kernel/syno_serial
+        if not serial:
+            serial_cmd = self.exec_cmd("cat /proc/sys/kernel/syno_serial 2>/dev/null", timeout=3)
+            if serial_cmd and serial_cmd.strip() and not serial_cmd.strip().startswith("synology_"):
+                serial = serial_cmd.strip()
+                self._log_debug(f"Serial from syno_serial: {serial}")
+        
+        # Metodo 3: dmidecode (richiede root)
+        if not serial:
+            serial_cmd = self.exec_cmd_sudo("dmidecode -s system-serial-number 2>/dev/null", timeout=5)
+            if serial_cmd and serial_cmd.strip() and serial_cmd.strip() != "Not Specified":
+                serial = serial_cmd.strip()
+                self._log_debug(f"Serial from dmidecode: {serial}")
+        
+        # Metodo 4: /sys/class/dmi
+        if not serial:
+            serial_cmd = self.exec_cmd("cat /sys/class/dmi/id/product_serial 2>/dev/null", timeout=3)
+            if serial_cmd and serial_cmd.strip() and serial_cmd.strip() != "None":
+                serial = serial_cmd.strip()
+                self._log_debug(f"Serial from dmi: {serial}")
+        
+        # Fallback finale: usa 'unique' solo se nessun altro metodo ha funzionato
+        if not serial and unique_value:
+            serial = unique_value
+            self._log_debug(f"Serial from unique (fallback): {serial}")
+        
+        if serial:
+            info["serial_number"] = serial
+            self._log_info(f"Found serial number: {serial}")
         
         return info
     
