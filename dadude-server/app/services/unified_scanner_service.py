@@ -618,13 +618,22 @@ class UnifiedScannerService:
             result.cpu_threads = cpu.get("cores_logical", 0)
             result.cpu_usage_percent = cpu.get("load_percent", 0)
         
-        # Memory
+        # Memory - cerca in più formati
         if agent_data.get("memory"):
             mem = agent_data["memory"]
             result.ram_total_gb = mem.get("total_bytes", 0) / (1024**3)
             result.ram_used_gb = mem.get("used_bytes", 0) / (1024**3)
             if mem.get("total_bytes"):
                 result.ram_usage_percent = (mem.get("used_bytes", 0) / mem["total_bytes"]) * 100
+        
+        # Fallback: ram_total_mb/ram_free_mb (usato da Synology/QNAP)
+        if result.ram_total_gb == 0:
+            ram_mb = agent_data.get("ram_total_mb", 0)
+            if ram_mb > 0:
+                result.ram_total_gb = ram_mb / 1024
+                result.ram_used_gb = (ram_mb - agent_data.get("ram_free_mb", 0)) / 1024
+                result.ram_usage_percent = ((ram_mb - agent_data.get("ram_free_mb", 0)) / ram_mb) * 100 if ram_mb else 0
+                logger.debug(f"[MERGE_AGENT] RAM from mb: {ram_mb}MB -> {result.ram_total_gb:.2f}GB")
         
         # Disks & Volumes
         result.disks = agent_data.get("disks", [])

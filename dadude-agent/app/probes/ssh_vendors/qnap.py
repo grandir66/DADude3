@@ -43,9 +43,22 @@ class QNAPProbe(SSHVendorProbe):
         """Scansione completa QNAP QTS/QuTS Hero"""
         self._log_info(f"Probing QNAP at {target}")
         
-        # Detect if QuTS Hero (ZFS-based)
-        zfs_check = self.exec_cmd("which zpool 2>/dev/null", timeout=3)
-        self.is_quts_hero = bool(zfs_check and zfs_check.strip())
+        # Detect if QuTS Hero (ZFS-based) - prova diversi percorsi
+        zfs_check = self.exec_cmd("which zpool 2>/dev/null || ls /usr/sbin/zpool 2>/dev/null || ls /sbin/zpool 2>/dev/null", timeout=3)
+        self.is_quts_hero = bool(zfs_check and zfs_check.strip() and 'zpool' in zfs_check)
+        
+        # Alternativa: verifica se ZFS è montato
+        if not self.is_quts_hero:
+            zfs_mount = self.exec_cmd("mount | grep -i zfs 2>/dev/null | head -1", timeout=3)
+            if zfs_mount and 'zfs' in zfs_mount.lower():
+                self.is_quts_hero = True
+        
+        # Alternativa 2: verifica modello (TS-h indica Hero)
+        if not self.is_quts_hero:
+            model_check = self.exec_cmd("getsysinfo model 2>/dev/null", timeout=3)
+            if model_check and 'TS-h' in model_check:
+                self.is_quts_hero = True
+                self._log_info(f"QuTS Hero detected from model name: {model_check.strip()}")
         
         os_name = "QuTS Hero" if self.is_quts_hero else "QTS"
         self._log_info(f"Detected: {os_name} ({'ZFS' if self.is_quts_hero else 'ext4/RAID'})")
@@ -76,17 +89,45 @@ class QNAPProbe(SSHVendorProbe):
                 info["hostname"] = hostname.strip()
             
             # Serial number - prova diversi metodi
-            serial = self.exec_cmd("getsysinfo serial 2>/dev/null", timeout=3)
-            if not serial or not serial.strip():
-                # Metodo 2: /etc/nas_serial
-                serial = self.exec_cmd("cat /etc/nas_serial 2>/dev/null", timeout=3)
-            if not serial or not serial.strip():
-                # Metodo 3: SUID da platform.conf
-                suid = self.exec_cmd("cat /etc/platform.conf 2>/dev/null | grep SUID", timeout=3)
+            serial = None
+            
+            # Metodo 1: getsysinfo serial
+            serial_cmd = self.exec_cmd("getsysinfo serial 2>/dev/null", timeout=3)
+            if serial_cmd and serial_cmd.strip():
+                serial = serial_cmd.strip()
+                self._log_debug(f"Serial from getsysinfo: {serial}")
+            
+            # Metodo 2: /etc/nas_serial
+            if not serial:
+                serial_cmd = self.exec_cmd("cat /etc/nas_serial 2>/dev/null", timeout=3)
+                if serial_cmd and serial_cmd.strip():
+                    serial = serial_cmd.strip()
+                    self._log_debug(f"Serial from /etc/nas_serial: {serial}")
+            
+            # Metodo 3: SUID da platform.conf
+            if not serial:
+                suid = self.exec_cmd("cat /etc/platform.conf 2>/dev/null | grep -i SUID", timeout=3)
                 if suid and '=' in suid:
-                    serial = suid.split('=', 1)[1].strip()
-            if serial and serial.strip():
-                info["serial_number"] = serial.strip()
+                    serial = suid.split('=', 1)[1].strip().strip('"')
+                    self._log_debug(f"Serial from SUID: {serial}")
+            
+            # Metodo 4: hal_app per seriale
+            if not serial:
+                hal_serial = self.exec_cmd("hal_app --get_serial_number 2>/dev/null", timeout=3)
+                if hal_serial and hal_serial.strip():
+                    serial = hal_serial.strip()
+                    self._log_debug(f"Serial from hal_app: {serial}")
+            
+            # Metodo 5: dmidecode (richiede root)
+            if not serial:
+                dmi_serial = self.exec_cmd_sudo("dmidecode -s system-serial-number 2>/dev/null", timeout=5)
+                if dmi_serial and dmi_serial.strip() and dmi_serial.strip() != "Not Specified":
+                    serial = dmi_serial.strip()
+                    self._log_debug(f"Serial from dmidecode: {serial}")
+            
+            if serial:
+                info["serial_number"] = serial
+                self._log_info(f"Found serial number: {serial}")
             
             # QTS version
             version = self._get_qts_version()
