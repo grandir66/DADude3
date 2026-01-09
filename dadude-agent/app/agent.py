@@ -1,6 +1,11 @@
 """
-DaDude Agent v2.0 - WebSocket mTLS Client
+DaDude Agent v3.1.1 - WebSocket mTLS Client
 Entry point principale per l'agent con architettura agent-initiated
+
+Changelog v3.1.1:
+- Git Update Watchdog per aggiornamenti automatici
+- Auto-rollback in caso di errori
+- Health check post-update
 """
 import asyncio
 import os
