@@ -97,7 +97,7 @@ class DaDudeAgent:
         
         logger.add(
             str(log_file),
-            level="DEBUG",
+            level="INFO",
             rotation="10 MB",
             retention="7 days",
             compression="gz",

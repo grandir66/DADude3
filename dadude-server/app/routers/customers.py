@@ -1533,8 +1533,8 @@ async def scan_customer_networks(
     
     # Ottieni reti del cliente
     all_networks = service.list_networks(customer_id=agent.customer_id, active_only=True)
-    logger.info(f"[SCAN DEBUG] All networks for customer: {[(n.id, n.name, n.ip_network) for n in all_networks]}")
-    logger.info(f"[SCAN DEBUG] Requested network_ids: {network_ids}")
+    logger.debug(f"[SCAN DEBUG] All networks for customer: {[(n.id, n.name, n.ip_network) for n in all_networks]}")
+    logger.debug(f"[SCAN DEBUG] Requested network_ids: {network_ids}")
     
     if not all_networks:
         raise HTTPException(status_code=400, detail="Nessuna rete configurata per il cliente")
@@ -1542,10 +1542,10 @@ async def scan_customer_networks(
     # Filtra reti se specificato
     if network_ids:
         networks = [n for n in all_networks if n.id in network_ids]
-        logger.info(f"[SCAN DEBUG] Filtered networks: {[(n.id, n.name, n.ip_network) for n in networks]}")
+        logger.debug(f"[SCAN DEBUG] Filtered networks: {[(n.id, n.name, n.ip_network) for n in networks]}")
     else:
         networks = all_networks
-        logger.info(f"[SCAN DEBUG] No filter, using all networks")
+        logger.debug(f"[SCAN DEBUG] No filter, using all networks")
     
     if not networks:
         raise HTTPException(status_code=400, detail="Nessuna rete valida selezionata")
@@ -1617,7 +1617,7 @@ async def scan_customer_networks(
     # Altrimenti esegui scansione sincrona (comportamento legacy)
     # Esegui scansione diretta tramite il router o Docker agent
     scanner = get_scanner_service()
-    logger.info(f"[SCAN DEBUG] Selected network: {network.id} = {network.name} ({network.ip_network})")
+    logger.debug(f"[SCAN DEBUG] Selected network: {network.id} = {network.name} ({network.ip_network})")
     
     # Verifica tipo agent
     agent_type = getattr(agent, 'agent_type', 'mikrotik') or 'mikrotik'
@@ -1660,7 +1660,7 @@ async def scan_customer_networks(
                 if not gateway_agent.password or not gateway_agent.password.strip():
                     logger.warning(f"[ARP CACHE] Agent {gateway_agent.name} ({gateway_agent.address}) has no password configured. Cannot query ARP table.")
                 else:
-                    logger.info(f"[ARP CACHE] Delegating MikroTik ARP query to agent {ws_agent_id} -> {gateway_agent.name} ({gateway_agent.address})")
+                    logger.debug(f"[ARP CACHE] Delegating MikroTik ARP query to agent {ws_agent_id} -> {gateway_agent.name} ({gateway_agent.address})")
                     try:
                         arp_result = await hub.send_command(
                             ws_agent_id,
@@ -1679,13 +1679,13 @@ async def scan_customer_networks(
                         if arp_result.status == "success" and arp_result.data:
                             for entry in arp_result.data.get("entries", []):
                                 arp_cache[entry["ip"]] = entry["mac"]
-                            logger.info(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from MikroTik via agent")
+                            logger.debug(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from MikroTik via agent")
                     except Exception as e:
                         logger.warning(f"[ARP CACHE] MikroTik via agent failed: {e}")
         
         elif ws_agent_id and gateway_snmp_address and gateway_snmp_community:
             # Opzione 2: Usa gateway generico via SNMP - DELEGA ALL'AGENT
-            logger.info(f"[ARP CACHE] Delegating SNMP ARP query to agent {ws_agent_id} -> {gateway_snmp_address}")
+            logger.debug(f"[ARP CACHE] Delegating SNMP ARP query to agent {ws_agent_id} -> {gateway_snmp_address}")
             try:
                 snmp_version = getattr(network, 'gateway_snmp_version', '2c') or '2c'
                 arp_result = await hub.send_command(
@@ -1703,7 +1703,7 @@ async def scan_customer_networks(
                 if arp_result.status == "success" and arp_result.data:
                     for entry in arp_result.data.get("entries", []):
                         arp_cache[entry["ip"]] = entry["mac"]
-                    logger.info(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from SNMP via agent")
+                    logger.debug(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from SNMP via agent")
             except Exception as e:
                 logger.warning(f"[ARP CACHE] SNMP via agent failed: {e}")
         
@@ -1715,7 +1715,7 @@ async def scan_customer_networks(
                     gateway_agent = service.get_agent(agent.arp_gateway_agent_id, include_password=True)
                     if gateway_agent and gateway_agent.agent_type == "mikrotik":
                         if gateway_agent.password and gateway_agent.password.strip():
-                            logger.info(f"[ARP CACHE] Using configured MikroTik gateway {gateway_agent.name} via agent {ws_agent_id}")
+                            logger.debug(f"[ARP CACHE] Using configured MikroTik gateway {gateway_agent.name} via agent {ws_agent_id}")
                             try:
                                 arp_result = await hub.send_command(
                                     ws_agent_id,
@@ -1734,13 +1734,13 @@ async def scan_customer_networks(
                                 if arp_result.status == "success" and arp_result.data:
                                     for entry in arp_result.data.get("entries", []):
                                         arp_cache[entry["ip"]] = entry["mac"]
-                                    logger.info(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from configured gateway {gateway_agent.name}")
+                                    logger.debug(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from configured gateway {gateway_agent.name}")
                             except Exception as e:
                                 logger.warning(f"[ARP CACHE] Configured gateway failed: {e}")
                 
                 # Oppure usa SNMP gateway configurato
                 if not arp_cache and agent.arp_gateway_snmp_address and agent.arp_gateway_snmp_community:
-                    logger.info(f"[ARP CACHE] Using configured SNMP gateway {agent.arp_gateway_snmp_address} via agent {ws_agent_id}")
+                    logger.debug(f"[ARP CACHE] Using configured SNMP gateway {agent.arp_gateway_snmp_address} via agent {ws_agent_id}")
                     try:
                         snmp_version = agent.arp_gateway_snmp_version or '2c'
                         arp_result = await hub.send_command(
@@ -1758,7 +1758,7 @@ async def scan_customer_networks(
                         if arp_result.status == "success" and arp_result.data:
                             for entry in arp_result.data.get("entries", []):
                                 arp_cache[entry["ip"]] = entry["mac"]
-                            logger.info(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from configured SNMP gateway")
+                            logger.debug(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from configured SNMP gateway")
                     except Exception as e:
                         logger.warning(f"[ARP CACHE] Configured SNMP gateway failed: {e}")
             
@@ -1775,7 +1775,7 @@ async def scan_customer_networks(
                                 logger.debug(f"[ARP CACHE] Skipping MikroTik {mikrotik_agent.name} - no password configured")
                                 continue
                             
-                            logger.info(f"[ARP CACHE] Trying MikroTik {mikrotik_agent.name} via agent {ws_agent_id}")
+                            logger.debug(f"[ARP CACHE] Trying MikroTik {mikrotik_agent.name} via agent {ws_agent_id}")
                             try:
                                 arp_result = await hub.send_command(
                                     ws_agent_id,
@@ -1794,7 +1794,7 @@ async def scan_customer_networks(
                                 if arp_result.status == "success" and arp_result.data and arp_result.data.get("count", 0) > 0:
                                     for entry in arp_result.data.get("entries", []):
                                         arp_cache[entry["ip"]] = entry["mac"]
-                                    logger.info(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from {mikrotik_agent.name} via agent")
+                                    logger.debug(f"[ARP CACHE] Got {len(arp_cache)} MAC addresses from {mikrotik_agent.name} via agent")
                                     break  # Trovato, esci dal loop
                             except Exception as e:
                                 logger.debug(f"[ARP CACHE] MikroTik {mikrotik_agent.name} via agent failed: {e}")

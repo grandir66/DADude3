@@ -521,11 +521,9 @@ class AgentWebSocketHub:
     
     async def is_connected(self, agent_id: str) -> bool:
         """Verifica se agent è connesso (thread-safe)"""
-        logger.debug(f"is_connected called for '{agent_id}', instance id: {id(self)}, dict id: {id(self._connections)}")
         async with self._lock:
             is_conn = agent_id in self._connections
-            dict_keys = list(self._connections.keys())
-            logger.info(f"is_connected('{agent_id}') = {is_conn}, instance id: {id(self)}, dict id: {id(self._connections)}, dict has {len(self._connections)} agents: {dict_keys}")
+            logger.debug(f"is_connected('{agent_id}') = {is_conn}, dict has {len(self._connections)} agents")
             return is_conn
     
     async def get_connection(self, agent_id: str) -> Optional[AgentConnection]:

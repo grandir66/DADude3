@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from abc import ABC, abstractmethod
 import socket
 import warnings
+from loguru import logger
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -502,7 +503,7 @@ class BaseCollector(ABC):
     def log(self, message: str):
         """Log con prefisso host"""
         if self.verbose:
-            print(f"[{self.host}] {message}")
+            logger.debug(f"[{self.host}] {message}")
     
     def finalize(self):
         """Finalizza la scansione"""
@@ -3159,7 +3160,7 @@ class UnifiedScanner:
         if protocol == Protocol.AUTO:
             protocol = detect_protocol(target)
             if self.verbose:
-                print(f"[{target}] Protocollo rilevato: {protocol.value}")
+                logger.debug(f"[{target}] Protocollo rilevato: {protocol.value}")
         
         # Select collector
         if protocol == Protocol.WINRM:

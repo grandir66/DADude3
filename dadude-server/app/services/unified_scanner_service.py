@@ -289,7 +289,7 @@ class UnifiedScannerService:
                 if device:
                     existing_device_type = device.device_type
                     existing_manufacturer = device.manufacturer
-                    logger.info(f"[UNIFIED] Device {request.device_id}: type={existing_device_type}, manufacturer={existing_manufacturer}")
+                    logger.debug(f"[UNIFIED] Device {request.device_id}: type={existing_device_type}, manufacturer={existing_manufacturer}")
                 
                 session.close()
             except Exception as e:
@@ -390,64 +390,64 @@ class UnifiedScannerService:
             # Deve venire prima di linux_server perché spesso hanno device_type=linux_server
             if manufacturer_lower in ["synology", "qnap", "asustor", "terramaster"]:
                 available = ["ssh", "snmp"]
-                logger.info(f"[PROTOCOL] Manufacturer '{manufacturer}' (NAS) → SSH then SNMP")
+                logger.debug(f"[PROTOCOL] Manufacturer '{manufacturer}' (NAS) → SSH then SNMP")
             
             # UNIFI → prima SNMP, poi SSH
             elif "ubiquiti" in manufacturer_lower or "unifi" in manufacturer_lower or "ubnt" in manufacturer_lower:
                 available = ["snmp", "ssh"]
-                logger.info(f"[PROTOCOL] Manufacturer '{manufacturer}' (UniFi) → SNMP then SSH")
+                logger.debug(f"[PROTOCOL] Manufacturer '{manufacturer}' (UniFi) → SNMP then SSH")
             
             # MIKROTIK → SSH, SNMP
             elif "mikrotik" in manufacturer_lower:
                 available = ["ssh", "snmp"]
-                logger.info(f"[PROTOCOL] Manufacturer '{manufacturer}' (MikroTik) → SSH, SNMP")
+                logger.debug(f"[PROTOCOL] Manufacturer '{manufacturer}' (MikroTik) → SSH, SNMP")
             
             # === CONTROLLI BASATI SU DEVICE_TYPE ===
             
             # PROXMOX → SSH (API fallback interno via proxmox_collector)
             elif device_type_lower in ["proxmox", "hypervisor"]:
                 available = ["ssh"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' → SSH (API fallback interno)")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' → SSH (API fallback interno)")
             
             # NAS / STORAGE → SSH, poi SNMP
             elif device_type_lower in ["synology", "qnap", "nas", "storage"]:
                 available = ["ssh", "snmp"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' (NAS) → SSH then SNMP")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' (NAS) → SSH then SNMP")
             
             # MIKROTIK / ROUTER → SSH, SNMP
             elif device_type_lower in ["mikrotik", "router"]:
                 available = ["ssh", "snmp"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' (Router) → SSH, SNMP")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' (Router) → SSH, SNMP")
             
             # AP / ACCESS POINT → SNMP, poi SSH
             elif device_type_lower in ["ap", "access_point", "wireless"]:
                 available = ["snmp", "ssh"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' (AP) → SNMP then SSH")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' (AP) → SNMP then SSH")
             
             # SWITCH / FIREWALL / NETWORK → prima SNMP poi SSH
             elif device_type_lower in ["switch", "firewall", "network"]:
                 available = ["snmp", "ssh"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' → SNMP then SSH")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' → SNMP then SSH")
             
             # WINDOWS → WMI o WinRM
             elif device_type_lower in ["windows_server", "windows_workstation", "windows"]:
                 available = ["winrm", "wmi"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' → WinRM/WMI")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' → WinRM/WMI")
             
             # LINUX → SSH, poi SNMP (controllo generico dopo i NAS)
             elif device_type_lower in ["linux_server", "linux"]:
                 available = ["ssh", "snmp"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' → SSH then SNMP")
+                logger.debug(f"[PROTOCOL] Device type '{device_type}' → SSH then SNMP")
             
             # UNKNOWN / ALTRI → determina in base alle credenziali disponibili
             else:
                 # Se abbiamo credenziali WMI/WinRM, proviamo WinRM per Windows
                 if credentials.get("wmi") or credentials.get("winrm"):
                     available = ["snmp", "winrm", "ssh"]
-                    logger.info(f"[PROTOCOL] Device type '{device_type}' unknown, WMI creds available → SNMP, WinRM, SSH")
+                    logger.debug(f"[PROTOCOL] Device type '{device_type}' unknown, WMI creds available → SNMP, WinRM, SSH")
                 else:
                     available = ["snmp", "ssh"]
-                    logger.info(f"[PROTOCOL] Device type '{device_type}' unknown → SNMP then SSH")
+                    logger.debug(f"[PROTOCOL] Device type '{device_type}' unknown → SNMP then SSH")
         else:
             # Usa i protocolli esplicitamente richiesti
             available = [p for p in requested if p != "auto"]
@@ -516,12 +516,8 @@ class UnifiedScannerService:
             if not snmp_creds_list:
                 snmp_creds_list = [{"community": "public", "version": "2c", "port": 161}]
             
-            logger.info(f"[UNIFIED_SCAN] Credentials to try - SSH: {len(ssh_creds_list)}, "
+            logger.debug(f"[UNIFIED_SCAN] Credentials to try - SSH: {len(ssh_creds_list)}, "
                        f"WMI: {len(wmi_creds_list)}, SNMP: {len(snmp_creds_list)}")
-            
-            # Debug: mostra dettagli credenziali SNMP ricevute
-            for idx, snmp_c in enumerate(snmp_creds_list):
-                logger.info(f"[UNIFIED_SCAN] SNMP cred {idx+1}: community={snmp_c.get('community')}, name={snmp_c.get('credential_name')}")
             
             # Prova le credenziali in sequenza
             agent_result = None
@@ -537,7 +533,7 @@ class UnifiedScannerService:
             # 1. WMI/WinRM ha priorità più alta (Windows)
             if ("auto" in protocols or "wmi" in protocols or "winrm" in protocols) and wmi_creds_list:
                 protos_to_try.append(("wmi", wmi_creds_list))
-                logger.info(f"[UNIFIED_SCAN] WMI credentials available ({len(wmi_creds_list)}) - will try WMI first")
+                logger.debug(f"[UNIFIED_SCAN] WMI credentials available ({len(wmi_creds_list)}) - will try WMI first")
             
             # 2. SNMP (funziona su molti dispositivi)
             if "auto" in protocols or "snmp" in protocols:
@@ -555,7 +551,7 @@ class UnifiedScannerService:
                     cred_name = cred.get("credential_name", f"{proto_type}-{idx+1}")
                     
                     if proto_type == "ssh":
-                        logger.info(f"[UNIFIED_SCAN] Trying SSH credential {idx+1}/{len(creds_to_try)}: "
+                        logger.debug(f"[UNIFIED_SCAN] Trying SSH credential {idx+1}/{len(creds_to_try)}: "
                                    f"{cred.get('username')} ({cred_name})")
                         
                         agent_result = await agent_service.probe_unified(
@@ -575,7 +571,7 @@ class UnifiedScannerService:
                             logger.warning(f"[UNIFIED_SCAN] SNMP credential {idx+1} has no community, skipping")
                             continue
                         
-                        logger.info(f"[UNIFIED_SCAN] Trying SNMP credential {idx+1}/{len(creds_to_try)}: "
+                        logger.debug(f"[UNIFIED_SCAN] Trying SNMP credential {idx+1}/{len(creds_to_try)}: "
                                    f"{snmp_community} ({cred_name})")
                         
                         agent_result = await agent_service.probe_unified(
@@ -589,7 +585,7 @@ class UnifiedScannerService:
                         )
                         
                     elif proto_type == "wmi":
-                        logger.info(f"[UNIFIED_SCAN] Trying WMI credential {idx+1}/{len(creds_to_try)}: "
+                        logger.debug(f"[UNIFIED_SCAN] Trying WMI credential {idx+1}/{len(creds_to_try)}: "
                                    f"{cred.get('username')} ({cred_name})")
                         
                         agent_result = await agent_service.probe_unified(

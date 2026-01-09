@@ -109,7 +109,7 @@ class UpdateManager:
         """Crea checkpoint durante update"""
         checkpoint = UpdateCheckpoint(step=step, metadata=metadata)
         self.checkpoints.append(checkpoint)
-        logger.info(f"Update checkpoint created: {step}")
+        logger.debug(f"Update checkpoint created: {step}")
         return checkpoint
     
     def get_latest_checkpoint(self) -> Optional[UpdateCheckpoint]:
@@ -370,11 +370,11 @@ class CommandHandler:
             return await self._probe_ssh_advanced(params)
         
         elif action == CommandAction.PROBE_SNMP.value:
-            logger.info(f"[HANDLER] PROBE_SNMP action matched, calling _probe_snmp with params: {list(params.keys())}")
+            logger.debug(f"[HANDLER] PROBE_SNMP action matched, calling _probe_snmp with params: {list(params.keys())}")
             return await self._probe_snmp(params)
         
         elif action == CommandAction.PROBE_UNIFIED.value:
-            logger.info(f"[HANDLER] PROBE_UNIFIED action matched, calling _probe_unified with params: {list(params.keys())}")
+            logger.debug(f"[HANDLER] PROBE_UNIFIED action matched, calling _probe_unified with params: {list(params.keys())}")
             return await self._probe_unified(params)
         
         elif action == CommandAction.GET_ARP_TABLE.value:
@@ -514,12 +514,12 @@ class CommandHandler:
             )
         
         try:
-            logger.info(f"WMI probe: target={target}, user={domain}\\{username if domain else username}")
+            logger.debug(f"WMI probe: target={target}, user={domain}\\{username if domain else username}")
             # wmi_probe.probe è già async, chiamalo direttamente
             result = await self._wmi_probe.probe(
                 target, username, password, domain
             )
-            logger.info(f"WMI probe result: {len(result) if result else 0} fields")
+            logger.debug(f"WMI probe result: {len(result) if result else 0} fields")
             return CommandResult(success=True, status="success", data=result)
         except Exception as e:
             import traceback
@@ -557,9 +557,9 @@ class CommandHandler:
             # Log summary dei dati raccolti
             if isinstance(result, dict):
                 result_keys = list(result.keys())
-                logger.info(f"SSH probe handler: Returning {len(result_keys)} fields: {sorted(result_keys)[:30]}")
+                logger.debug(f"SSH probe handler: Returning {len(result_keys)} fields: {sorted(result_keys)[:30]}")
                 if result.get("running_services_count"):
-                    logger.info(f"SSH probe handler: running_services_count={result.get('running_services_count')}, cron_jobs_count={result.get('cron_jobs_count')}, neighbors_count={result.get('neighbors_count')}")
+                    logger.debug(f"SSH probe handler: running_services_count={result.get('running_services_count')}, cron_jobs_count={result.get('cron_jobs_count')}, neighbors_count={result.get('neighbors_count')}")
             return CommandResult(success=True, status="success", data=result)
         except Exception as e:
             logger.error(f"SSH probe handler error: {e}", exc_info=True)
@@ -590,7 +590,7 @@ class CommandHandler:
         try:
             from ..probes.ssh_advanced_scanner import scan_advanced
             
-            logger.info(f"SSH Advanced probe: target={target}, user={username}, port={port}")
+            logger.debug(f"SSH Advanced probe: target={target}, user={username}, port={port}")
             result = await scan_advanced(
                 target=target,
                 username=username,
@@ -603,7 +603,7 @@ class CommandHandler:
             # Log summary dei dati raccolti
             if isinstance(result, dict):
                 result_keys = list(result.keys())
-                logger.info(f"SSH Advanced probe handler: Returning {len(result_keys)} fields")
+                logger.debug(f"SSH Advanced probe handler: Returning {len(result_keys)} fields")
             return CommandResult(success=True, status="success", data=result)
         except Exception as e:
             import traceback
@@ -618,7 +618,7 @@ class CommandHandler:
         version = params.get("version", "2c")
         port = params.get("port", 161)
         
-        logger.info(f"[PROBE_SNMP] Starting SNMP probe for {target}:{port} with community '{community}' (v{version})")
+        logger.debug(f"[PROBE_SNMP] Starting SNMP probe for {target}:{port} with community '{community}' (v{version})")
         
         if not target:
             logger.error(f"[PROBE_SNMP] Missing 'target' parameter")
@@ -626,12 +626,12 @@ class CommandHandler:
         
         try:
             # snmp_probe.probe è già async, chiamalo direttamente
-            logger.info(f"[PROBE_SNMP] Calling snmp_probe.probe({target}, {community}, {version}, {port})")
+            logger.debug(f"[PROBE_SNMP] Calling snmp_probe.probe({target}, {community}, {version}, {port})")
             result = await self._snmp_probe.probe(
                 target, community, version, port
             )
             
-            logger.info(f"[PROBE_SNMP] SNMP probe completed for {target}, result keys: {list(result.keys())[:30]}")
+            logger.debug(f"[PROBE_SNMP] SNMP probe completed for {target}, result keys: {list(result.keys())[:30]}")
             
             # Log what fields are being returned
             basic_fields = ['sysDescr', 'sysName', 'sysObjectID', 'device_type', 'category', 'vendor', 'manufacturer', 'model', 'serial_number', 'firmware_version', 'interface_count', 'uptime_formatted']
@@ -639,19 +639,19 @@ class CommandHandler:
             returned_basic = [f for f in basic_fields if f in result]
             returned_advanced = [f for f in advanced_fields if f in result]
             
-            logger.info(f"[PROBE_SNMP] Basic fields returned: {returned_basic}")
-            logger.info(f"[PROBE_SNMP] Advanced fields returned: {returned_advanced}")
+            logger.debug(f"[PROBE_SNMP] Basic fields returned: {returned_basic}")
+            logger.debug(f"[PROBE_SNMP] Advanced fields returned: {returned_advanced}")
             
             if result.get("neighbors") or result.get("lldp_neighbors"):
                 neighbors_count = len(result.get("neighbors", [])) or len(result.get("lldp_neighbors", []))
-                logger.info(f"[PROBE_SNMP] ✓ Found {neighbors_count} neighbors")
+                logger.debug(f"[PROBE_SNMP] ✓ Found {neighbors_count} neighbors")
             else:
-                logger.warning(f"[PROBE_SNMP] ✗ No neighbors found")
+                logger.debug(f"[PROBE_SNMP] ✗ No neighbors found")
             
-            logger.info(f"SNMP probe handler: Returning {len(result)} fields for {target}")
-            logger.info(f"SNMP probe handler: Basic fields: {len(returned_basic)}/{len(basic_fields)}, Advanced fields: {len(returned_advanced)}/{len(advanced_fields)}")
+            logger.debug(f"SNMP probe handler: Returning {len(result)} fields for {target}")
+            logger.debug(f"SNMP probe handler: Basic fields: {len(returned_basic)}/{len(basic_fields)}, Advanced fields: {len(returned_advanced)}/{len(advanced_fields)}")
             if returned_advanced:
-                logger.info(f"SNMP probe handler: Advanced data returned: {returned_advanced}")
+                logger.debug(f"SNMP probe handler: Advanced data returned: {returned_advanced}")
             else:
                 logger.warning(f"SNMP probe handler: No advanced data returned for {target} (device_type={result.get('device_type')}, is_network={result.get('device_type') in ['router', 'switch', 'ap', 'network']})")
             
@@ -686,7 +686,7 @@ class CommandHandler:
         timeout = params.get("timeout", 30)
         
         try:
-            logger.info(f"[UNIFIED] Starting probe for {target} with protocols {protocols}, timeout={timeout}s")
+            logger.debug(f"[UNIFIED] Starting probe for {target} with protocols {protocols}, timeout={timeout}s")
             
             # Prepara credenziali nel formato atteso da unified_scanner_probe
             credentials = {
@@ -708,10 +708,10 @@ class CommandHandler:
             }
             
             # Log credenziali per debug (senza password)
-            logger.info(f"[UNIFIED] SSH credentials: username={credentials['ssh'].get('username')}, "
+            logger.debug(f"[UNIFIED] SSH credentials: username={credentials['ssh'].get('username')}, "
                        f"password={'***' if credentials['ssh'].get('password') else 'None'}, "
                        f"port={credentials['ssh'].get('port')}")
-            logger.info(f"[UNIFIED] WMI credentials: username={credentials['wmi'].get('username')}, "
+            logger.debug(f"[UNIFIED] WMI credentials: username={credentials['wmi'].get('username')}, "
                        f"password={'***' if credentials['wmi'].get('password') else 'None'}, "
                        f"domain={credentials['wmi'].get('domain')}")
             
