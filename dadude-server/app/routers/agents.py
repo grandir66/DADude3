@@ -14,6 +14,7 @@ from loguru import logger
 
 from ..services.customer_service import get_customer_service
 from ..services.encryption_service import get_encryption_service
+from ..config import VERSION
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
 
@@ -461,8 +462,8 @@ async def list_pending_agents():
 # (MUST be before routes with path parameters)
 # ==========================================
 
-# Versione corrente del server
-SERVER_VERSION = "3.0.0"  # DaDude v3.0.0 - Unified Scanner, Log Viewer, Auto-backup
+# Versione corrente del server (importata da config.py)
+SERVER_VERSION = VERSION
 GITHUB_REPO = "grandir66/dadude"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}"
 
@@ -1119,8 +1120,8 @@ async def update_agent_config(
 # AGENT UPDATE/UPGRADE SYSTEM
 # ==========================================
 
-# Versione corrente dell'agent (da aggiornare ad ogni release)
-AGENT_VERSION = "3.0.0"
+# Versione corrente dell'agent (stessa del server)
+AGENT_VERSION = VERSION
 
 @router.get("/version")
 async def get_current_agent_version():
