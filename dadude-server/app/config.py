@@ -7,7 +7,7 @@ from typing import Optional
 from functools import lru_cache
 
 # DaDude Version
-VERSION = "3.0.0"
+VERSION = "3.1.1"
 
 
 class Settings(BaseSettings):
