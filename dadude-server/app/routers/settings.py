@@ -4,7 +4,7 @@ Gestione configurazione sistema via web
 """
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 from loguru import logger
 import os
 import subprocess
@@ -44,6 +44,12 @@ class AuthSettings(BaseModel):
     auth_enabled: Optional[bool] = None
     admin_username: Optional[str] = None
     admin_password: Optional[str] = None  # Solo per creazione/modifica
+
+
+class ScanPortsSettings(BaseModel):
+    """Impostazioni porte di scansione"""
+    tcp_ports: Optional[Dict[str, str]] = None  # Dict con porta (str) -> servizio (str)
+    udp_ports: Optional[Dict[str, str]] = None  # Dict con porta (str) -> servizio (str)
 
 
 def _read_env_file(env_path: str = ".env") -> dict:
@@ -308,4 +314,124 @@ async def restart_service():
     except Exception as e:
         logger.error(f"Restart failed: {e}")
         return {"success": False, "message": str(e)}
+
+
+@router.get("/scan-ports")
+async def get_scan_ports():
+    """
+    Ottiene la configurazione corrente delle porte TCP/UDP da scansionare.
+    Accessibile anche agli agent per sincronizzazione automatica.
+    """
+    from ..services.scan_ports_config import get_scan_ports_config
+    
+    try:
+        config = get_scan_ports_config()
+        config_dict = config.get_config_dict()
+        
+        return {
+            "success": True,
+            "tcp_ports": config_dict.get("tcp_ports", {}),
+            "udp_ports": config_dict.get("udp_ports", {}),
+        }
+    except Exception as e:
+        logger.error(f"Error getting scan ports config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scan-ports")
+async def update_scan_ports(settings: ScanPortsSettings):
+    """
+    Aggiorna la configurazione delle porte TCP/UDP da scansionare
+    """
+    from ..services.scan_ports_config import get_scan_ports_config
+    
+    try:
+        config = get_scan_ports_config()
+        
+        if settings.tcp_ports is not None and settings.udp_ports is not None:
+            # Aggiorna entrambi
+            tcp_ports_int = {int(port): service for port, service in settings.tcp_ports.items()}
+            udp_ports_int = {int(port): service for port, service in settings.udp_ports.items()}
+            config.update_all_ports(tcp_ports_int, udp_ports_int)
+        elif settings.tcp_ports is not None:
+            tcp_ports_int = {int(port): service for port, service in settings.tcp_ports.items()}
+            config.update_tcp_ports(tcp_ports_int)
+        elif settings.udp_ports is not None:
+            udp_ports_int = {int(port): service for port, service in settings.udp_ports.items()}
+            config.update_udp_ports(udp_ports_int)
+        else:
+            raise HTTPException(status_code=400, detail="Nessuna porta specificata")
+        
+        logger.info("Scan ports configuration updated")
+        
+        return {
+            "success": True,
+            "message": "Configurazione porte aggiornata con successo",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Formato porte non valido: {e}")
+    except Exception as e:
+        logger.error(f"Error updating scan ports config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/scan-ports/sync")
+async def sync_scan_ports():
+    """
+    Sincronizza la configurazione delle porte a tutti gli agent connessi via WebSocket
+    """
+    from ..services.scan_ports_config import get_scan_ports_config
+    from ..services.websocket_hub import get_websocket_hub, CommandType
+    
+    try:
+        config = get_scan_ports_config()
+        config_dict = config.get_config_dict()
+        
+        hub = get_websocket_hub()
+        connected_agents_list = await hub.get_connected_agents()
+        
+        if not connected_agents_list:
+            return {
+                "success": True,
+                "message": "Nessun agent connesso",
+                "synced_count": 0,
+            }
+        
+        synced_count = 0
+        errors = []
+        
+        # Invia configurazione a tutti gli agent connessi
+        # connected_agents_list è una lista di dict con "agent_id"
+        for agent_info in connected_agents_list:
+            agent_id = agent_info.get("agent_id") if isinstance(agent_info, dict) else agent_info
+            try:
+                # Usa un comando custom SYNC_CONFIG
+                result = await hub.send_command(
+                    agent_id=agent_id,
+                    action="SYNC_CONFIG",  # Comando custom
+                    params={
+                        "config_type": "scan_ports",
+                        "tcp_ports": config_dict.get("tcp_ports", {}),
+                        "udp_ports": config_dict.get("udp_ports", {}),
+                    },
+                    timeout=10.0
+                )
+                
+                if result.status == "success":
+                    synced_count += 1
+                else:
+                    errors.append(f"Agent {agent_id}: {result.error}")
+            except Exception as e:
+                errors.append(f"Agent {agent_id}: {str(e)}")
+        
+        return {
+            "success": True,
+            "message": f"Configurazione sincronizzata a {synced_count}/{len(connected_agents)} agent",
+            "synced_count": synced_count,
+            "total_agents": len(connected_agents),
+            "errors": errors if errors else None,
+        }
+    except Exception as e:
+        logger.error(f"Error syncing scan ports config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 

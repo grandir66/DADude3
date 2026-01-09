@@ -2,22 +2,24 @@
 DaDude Agent - Port Scanner
 Scansione porte TCP/UDP
 v3.0.0: Aggiunto supporto UDP per SNMP e DNS
+v3.2.0: Configurazione porte da file JSON
 """
 import asyncio
 import socket
+import json
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 from loguru import logger
 
 
-# Porte di default da scansionare (TCP)
-DEFAULT_PORTS = [
+# Porte di default hardcoded (fallback se config non disponibile)
+_DEFAULT_PORTS_HARDCODED = [
     22, 23, 25, 53, 80, 110, 135, 139, 143, 161, 389, 443, 445,
     636, 993, 995, 1433, 3306, 3389, 5432, 5900, 5985, 5986,
     8080, 8443, 8728, 8729, 8291,
 ]
 
-# Porte UDP da scansionare sempre
-DEFAULT_UDP_PORTS = [
+_DEFAULT_UDP_PORTS_HARDCODED = [
     53,    # DNS
     161,   # SNMP
     162,   # SNMP Trap
@@ -25,8 +27,8 @@ DEFAULT_UDP_PORTS = [
     500,   # IKE (VPN)
 ]
 
-# Mappa porte -> servizi
-PORT_SERVICES = {
+# Mappa porte -> servizi (fallback)
+_PORT_SERVICES_HARDCODED = {
     22: "ssh", 23: "telnet", 25: "smtp", 53: "dns", 80: "http",
     110: "pop3", 135: "wmi", 139: "netbios", 143: "imap", 161: "snmp",
     162: "snmp-trap", 123: "ntp", 500: "ike",
@@ -36,6 +38,85 @@ PORT_SERVICES = {
     8080: "http-alt", 8443: "https-alt", 8728: "mikrotik-api",
     8729: "mikrotik-api-ssl", 8291: "winbox",
 }
+
+# Cache per configurazione porte
+_port_config_cache: Optional[Dict[str, Any]] = None
+
+
+def load_port_config() -> Dict[str, Any]:
+    """
+    Carica configurazione porte da file JSON.
+    Ritorna configurazione con fallback ai valori hardcoded.
+    
+    Returns:
+        Dict con "tcp_ports" (dict porta->servizio) e "udp_ports" (dict porta->servizio)
+    """
+    global _port_config_cache
+    
+    # Usa cache se disponibile
+    if _port_config_cache is not None:
+        return _port_config_cache
+    
+    config_path = Path(__file__).parent.parent.parent / "config" / "scan_ports.json"
+    
+    try:
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # Converti chiavi stringhe in int
+            tcp_ports = {int(port): service for port, service in config.get("tcp_ports", {}).items()}
+            udp_ports = {int(port): service for port, service in config.get("udp_ports", {}).items()}
+            
+            _port_config_cache = {
+                "tcp_ports": tcp_ports,
+                "udp_ports": udp_ports,
+                "port_services": {**tcp_ports, **udp_ports}
+            }
+            
+            logger.debug(f"Loaded port config: {len(tcp_ports)} TCP, {len(udp_ports)} UDP ports")
+            return _port_config_cache
+    except Exception as e:
+        logger.warning(f"Error loading port config from {config_path}: {e}, using defaults")
+    
+    # Fallback ai valori hardcoded
+    _port_config_cache = {
+        "tcp_ports": {port: _PORT_SERVICES_HARDCODED.get(port, f"port-{port}") for port in _DEFAULT_PORTS_HARDCODED},
+        "udp_ports": {port: _PORT_SERVICES_HARDCODED.get(port, f"port-{port}") for port in _DEFAULT_UDP_PORTS_HARDCODED},
+        "port_services": _PORT_SERVICES_HARDCODED.copy()
+    }
+    
+    return _port_config_cache
+
+
+def invalidate_port_config_cache():
+    """Invalida cache configurazione porte (chiamata dopo SYNC_CONFIG)"""
+    global _port_config_cache
+    _port_config_cache = None
+
+
+def get_default_tcp_ports() -> List[int]:
+    """Ottiene lista porte TCP di default dalla configurazione"""
+    config = load_port_config()
+    return list(config["tcp_ports"].keys())
+
+
+def get_default_udp_ports() -> List[int]:
+    """Ottiene lista porte UDP di default dalla configurazione"""
+    config = load_port_config()
+    return list(config["udp_ports"].keys())
+
+
+def get_port_service(port: int) -> str:
+    """Ottiene nome servizio per una porta dalla configurazione"""
+    config = load_port_config()
+    return config["port_services"].get(port, f"port-{port}")
+
+
+# Alias per compatibilità
+DEFAULT_PORTS = get_default_tcp_ports()
+DEFAULT_UDP_PORTS = get_default_udp_ports()
+PORT_SERVICES = load_port_config()["port_services"]
 
 
 async def scan_port(target: str, port: int, timeout: float = 1.0) -> Dict[str, Any]:
@@ -58,14 +139,14 @@ async def scan_port(target: str, port: int, timeout: float = 1.0) -> Dict[str, A
         return {
             "port": port,
             "protocol": "tcp",
-            "service": PORT_SERVICES.get(port, f"port-{port}"),
+            "service": get_port_service(port),
             "open": is_open,
         }
     except:
         return {
             "port": port,
             "protocol": "tcp",
-            "service": PORT_SERVICES.get(port, f"port-{port}"),
+            "service": get_port_service(port),
             "open": False,
         }
 
@@ -192,7 +273,7 @@ async def scan_udp_port(target: str, port: int, timeout: float = 2.0, snmp_commu
         return {
             "port": port,
             "protocol": "udp",
-            "service": PORT_SERVICES.get(port, f"port-{port}"),
+            "service": get_port_service(port),
             "open": is_open,
         }
     except Exception as e:
@@ -200,7 +281,7 @@ async def scan_udp_port(target: str, port: int, timeout: float = 2.0, snmp_commu
         return {
             "port": port,
             "protocol": "udp",
-            "service": PORT_SERVICES.get(port, f"port-{port}"),
+            "service": get_port_service(port),
             "open": False,
         }
 
@@ -226,7 +307,7 @@ async def scan(
         Lista di risultati per ogni porta (TCP + UDP)
     """
     if ports is None:
-        ports = DEFAULT_PORTS
+        ports = get_default_tcp_ports()
     
     logger.debug(f"Scanning {len(ports)} TCP ports on {target}")
     
@@ -242,9 +323,11 @@ async def scan(
     
     # v3.0.0: Scansiona anche porte UDP
     # v3.1.0: Passa community SNMP del cliente
+    # v3.2.0: Porte UDP da configurazione
     if include_udp:
-        logger.debug(f"Scanning {len(DEFAULT_UDP_PORTS)} UDP ports on {target}")
-        udp_tasks = [scan_udp_port(target, port, timeout + 1.0, snmp_communities) for port in DEFAULT_UDP_PORTS]
+        udp_ports = get_default_udp_ports()
+        logger.debug(f"Scanning {len(udp_ports)} UDP ports on {target}")
+        udp_tasks = [scan_udp_port(target, port, timeout + 1.0, snmp_communities) for port in udp_ports]
         udp_results = await asyncio.gather(*udp_tasks, return_exceptions=True)
         
         for result in udp_results:
@@ -286,7 +369,7 @@ def scan_ports(target: str, ports: Optional[List[int]] = None, timeout: float = 
     return {
         "target": target,
         "open_ports": open_ports,
-        "total_scanned": len(ports or DEFAULT_PORTS) + (len(DEFAULT_UDP_PORTS) if include_udp else 0),
+        "total_scanned": len(ports or get_default_tcp_ports()) + (len(get_default_udp_ports()) if include_udp else 0),
         "open_count": len(open_ports),
         "tcp_open": tcp_count,
         "udp_open": udp_count,

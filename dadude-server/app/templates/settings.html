@@ -193,6 +193,54 @@
             </form>
         </div>
     </div>
+    
+    <!-- Porte Scansione -->
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-diagram-3"></i> Porte di Scansione</span>
+                <span class="badge bg-info">TCP + UDP</span>
+            </div>
+            <form id="scanPortsForm">
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i> Configura le porte TCP e UDP da scansionare durante la discovery dei dispositivi.
+                        Formato: una porta per riga come <code>porta:servizio</code> (es: <code>22:ssh</code>)
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-router"></i> Porte TCP
+                                <small class="text-muted">(una per riga: porta:servizio)</small>
+                            </label>
+                            <textarea class="form-control font-monospace" id="tcpPorts" rows="15" placeholder="22:ssh&#10;80:http&#10;443:https"></textarea>
+                            <small class="text-muted">Esempio: 22:ssh, 80:http, 443:https</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">
+                                <i class="bi bi-router-fill"></i> Porte UDP
+                                <small class="text-muted">(una per riga: porta:servizio)</small>
+                            </label>
+                            <textarea class="form-control font-monospace" id="udpPorts" rows="15" placeholder="53:dns&#10;161:snmp&#10;123:ntp"></textarea>
+                            <small class="text-muted">Esempio: 53:dns, 161:snmp, 123:ntp</small>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check"></i> Salva Configurazione
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="saveAndSyncPorts()">
+                            <i class="bi bi-arrow-repeat"></i> Salva e Sincronizza agli Agent
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="loadScanPorts()">
+                            <i class="bi bi-arrow-clockwise"></i> Ricarica
+                        </button>
+                    </div>
+                    <div id="scanPortsStatus" class="mt-3"></div>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- Navigazione Settings -->
@@ -400,6 +448,161 @@ async function forceSync() {
         alert('❌ Errore: ' + e.message);
     }
 }
+
+// Load Scan Ports Configuration
+async function loadScanPorts() {
+    try {
+        const response = await fetch('/api/v1/settings/scan-ports');
+        const result = await response.json();
+        
+        if (result.success) {
+            // Formatta porte TCP
+            const tcpText = Object.entries(result.tcp_ports || {})
+                .map(([port, service]) => `${port}:${service}`)
+                .join('\n');
+            document.getElementById('tcpPorts').value = tcpText;
+            
+            // Formatta porte UDP
+            const udpText = Object.entries(result.udp_ports || {})
+                .map(([port, service]) => `${port}:${service}`)
+                .join('\n');
+            document.getElementById('udpPorts').value = udpText;
+            
+            showScanPortsStatus('✅ Configurazione caricata', 'success');
+        } else {
+            showScanPortsStatus('❌ Errore nel caricamento: ' + (result.message || 'Errore sconosciuto'), 'danger');
+        }
+    } catch (e) {
+        showScanPortsStatus('❌ Errore: ' + e.message, 'danger');
+    }
+}
+
+// Parse ports from textarea
+function parsePorts(text) {
+    const ports = {};
+    const lines = text.split('\n');
+    
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        
+        const parts = trimmed.split(':');
+        if (parts.length >= 2) {
+            const port = parts[0].trim();
+            const service = parts.slice(1).join(':').trim();
+            if (port && service) {
+                ports[port] = service;
+            }
+        }
+    }
+    
+    return ports;
+}
+
+// Show status message
+function showScanPortsStatus(message, type) {
+    const statusDiv = document.getElementById('scanPortsStatus');
+    statusDiv.innerHTML = `<div class="alert alert-${type} mb-0">${message}</div>`;
+    setTimeout(() => {
+        statusDiv.innerHTML = '';
+    }, 5000);
+}
+
+// Save Scan Ports
+document.getElementById('scanPortsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const tcpText = document.getElementById('tcpPorts').value;
+    const udpText = document.getElementById('udpPorts').value;
+    
+    const tcpPorts = parsePorts(tcpText);
+    const udpPorts = parsePorts(udpText);
+    
+    if (Object.keys(tcpPorts).length === 0 && Object.keys(udpPorts).length === 0) {
+        showScanPortsStatus('⚠️ Inserisci almeno una porta TCP o UDP', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/v1/settings/scan-ports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tcp_ports: tcpPorts,
+                udp_ports: udpPorts
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showScanPortsStatus('✅ ' + result.message, 'success');
+        } else {
+            showScanPortsStatus('❌ Errore: ' + (result.detail || result.message || 'Errore sconosciuto'), 'danger');
+        }
+    } catch (e) {
+        showScanPortsStatus('❌ Errore: ' + e.message, 'danger');
+    }
+});
+
+// Save and Sync Ports
+async function saveAndSyncPorts() {
+    const tcpText = document.getElementById('tcpPorts').value;
+    const udpText = document.getElementById('udpPorts').value;
+    
+    const tcpPorts = parsePorts(tcpText);
+    const udpPorts = parsePorts(udpText);
+    
+    if (Object.keys(tcpPorts).length === 0 && Object.keys(udpPorts).length === 0) {
+        showScanPortsStatus('⚠️ Inserisci almeno una porta TCP o UDP', 'warning');
+        return;
+    }
+    
+    try {
+        // Prima salva
+        const saveResponse = await fetch('/api/v1/settings/scan-ports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tcp_ports: tcpPorts,
+                udp_ports: udpPorts
+            })
+        });
+        
+        const saveResult = await saveResponse.json();
+        
+        if (!saveResult.success) {
+            showScanPortsStatus('❌ Errore nel salvataggio: ' + (saveResult.detail || saveResult.message), 'danger');
+            return;
+        }
+        
+        // Poi sincronizza
+        showScanPortsStatus('🔄 Sincronizzazione in corso...', 'info');
+        
+        const syncResponse = await fetch('/api/v1/settings/scan-ports/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const syncResult = await syncResponse.json();
+        
+        if (syncResult.success) {
+            showScanPortsStatus(
+                `✅ ${syncResult.message} (${syncResult.synced_count}/${syncResult.total_agents} agent)`,
+                'success'
+            );
+        } else {
+            showScanPortsStatus('⚠️ Salvato ma errore nella sincronizzazione: ' + (syncResult.detail || syncResult.message), 'warning');
+        }
+    } catch (e) {
+        showScanPortsStatus('❌ Errore: ' + e.message, 'danger');
+    }
+}
+
+// Load ports on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadScanPorts();
+});
 
 // Restart Service
 async function restartService() {

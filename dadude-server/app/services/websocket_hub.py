@@ -51,6 +51,7 @@ class CommandType(str, Enum):
     EXEC_COMMAND = "exec_command"  # Esegui comando locale sull'agent
     EXEC_SSH = "exec_ssh"  # Esegui comando su host remoto via SSH
     PING = "ping"  # ICMP ping a un target
+    SYNC_CONFIG = "sync_config"  # Sincronizza configurazione (porte, etc.)
 
 
 @dataclass

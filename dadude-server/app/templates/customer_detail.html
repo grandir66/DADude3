@@ -5213,15 +5213,73 @@ async function viewInventoryDevice(deviceId) {
             const ld = device.linux_details;
             detailsHtml += `
                 <hr>
-                <h6 class="text-muted mb-3">Dettagli Linux</h6>
-                <table class="table table-sm">
-                    <tr><th width="30%">Distribuzione:</th><td>${ld.distro_name || '-'} ${ld.distro_version || ''}</td></tr>
-                    <tr><th>Kernel:</th><td>${ld.kernel_version || '-'}</td></tr>
-                    <tr><th>Package Manager:</th><td>${ld.package_manager || '-'}</td></tr>
-                    <tr><th>Docker:</th><td>${ld.docker_installed ? '✅ Installato (v' + (ld.docker_version || '-') + ')' : '❌ Non installato'}</td></tr>
-                    <tr><th>Container Attivi:</th><td>${ld.containers_running || 0}</td></tr>
-                    <tr><th>Uptime:</th><td>${ld.uptime_days ? ld.uptime_days.toFixed(1) + ' giorni' : '-'}</td></tr>
-                </table>
+                <h6 class="text-muted mb-3"><i class="bi bi-ubuntu"></i> Dettagli Linux</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tr><th width="40%">Distribuzione:</th><td>${ld.distro_name || '-'} ${ld.distro_version || ''} ${ld.distro_codename ? '(' + ld.distro_codename + ')' : ''}</td></tr>
+                            <tr><th>Kernel:</th><td>${ld.kernel_version || '-'} ${ld.kernel_arch ? '(' + ld.kernel_arch + ')' : ''}</td></tr>
+                            <tr><th>Init System:</th><td>${ld.init_system || '-'}</td></tr>
+                            <tr><th>Package Manager:</th><td>${ld.package_manager || '-'}</td></tr>
+                            <tr><th>Pacchetti Installati:</th><td>${ld.packages_installed || '-'}</td></tr>
+                            <tr><th>Timezone:</th><td>${ld.timezone || '-'}</td></tr>
+                            ${ld.virtualization ? `<tr><th>Virtualizzazione:</th><td>${ld.virtualization}</td></tr>` : ''}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tr><th width="40%">Uptime:</th><td>${ld.uptime_days ? ld.uptime_days.toFixed(1) + ' giorni' : (ld.uptime_seconds ? (ld.uptime_seconds / 86400).toFixed(1) + ' giorni' : '-')}</td></tr>
+                            <tr><th>Load Average:</th><td>${ld.load_average || '-'}</td></tr>
+                            <tr><th>SELinux:</th><td>${ld.selinux_status || '-'}</td></tr>
+                            ${ld.ssh_port ? `<tr><th>SSH Port:</th><td>${ld.ssh_port}</td></tr>` : ''}
+                            ${ld.default_gateway ? `<tr><th>Default Gateway:</th><td>${ld.default_gateway}</td></tr>` : ''}
+                            ${ld.dns_servers && ld.dns_servers.length > 0 ? `<tr><th>DNS Servers:</th><td>${ld.dns_servers.join(', ')}</td></tr>` : ''}
+                        </table>
+                    </div>
+                </div>
+                
+                ${ld.docker_installed ? `
+                <div class="mt-2">
+                    <h6 class="text-muted mb-2"><i class="bi bi-box"></i> Docker</h6>
+                    <table class="table table-sm">
+                        <tr><th width="20%">Docker:</th><td>✅ Installato (v${ld.docker_version || '-'})</td></tr>
+                        <tr><th>Container Attivi:</th><td><span class="badge bg-success">${ld.containers_running || 0}</span> / ${ld.containers_total || 0} totali</td></tr>
+                        ${ld.docker_images_count ? `<tr><th>Immagini:</th><td>${ld.docker_images_count}</td></tr>` : ''}
+                    </table>
+                </div>
+                ` : ''}
+                
+                ${ld.cpu_load_1min || ld.memory_usage_percent ? `
+                <div class="mt-2">
+                    <h6 class="text-muted mb-2"><i class="bi bi-cpu"></i> Risorse</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                ${ld.cpu_load_1min ? `<tr><th>CPU Load (1/5/15 min):</th><td>${ld.cpu_load_1min?.toFixed(2) || '-'} / ${ld.cpu_load_5min?.toFixed(2) || '-'} / ${ld.cpu_load_15min?.toFixed(2) || '-'}</td></tr>` : ''}
+                                ${ld.cpu_usage_percent ? `<tr><th>CPU Usage:</th><td>${ld.cpu_usage_percent.toFixed(1)}%</td></tr>` : ''}
+                                ${ld.cpu_frequency_mhz ? `<tr><th>CPU Freq:</th><td>${ld.cpu_frequency_mhz} MHz</td></tr>` : ''}
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                ${ld.memory_usage_percent ? `<tr><th>RAM Usage:</th><td>${ld.memory_usage_percent.toFixed(1)}%</td></tr>` : ''}
+                                ${ld.swap_usage_percent ? `<tr><th>Swap Usage:</th><td>${ld.swap_usage_percent.toFixed(1)}%</td></tr>` : ''}
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
+                
+                ${ld.nas_model ? `
+                <div class="mt-2">
+                    <h6 class="text-muted mb-2"><i class="bi bi-hdd-rack"></i> NAS Info</h6>
+                    <table class="table table-sm">
+                        <tr><th width="20%">Modello:</th><td>${ld.nas_model}</td></tr>
+                        <tr><th>Seriale:</th><td>${ld.nas_serial || '-'}</td></tr>
+                        <tr><th>Firmware:</th><td>${ld.firmware_version || '-'} ${ld.firmware_build ? '(' + ld.firmware_build + ')' : ''}</td></tr>
+                    </table>
+                </div>
+                ` : ''}
             `;
         }
 

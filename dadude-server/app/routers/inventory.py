@@ -3024,29 +3024,87 @@ async def get_inventory_device(device_id: str):
                 "logged_users": wd.logged_users,
             }
         
-        if device.device_type == "linux" and device.linux_details:
+        # Linux details - mostra se linux O se c'è linux_details (può essere un server Linux non categorizzato)
+        if device.linux_details:
             ld = device.linux_details
             result["linux_details"] = {
+                # Distro info
                 "distro_name": ld.distro_name,
                 "distro_version": ld.distro_version,
                 "distro_codename": ld.distro_codename,
                 "kernel_version": ld.kernel_version,
                 "kernel_arch": ld.kernel_arch,
+                
+                # Package management
                 "package_manager": ld.package_manager,
                 "packages_installed": ld.packages_installed,
                 "packages_upgradable": ld.packages_upgradable,
+                
+                # System
                 "init_system": ld.init_system,
                 "selinux_status": ld.selinux_status,
                 "virtualization": ld.virtualization,
+                
+                # Uptime/Load
                 "last_reboot": ld.last_reboot.isoformat() if ld.last_reboot else None,
                 "uptime_days": ld.uptime_days,
                 "load_average": ld.load_average,
+                "boot_time": ld.boot_time.isoformat() if ld.boot_time else None,
+                "uptime_seconds": ld.uptime_seconds,
+                
+                # SSH
                 "root_login_enabled": ld.root_login_enabled,
                 "ssh_port": ld.ssh_port,
                 "logged_users": ld.logged_users,
+                
+                # Docker/Containers
                 "docker_installed": ld.docker_installed,
                 "docker_version": ld.docker_version,
                 "containers_running": ld.containers_running,
+                "containers_stopped": ld.containers_stopped,
+                "containers_total": ld.containers_total,
+                "docker_images_count": ld.docker_images_count,
+                
+                # CPU detailed
+                "cpu_frequency_mhz": ld.cpu_frequency_mhz,
+                "cpu_cache_size": ld.cpu_cache_size,
+                "cpu_usage_percent": ld.cpu_usage_percent,
+                "cpu_temperature_celsius": ld.cpu_temperature_celsius,
+                "cpu_load_1min": ld.cpu_load_1min,
+                "cpu_load_5min": ld.cpu_load_5min,
+                "cpu_load_15min": ld.cpu_load_15min,
+                
+                # Memory detailed
+                "memory_available_bytes": ld.memory_available_bytes,
+                "memory_used_bytes": ld.memory_used_bytes,
+                "memory_free_bytes": ld.memory_free_bytes,
+                "memory_cached_bytes": ld.memory_cached_bytes,
+                "memory_buffers_bytes": ld.memory_buffers_bytes,
+                "memory_usage_percent": ld.memory_usage_percent,
+                "swap_total_bytes": ld.swap_total_bytes,
+                "swap_used_bytes": ld.swap_used_bytes,
+                "swap_free_bytes": ld.swap_free_bytes,
+                "swap_usage_percent": ld.swap_usage_percent,
+                
+                # Storage data (JSON)
+                "storage_data": ld.storage_data,
+                "disks_data": ld.disks_data,
+                "network_interfaces_data": ld.network_interfaces_data,
+                "services_data": ld.services_data,
+                "vms_data": ld.vms_data,
+                
+                # Network
+                "default_gateway": ld.default_gateway,
+                "dns_servers": ld.dns_servers,
+                "timezone": ld.timezone,
+                
+                # NAS specific
+                "nas_model": ld.nas_model,
+                "nas_serial": ld.nas_serial,
+                "firmware_version": ld.firmware_version,
+                "firmware_build": ld.firmware_build,
+                
+                "last_updated": ld.last_updated.isoformat() if ld.last_updated else None,
             }
         
         if device.device_type == "mikrotik" and device.mikrotik_details:

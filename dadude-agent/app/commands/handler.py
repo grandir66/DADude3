@@ -37,6 +37,7 @@ class CommandAction(str, Enum):
     GET_STATUS = "get_status"
     GET_CONFIG = "get_config"
     SET_CONFIG = "set_config"
+    SYNC_CONFIG = "sync_config"  # Sincronizza configurazione dal server
     
     # Scheduled tasks
     DAILY_RESTART = "daily_restart"
@@ -420,6 +421,9 @@ class CommandHandler:
             return await self._exec_ssh(params)
         elif action == CommandAction.UPDATE_AGENT_PROXMOX.value:
             return await self._update_agent_proxmox(params)
+        
+        elif action == CommandAction.SYNC_CONFIG.value or action == "SYNC_CONFIG":
+            return await self._sync_config(params)
         
         else:
             return CommandResult(
@@ -1639,6 +1643,63 @@ class CommandHandler:
                 data={"message": "System reboot initiated"},
             )
         except Exception as e:
+            return CommandResult(success=False, status="error", error=str(e))
+    
+    async def _sync_config(self, params: Dict) -> CommandResult:
+        """Sincronizza configurazione dal server (es: porte di scansione)"""
+        import json
+        from pathlib import Path
+        
+        config_type = params.get("config_type", "")
+        
+        try:
+            if config_type == "scan_ports":
+                # Salva configurazione porte
+                tcp_ports = params.get("tcp_ports", {})
+                udp_ports = params.get("udp_ports", {})
+                
+                # Path al file di configurazione
+                config_dir = Path(__file__).parent.parent.parent / "config"
+                config_dir.mkdir(parents=True, exist_ok=True)
+                config_file = config_dir / "scan_ports.json"
+                
+                # Salva configurazione
+                config_data = {
+                    "tcp_ports": tcp_ports,
+                    "udp_ports": udp_ports
+                }
+                
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"Scan ports configuration synced: {len(tcp_ports)} TCP, {len(udp_ports)} UDP ports")
+                
+                # Invalida cache nel port_scanner
+                try:
+                    from ..scanners.port_scanner import invalidate_port_config_cache
+                    invalidate_port_config_cache()
+                    logger.debug("Port scanner cache invalidated")
+                except Exception as e:
+                    logger.warning(f"Could not invalidate port scanner cache: {e}")
+                
+                return CommandResult(
+                    success=True,
+                    status="success",
+                    data={
+                        "config_type": config_type,
+                        "tcp_ports_count": len(tcp_ports),
+                        "udp_ports_count": len(udp_ports),
+                        "config_path": str(config_file)
+                    }
+                )
+            else:
+                return CommandResult(
+                    success=False,
+                    status="error",
+                    error=f"Unknown config_type: {config_type}"
+                )
+        except Exception as e:
+            logger.error(f"Error syncing config: {e}")
             return CommandResult(success=False, status="error", error=str(e))
     
     async def _get_status(self) -> CommandResult:

@@ -1666,9 +1666,14 @@ def _detect_ubiquiti_unifi(exec_cmd) -> bool:
     info_out = exec_cmd("info 2>/dev/null", timeout=3)
     if info_out:
         info_lower = info_out.lower()
-        # Escludi output di GNU info (man pages)
-        if "gnu info" in info_lower or "info manual" in info_lower or "this is info" in info_lower:
-            logger.debug("UniFi detection: Skipping, this is GNU info command output")
+        # Escludi output di GNU info (man pages) - vari pattern possibili
+        gnu_info_patterns = [
+            "gnu info", "info manual", "this is info", "info tree",
+            "file:", "node:", "next:", "prev:", "up:", "menu:",
+            "info: ", "--help", "--version"
+        ]
+        if any(pattern in info_lower for pattern in gnu_info_patterns):
+            logger.debug(f"UniFi detection: Skipping, this is GNU info command output: {info_out[:50]}")
         else:
             # Deve contenere pattern specifici UniFi, non solo parole generiche
             unifi_patterns = [

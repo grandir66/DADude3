@@ -152,6 +152,75 @@ class UnifiedScanResult:
     # Custom fields (per dati aggiuntivi Linux/Windows/etc)
     custom_fields: Dict[str, Any] = field(default_factory=dict)
     
+    # === Linux-specific fields ===
+    # Distro info
+    kernel_version: str = ""
+    distro_name: str = ""
+    distro_id: str = ""
+    distro_codename: str = ""
+    architecture: str = ""
+    
+    # Package management
+    package_manager: str = ""  # apt, yum, dnf, pacman
+    packages_installed: int = 0
+    
+    # System
+    init_system: str = ""  # systemd, sysvinit
+    selinux_status: str = ""
+    apparmor_status: str = ""
+    timezone: str = ""
+    locale: str = ""
+    boot_time: str = ""
+    last_reboot: str = ""
+    load_average: str = ""
+    
+    # Docker/Container
+    docker_installed: bool = False
+    docker_version: str = ""
+    containers_running: int = 0
+    containers_total: int = 0
+    
+    # Network config
+    default_gateway: str = ""
+    dns_servers: List[str] = field(default_factory=list)
+    hostname_fqdn: str = ""
+    
+    # Storage details
+    lvm_volumes: List[Dict] = field(default_factory=list)
+    volume_groups: List[Dict] = field(default_factory=list)
+    partitions: List[Dict] = field(default_factory=list)
+    fstab_entries: List[Dict] = field(default_factory=list)
+    swap_info: List[Dict] = field(default_factory=list)
+    
+    # Firewall
+    firewall_type: str = ""  # ufw, iptables, firewalld
+    firewall_enabled: bool = False
+    firewall_rules: List[str] = field(default_factory=list)
+    
+    # Cron jobs
+    cron_jobs: List[Dict] = field(default_factory=list)
+    
+    # Running processes (top by CPU/RAM)
+    running_processes: List[Dict] = field(default_factory=list)
+    
+    # Listening ports
+    listening_ports: List[Dict] = field(default_factory=list)
+    
+    # Installed databases
+    databases: List[Dict] = field(default_factory=list)
+    
+    # Web servers
+    web_servers: List[Dict] = field(default_factory=list)
+    
+    # Kernel modules
+    kernel_modules: List[str] = field(default_factory=list)
+    
+    # NTP servers
+    ntp_servers: List[str] = field(default_factory=list)
+    
+    # Windows-specific (already partially present)
+    windows_details: Dict[str, Any] = field(default_factory=dict)
+    
     # Errors
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -500,14 +569,20 @@ class UnifiedScannerService:
                         )
                         
                     elif proto_type == "snmp":
+                        # Verifica che ci sia una community valida
+                        snmp_community = cred.get("community")
+                        if not snmp_community or not snmp_community.strip():
+                            logger.warning(f"[UNIFIED_SCAN] SNMP credential {idx+1} has no community, skipping")
+                            continue
+                        
                         logger.info(f"[UNIFIED_SCAN] Trying SNMP credential {idx+1}/{len(creds_to_try)}: "
-                                   f"{cred.get('community')} ({cred_name})")
+                                   f"{snmp_community} ({cred_name})")
                         
                         agent_result = await agent_service.probe_unified(
                             agent_info,
                             request.target_address,
                             ["snmp"],
-                            snmp_community=cred.get("community", "public"),
+                            snmp_community=snmp_community,
                             snmp_port=cred.get("port", 161),
                             snmp_version=int(str(cred.get("version", "2c")).replace("c", "")),
                             timeout=min(request.timeout, 20),
@@ -745,104 +820,99 @@ class UnifiedScannerService:
         result.software = agent_data.get("software", [])
         result.software_count = len(result.software)
         
-        # Linux-specific: Installed services (all services, not just running)
+        # === LINUX-SPECIFIC FIELDS ===
+        # Mappa direttamente ai campi dedicati di UnifiedScanResult
+        
+        # Kernel e distro
+        result.kernel_version = agent_data.get("kernel_version", "") or result.kernel_version
+        result.distro_name = agent_data.get("os_name", "") or agent_data.get("distro_name", "") or result.distro_name
+        result.distro_id = agent_data.get("os_id", "") or agent_data.get("distro_id", "") or result.distro_id
+        result.architecture = agent_data.get("architecture", "") or result.architecture
+        result.load_average = agent_data.get("load_average", "") or result.load_average
+        
+        # Package manager
+        result.package_manager = agent_data.get("package_manager", "") or result.package_manager
+        result.packages_installed = agent_data.get("packages_installed", 0) or agent_data.get("installed_software_count", 0) or result.packages_installed
+        
+        # System
+        result.init_system = agent_data.get("init_system", "") or result.init_system
+        result.selinux_status = agent_data.get("selinux_status", "") or result.selinux_status
+        result.apparmor_status = agent_data.get("apparmor_status", "") or result.apparmor_status
+        result.timezone = agent_data.get("timezone", "") or result.timezone
+        result.locale = agent_data.get("locale", "") or result.locale
+        result.boot_time = agent_data.get("boot_time", "") or result.boot_time
+        result.last_reboot = agent_data.get("last_reboot", "") or result.last_reboot
+        
+        # Docker/Container
+        result.docker_installed = agent_data.get("docker_installed", False) or result.docker_installed
+        result.docker_version = agent_data.get("docker_version", "") or result.docker_version
+        result.containers_running = agent_data.get("containers_running", 0) or result.containers_running
+        result.containers_total = agent_data.get("containers_total", 0) or result.containers_total
+        
+        # Network config
+        result.default_gateway = agent_data.get("default_gateway", "") or result.default_gateway
+        result.dns_servers = agent_data.get("dns_servers", []) or result.dns_servers
+        result.hostname_fqdn = agent_data.get("hostname_fqdn", "") or result.hostname_fqdn
+        
+        # Storage details
+        result.lvm_volumes = agent_data.get("lvm_volumes", []) or result.lvm_volumes
+        result.volume_groups = agent_data.get("volume_groups", []) or result.volume_groups
+        result.partitions = agent_data.get("partitions", []) or result.partitions
+        result.fstab_entries = agent_data.get("fstab_entries", []) or result.fstab_entries
+        result.swap_info = agent_data.get("swap", []) or result.swap_info
+        
+        # Firewall
+        result.firewall_type = agent_data.get("firewall_type", "") or result.firewall_type
+        result.firewall_enabled = agent_data.get("firewall_enabled", False) or result.firewall_enabled
+        result.firewall_rules = agent_data.get("firewall_rules", []) or result.firewall_rules
+        
+        # Cron jobs
+        result.cron_jobs = agent_data.get("cron_jobs", []) or result.cron_jobs
+        
+        # Running processes
+        result.running_processes = agent_data.get("running_processes", []) or result.running_processes
+        
+        # Listening ports
+        result.listening_ports = agent_data.get("listening_ports", []) or result.listening_ports
+        
+        # Databases
+        result.databases = agent_data.get("databases", []) or result.databases
+        
+        # Web servers
+        result.web_servers = agent_data.get("web_servers", []) or result.web_servers
+        
+        # Kernel modules
+        result.kernel_modules = agent_data.get("kernel_modules", []) or result.kernel_modules
+        
+        # NTP servers
+        result.ntp_servers = agent_data.get("ntp_servers", []) or result.ntp_servers
+        
+        # Installed services (all, not just running) - salva anche in custom_fields per retrocompatibilità
         if "installed_services" in agent_data:
             result.custom_fields = result.custom_fields or {}
             result.custom_fields["installed_services"] = agent_data.get("installed_services", [])
             result.custom_fields["installed_services_count"] = agent_data.get("installed_services_count", 0)
         
-        # Linux-specific: Installed software (dpkg/rpm)
+        # Installed software (dpkg/rpm) - usa il campo software già presente + custom_fields
         if "installed_software" in agent_data:
+            result.software = agent_data.get("installed_software", [])
+            result.software_count = len(result.software)
             result.custom_fields = result.custom_fields or {}
-            result.custom_fields["installed_software"] = agent_data.get("installed_software", [])
             result.custom_fields["installed_software_count"] = agent_data.get("installed_software_count", 0)
         
-        # Linux-specific: Cron jobs
-        if "cron_jobs" in agent_data:
+        # Salva anche in custom_fields per retrocompatibilità e dati aggiuntivi
+        if agent_data.get("disk_usage"):
             result.custom_fields = result.custom_fields or {}
-            result.custom_fields["cron_jobs"] = agent_data.get("cron_jobs", [])
-            result.custom_fields["cron_jobs_count"] = agent_data.get("cron_jobs_count", 0)
-        
-        # Linux-specific: Running processes
-        if "running_processes" in agent_data:
+            result.custom_fields["disk_usage"] = agent_data.get("disk_usage", {})
+        if agent_data.get("inode_usage"):
             result.custom_fields = result.custom_fields or {}
-            result.custom_fields["running_processes"] = agent_data.get("running_processes", [])
-        
-        # Linux-specific: Detailed storage (partitions, RAID, LVM, etc.)
-        if "partitions" in agent_data or "raid_arrays" in agent_data or "lvm_volumes" in agent_data:
+            result.custom_fields["inode_usage"] = agent_data.get("inode_usage", [])
+        if agent_data.get("network_connections"):
             result.custom_fields = result.custom_fields or {}
-            if "partitions" in agent_data:
-                result.custom_fields["partitions"] = agent_data.get("partitions", [])
-            if "raid_arrays" in agent_data:
-                result.custom_fields["raid_arrays"] = agent_data.get("raid_arrays", [])
-            if "lvm_volumes" in agent_data:
-                result.custom_fields["lvm_volumes"] = agent_data.get("lvm_volumes", [])
-            if "volume_groups" in agent_data:
-                result.custom_fields["volume_groups"] = agent_data.get("volume_groups", [])
-            if "fstab_entries" in agent_data:
-                result.custom_fields["fstab_entries"] = agent_data.get("fstab_entries", [])
-            if "disk_usage" in agent_data:
-                result.custom_fields["disk_usage"] = agent_data.get("disk_usage", {})
-            if "inode_usage" in agent_data:
-                result.custom_fields["inode_usage"] = agent_data.get("inode_usage", [])
-            if "swap" in agent_data:
-                result.custom_fields["swap"] = agent_data.get("swap", [])
-        
-        # Linux-specific: Network configuration
-        if "dns_servers" in agent_data or "default_gateway" in agent_data:
+            result.custom_fields["network_connections"] = agent_data.get("network_connections", [])
+        if agent_data.get("firewall_services"):
             result.custom_fields = result.custom_fields or {}
-            if "dns_servers" in agent_data:
-                result.custom_fields["dns_servers"] = agent_data.get("dns_servers", [])
-            if "default_gateway" in agent_data:
-                result.custom_fields["default_gateway"] = agent_data.get("default_gateway")
-            if "hostname_fqdn" in agent_data:
-                result.custom_fields["hostname_fqdn"] = agent_data.get("hostname_fqdn")
-            if "network_connections" in agent_data:
-                result.custom_fields["network_connections"] = agent_data.get("network_connections", [])
-        
-        # Linux-specific: System details
-        if "timezone" in agent_data or "locale" in agent_data:
-            result.custom_fields = result.custom_fields or {}
-            if "timezone" in agent_data:
-                result.custom_fields["timezone"] = agent_data.get("timezone")
-            if "locale" in agent_data:
-                result.custom_fields["locale"] = agent_data.get("locale")
-            if "ntp_servers" in agent_data:
-                result.custom_fields["ntp_servers"] = agent_data.get("ntp_servers", [])
-            if "selinux_status" in agent_data:
-                result.custom_fields["selinux_status"] = agent_data.get("selinux_status")
-            if "apparmor_status" in agent_data:
-                result.custom_fields["apparmor_status"] = agent_data.get("apparmor_status")
-            if "boot_time" in agent_data:
-                result.custom_fields["boot_time"] = agent_data.get("boot_time")
-            if "last_reboot" in agent_data:
-                result.custom_fields["last_reboot"] = agent_data.get("last_reboot")
-            if "kernel_modules" in agent_data:
-                result.custom_fields["kernel_modules"] = agent_data.get("kernel_modules", [])
-        
-        # Linux-specific: Firewall info
-        if "firewall_type" in agent_data or "firewall_enabled" in agent_data:
-            result.custom_fields = result.custom_fields or {}
-            if "firewall_type" in agent_data:
-                result.custom_fields["firewall_type"] = agent_data.get("firewall_type")
-            if "firewall_enabled" in agent_data:
-                result.custom_fields["firewall_enabled"] = agent_data.get("firewall_enabled")
-            if "firewall_rules" in agent_data:
-                result.custom_fields["firewall_rules"] = agent_data.get("firewall_rules", [])
-            if "firewall_rules_count" in agent_data:
-                result.custom_fields["firewall_rules_count"] = agent_data.get("firewall_rules_count", 0)
-            if "firewall_services" in agent_data:
-                result.custom_fields["firewall_services"] = agent_data.get("firewall_services")
-        
-        # Linux-specific: Databases
-        if "databases" in agent_data:
-            result.custom_fields = result.custom_fields or {}
-            result.custom_fields["databases"] = agent_data.get("databases", [])
-        
-        # Linux-specific: Web servers
-        if "web_servers" in agent_data:
-            result.custom_fields = result.custom_fields or {}
-            result.custom_fields["web_servers"] = agent_data.get("web_servers", [])
+            result.custom_fields["firewall_services"] = agent_data.get("firewall_services")
         
         # Shares (se presente)
         if "shares" in agent_data:

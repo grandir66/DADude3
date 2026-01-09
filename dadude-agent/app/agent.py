@@ -198,6 +198,9 @@ class DaDudeAgent:
             # Marca connessione verificata per health check
             self._connection_verified = True
             
+            # Download automatico configurazione porte
+            asyncio.create_task(self._sync_scan_ports_config())
+            
             # Flush coda pendente
             pending = await self._local_queue.get_pending_count()
             if pending > 0:
@@ -216,6 +219,81 @@ class DaDudeAgent:
                             logger.info(f"Cleaned up {len(cleanup_stats['deleted_backups'])} old backups, keeping only the last working version")
                     except Exception as e:
                         logger.warning(f"Error cleaning up old backups: {e}")
+    
+    async def _sync_scan_ports_config(self):
+        """
+        Scarica automaticamente la configurazione porte dal server.
+        Viene chiamata quando l'agent si connette per mantenere sincronizzazione.
+        """
+        import httpx
+        import json
+        from pathlib import Path
+        
+        try:
+            # Costruisci URL API (usa porta admin 8001)
+            base_url = self.server_url.rstrip('/')
+            if base_url.startswith('https://'):
+                api_url = base_url.replace(':8000', ':8001') + '/api/v1/settings/scan-ports'
+            elif base_url.startswith('http://'):
+                api_url = base_url.replace(':8000', ':8001') + '/api/v1/settings/scan-ports'
+            else:
+                # Fallback: aggiungi porta
+                api_url = f"{base_url}:8001/api/v1/settings/scan-ports"
+            
+            # SSL context per certificati self-signed
+            ssl_context = None
+            if api_url.startswith('https'):
+                import ssl
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
+            logger.info(f"Downloading scan ports configuration from {api_url}")
+            
+            async with httpx.AsyncClient(verify=False if ssl_context else True, timeout=10.0) as client:
+                response = await client.get(api_url)
+                response.raise_for_status()
+                result = response.json()
+                
+                if result.get("success"):
+                    tcp_ports = result.get("tcp_ports", {})
+                    udp_ports = result.get("udp_ports", {})
+                    
+                    # Salva configurazione locale
+                    config_dir = Path(__file__).parent.parent.parent / "config"
+                    config_dir.mkdir(parents=True, exist_ok=True)
+                    config_file = config_dir / "scan_ports.json"
+                    
+                    config_data = {
+                        "tcp_ports": tcp_ports,
+                        "udp_ports": udp_ports
+                    }
+                    
+                    with open(config_file, 'w', encoding='utf-8') as f:
+                        json.dump(config_data, f, indent=2, ensure_ascii=False)
+                    
+                    # Invalida cache nel port_scanner
+                    try:
+                        # Import assoluto per evitare problemi con import relativi
+                        import sys
+                        import os
+                        agent_path = Path(__file__).parent.parent.parent
+                        if str(agent_path) not in sys.path:
+                            sys.path.insert(0, str(agent_path))
+                        from app.scanners.port_scanner import invalidate_port_config_cache
+                        invalidate_port_config_cache()
+                        logger.debug("Port scanner cache invalidated")
+                    except Exception as e:
+                        logger.debug(f"Could not invalidate port scanner cache: {e}")
+                    
+                    logger.info(f"Scan ports configuration synced: {len(tcp_ports)} TCP, {len(udp_ports)} UDP ports")
+                else:
+                    logger.warning(f"Failed to sync scan ports config: {result.get('message', 'Unknown error')}")
+                    
+        except httpx.HTTPError as e:
+            logger.warning(f"HTTP error syncing scan ports config: {e}")
+        except Exception as e:
+            logger.warning(f"Error syncing scan ports config: {e}")
     
     async def _cleanup_disk_space(self):
         """Esegue pulizia spazio disco all'avvio."""

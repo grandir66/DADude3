@@ -593,19 +593,21 @@ class DeviceProbeService:
             port = int(credentials.get("snmp_port", 161))
             version = credentials.get("snmp_version", "2c")
             
-            # Lista di communities da provare (prima quella del cliente, poi 'public' come fallback)
+            # Lista di communities da provare
+            # Se ci sono credenziali registrate, usa SOLO quelle
+            # Se NON ci sono credenziali registrate, usa "public" come fallback
             communities_to_try = []
             
-            # Prima aggiungi la community del cliente se presente
+            # Aggiungi la community del cliente se presente
             client_community = credentials.get("snmp_community")
             if client_community and client_community.strip():
                 communities_to_try.append(client_community.strip())
-                logger.debug(f"SNMP probe: Will try client community '{client_community}' first for {address}")
+                logger.debug(f"SNMP probe: Will try registered community '{client_community}' for {address}")
             
-            # Aggiungi 'public' come fallback solo se non è già nella lista
-            if "public" not in communities_to_try:
+            # Fallback a "public" SOLO se non ci sono credenziali registrate
+            if not communities_to_try:
                 communities_to_try.append("public")
-                logger.debug(f"SNMP probe: Will use 'public' as fallback for {address}")
+                logger.debug(f"SNMP probe: No registered credentials for {address}, using 'public' as fallback")
             
             # Prova ogni community fino a che una funziona
             for community in communities_to_try:
@@ -1355,11 +1357,15 @@ class DeviceProbeService:
         """
         Rileva quali protocolli sono disponibili su un host.
         Per SNMP usa probe UDP reale invece di TCP.
+        Se ci sono community registrate, usa SOLO quelle.
+        Se NON ci sono, usa "public" come fallback.
         """
         protocols = []
         
-        if snmp_communities is None:
-            snmp_communities = ["public", "private"]
+        # Se non ci sono community registrate, usa "public" come fallback
+        if not snmp_communities:
+            snmp_communities = ["public"]
+            logger.debug(f"detect_available_protocols: No registered SNMP credentials for {address}, using 'public' as fallback")
 
         # Test porte TCP comuni
         tcp_port_checks = [
@@ -1743,11 +1749,16 @@ class DeviceProbeService:
             if isinstance(result, dict) and result.get("open"):
                 services.append(result)
         
-        # Probe SNMP UDP (critico per network devices) - timeout breve per scansione veloce
-        if snmp_communities is None:
-            snmp_communities = ["public"]
-        # Limita a max 2 community per velocità
-        communities_to_try = snmp_communities[:2]
+        # Probe SNMP UDP (critico per network devices)
+        # Se ci sono community registrate, usa SOLO quelle
+        # Se NON ci sono, usa "public" come fallback
+        if not snmp_communities:
+            communities_to_try = ["public"]
+            logger.debug(f"Quick scan SNMP: No registered communities for {address}, using 'public' as fallback")
+        else:
+            # Limita a max 2 community per velocità
+            communities_to_try = snmp_communities[:2]
+        
         for community in communities_to_try:
             try:
                 # Timeout breve per SNMP probe (1.5 secondi)
@@ -1786,113 +1797,12 @@ class DeviceProbeService:
         # Se abbiamo un agente e use_agent è True, usa MikroTik
         if agent and use_agent:
             return await self._scan_services_via_mikrotik(address, agent, snmp_communities=snmp_communities)
-        # Porte TCP da scansionare (priorità per identificazione OS/ruolo)
-        tcp_ports = {
-            # Remote Access (identificazione OS)
-            22: "ssh",          # *nix/BSD, appliance, Windows hardenato
-            23: "telnet",       # Legacy, appliance di rete, vecchi Unix/embedded
-            3389: "rdp",        # Windows Desktop/Server (forte indicatore)
-            5900: "vnc",        # Linux desktop/appliance
-            5901: "vnc",
-            5902: "vnc",
-            5903: "vnc",
-            5904: "vnc",
-            5905: "vnc",
-
-            # Windows (forti indicatori)
-            135: "wmi",         # MS RPC Endpoint Mapper (Windows)
-            139: "netbios",    # NetBIOS (Windows legacy)
-            445: "smb",        # SMB (Windows - molto tipico)
-            5985: "winrm-http",   # WinRM (Windows server moderno)
-            5986: "winrm-https",
-
-            # Directory Services
-            389: "ldap",       # LDAP (AD domain controller o directory *nix)
-            636: "ldaps",      # LDAPS
-
-            # Web Services (banner e stack TLS aiutano identificazione)
-            80: "http",
-            443: "https",
-            8000: "http-alt",  # Appliance, Java app server, reverse proxy
-            8080: "http-proxy",
-            8443: "https-alt",
-
-            # Mail (tipico mail server *nix)
-            25: "smtp",
-            110: "pop3",
-            143: "imap",
-            465: "smtps",
-            587: "smtp-submission",
-            993: "imaps",
-            995: "pop3s",
-
-            # Databases (quasi sempre *nix)
-            3306: "mysql",
-            5432: "postgresql",
-            1433: "mssql",     # SQL Server (Windows)
-            1521: "oracle",
-            27017: "mongodb",
-            6379: "redis",
-
-            # File Services
-            21: "ftp",
-            20: "ftp-data",
-            69: "tftp",
-            111: "rpcbind",    # RPCbind/portmapper (marcato Unix/Linux)
-            2049: "nfs",       # NFS (forte indicatore Unix/Linux)
-
-            # Network Management
-            161: "snmp",       # SNMP (device di rete, appliance, host server con agent)
-            162: "snmp-trap",
-            8728: "mikrotik-api",
-            8291: "mikrotik-winbox",
-
-            # Virtualization / Hypervisors
-            8006: "proxmox-ve",     # Proxmox VE Web UI
-            8007: "proxmox-backup", # Proxmox Backup Server
-            902: "vmware-soap",     # VMware ESXi SOAP API
-            903: "vmware-vnc",      # VMware VNC
-            2179: "hyper-v",        # Hyper-V
-            2375: "docker",         # Docker daemon (non sicuro)
-            2376: "docker-tls",     # Docker daemon TLS
-            6443: "kubernetes-api", # Kubernetes API
-            10250: "kubelet",        # Kubelet API
-
-            # DNS
-            53: "dns",         # DNS (server DNS dedicati, AD, appliance)
-
-            # Remote Desktop / Citrix
-            1494: "citrix-ica",     # Citrix ICA
-            2598: "citrix-ica-alt", # Citrix ICA alternate
-            3390: "rdp-alt",        # RDP alternate
-            2222: "ssh-alt",        # SSH alternate
-
-            # Web Services (altri)
-            8888: "http-alt",       # HTTP alternate (common)
-            9000: "sonarqube",     # SonarQube / other web apps
-            9090: "prometheus",     # Prometheus / other web apps
-
-            # Other Services
-            123: "ntp",
-            514: "syslog",
-            1900: "ssdp",
-        }
-
-        # Porte UDP da scansionare (infra e appliance)
-        udp_ports = {
-            53: "dns",         # DNS (pattern di risposta e EDNS aiutano identificazione)
-            67: "dhcp-server", # DHCP (tipico server infra, router, appliance)
-            68: "dhcp-client",
-            69: "tftp",
-            123: "ntp",        # NTP (versione e implementation spesso OS-specifica)
-            137: "netbios-ns", # NetBIOS (Windows legacy, vecchi domain/lan)
-            138: "netbios-dgm",
-            161: "snmp",       # SNMP (device di rete, appliance, host server con agent)
-            162: "snmp-trap",
-            500: "ipsec-ike",  # IKE/IPsec (firewall/VPN appliance, server)
-            1900: "ssdp",      # SSDP/UPnP (device consumer, appliance, NAS)
-            5353: "mdns",
-        }
+        
+        # Carica porte TCP/UDP dalla configurazione
+        from .scan_ports_config import get_scan_ports_config
+        config = get_scan_ports_config()
+        tcp_ports = config.get_tcp_ports()
+        udp_ports = config.get_udp_ports()
 
         logger.info(f"Starting service scan on {address} ({len(tcp_ports)} TCP + {len(udp_ports)} UDP ports)")
 
@@ -1961,9 +1871,15 @@ class DeviceProbeService:
     async def _scan_udp_port(self, address: str, port: int, service_name: str, snmp_communities: List[str] = None) -> Dict[str, Any]:
         """Scansiona una singola porta UDP"""
         
-        # Per SNMP (porta 161), usa il probe SNMP reale con diverse community
+        # Per SNMP (porta 161), usa il probe SNMP reale
         if port == 161:
-            communities_to_try = snmp_communities or ["public", "private"]
+            # Se ci sono community registrate, usa SOLO quelle
+            # Se NON ci sono, usa "public" come fallback
+            if not snmp_communities:
+                communities_to_try = ["public"]
+                logger.debug(f"SNMP scan: No registered communities for {address}:161, using 'public' as fallback")
+            else:
+                communities_to_try = snmp_communities
             for community in communities_to_try:
                 is_open = await self.probe_snmp_udp(address, community=community, port=port, timeout=2.0)
                 if is_open:
@@ -2130,16 +2046,23 @@ class DeviceProbeService:
                     result["identified_by"] = "mac_vendor"
         
         # Estrai community SNMP dalle credenziali per il probe
-        snmp_communities = ["public", "private"]  # Default
+        # Se ci sono credenziali registrate, usa SOLO quelle
+        # Se NON ci sono, usa "public" come fallback
+        snmp_communities = []
         if credentials_list:
             for cred in credentials_list:
                 # Supporta sia "type" che "credential_type" per compatibilità
                 cred_type = cred.get("type") or cred.get("credential_type")
                 snmp_comm = cred.get("snmp_community")
-                # Aggiungi community se è di tipo SNMP o se ha una community non-default
-                if snmp_comm and snmp_comm not in snmp_communities:
-                    snmp_communities.insert(0, snmp_comm)  # Priorità alle credenziali fornite
-                    logger.debug(f"Added SNMP community '{snmp_comm}' from credential")
+                # Aggiungi community se è di tipo SNMP e non vuota
+                if snmp_comm and snmp_comm.strip() and snmp_comm not in snmp_communities:
+                    snmp_communities.append(snmp_comm.strip())
+                    logger.debug(f"Added SNMP community '{snmp_comm}' from registered credential")
+        
+        # Fallback a "public" SOLO se non ci sono credenziali registrate
+        if not snmp_communities:
+            snmp_communities = ["public"]
+            logger.debug(f"No registered SNMP credentials for {address}, using 'public' as fallback")
         
         # 2. Rileva protocolli (passa le community SNMP per il probe UDP)
         try:

@@ -847,30 +847,64 @@ async def _save_unified_scan_to_inventory(
                     elif "centos" in os_family or "rhel" in os_family:
                         distro = "RHEL/CentOS"
                     
+                    # Prepara tutti i campi Linux da salvare
+                    linux_data = {
+                        "kernel_version": kernel_version or scan_result.kernel_version,
+                        "kernel_arch": scan_result.architecture,
+                        "distro_name": distro or scan_result.distro_name,
+                        "distro_version": scan_result.os_version,
+                        "distro_codename": scan_result.distro_codename if hasattr(scan_result, 'distro_codename') else None,
+                        "package_manager": scan_result.package_manager,
+                        "packages_installed": scan_result.packages_installed,
+                        "init_system": scan_result.init_system,
+                        "selinux_status": scan_result.selinux_status,
+                        "virtualization": scan_result.vm_type if scan_result.is_virtual_machine else "bare-metal",
+                        "load_average": scan_result.load_average,
+                        "timezone": scan_result.timezone,
+                        "boot_time": None,  # Will parse if available
+                        "default_gateway": scan_result.default_gateway,
+                        "dns_servers": scan_result.dns_servers if scan_result.dns_servers else None,
+                        "docker_installed": scan_result.docker_installed,
+                        "docker_version": scan_result.docker_version,
+                        "containers_running": scan_result.containers_running,
+                        "containers_total": scan_result.containers_total,
+                        "storage_data": volumes if volumes else None,
+                        "services_data": scan_result.services if scan_result.services else None,
+                    }
+                    
+                    # Dati NAS
+                    if manufacturer in ["synology", "qnap", "asustor"]:
+                        linux_data["nas_model"] = scan_result.model
+                        linux_data["nas_serial"] = scan_result.serial_number
+                        linux_data["firmware_version"] = scan_result.os_version
+                    
+                    # Parse boot_time if string
+                    if scan_result.boot_time:
+                        try:
+                            from dateutil import parser as date_parser
+                            linux_data["boot_time"] = date_parser.parse(scan_result.boot_time)
+                        except:
+                            pass
+                    
                     if existing_linux:
-                        existing_linux.kernel_version = kernel_version or existing_linux.kernel_version
-                        existing_linux.distro_name = distro or existing_linux.distro_name
-                        existing_linux.distro_version = scan_result.os_version or existing_linux.distro_version
-                        if volumes:
-                            existing_linux.storage_data = volumes
-                        # Salva info NAS se Synology/QNAP
-                        if manufacturer in ["synology", "qnap", "asustor"]:
-                            existing_linux.nas_model = scan_result.model or existing_linux.nas_model
-                            existing_linux.nas_serial = scan_result.serial_number or existing_linux.nas_serial
-                            existing_linux.firmware_version = scan_result.os_version or existing_linux.firmware_version
+                        # Aggiorna campi esistenti
+                        updated_fields = []
+                        for field, value in linux_data.items():
+                            if value is not None and value != "" and value != []:
+                                current_value = getattr(existing_linux, field, None)
+                                if current_value != value:
+                                    setattr(existing_linux, field, value)
+                                    updated_fields.append(field)
+                        if updated_fields:
+                            logger.info(f"[SAVE_UNIFIED] Updated LinuxDetails fields: {updated_fields}")
                         summary["linux_details_updated"] = True
                         logger.info(f"[SAVE_UNIFIED] Updated LinuxDetails for device {device_id}")
                     else:
+                        # Crea nuovo record
                         new_linux = LinuxDetails(
                             id=uuid.uuid4().hex[:8],
                             device_id=device_id,
-                            kernel_version=kernel_version,
-                            distro_name=distro,
-                            distro_version=scan_result.os_version,
-                            storage_data=volumes if volumes else None,
-                            nas_model=scan_result.model if manufacturer in ["synology", "qnap", "asustor"] else None,
-                            nas_serial=scan_result.serial_number if manufacturer in ["synology", "qnap", "asustor"] else None,
-                            firmware_version=scan_result.os_version if manufacturer in ["synology", "qnap", "asustor"] else None,
+                            **{k: v for k, v in linux_data.items() if v is not None}
                         )
                         session.add(new_linux)
                         summary["linux_details_created"] = True
@@ -1675,14 +1709,14 @@ async def _get_all_credentials_for_scan(
                         "credential_name": cred_safe.name,
                     })
         
-        # 4. Aggiungi fallback SNMP public se non ci sono credenziali SNMP
+        # 4. Fallback SNMP public SOLO se non ci sono credenziali registrate
         if not credentials_by_type["snmp"] and "snmp" in cred_types_to_fetch:
-            logger.info(f"[CREDENTIALS] No SNMP credentials found, adding public fallback")
+            logger.info(f"[CREDENTIALS] No SNMP credentials registered for customer {customer_id}, using 'public' as fallback")
             credentials_by_type["snmp"].append({
                 "community": "public",
                 "version": "2c",
                 "port": 161,
-                "credential_name": "public (default)",
+                "credential_name": "public (fallback)",
             })
         
         # Log dettagliato delle credenziali SNMP trovate
