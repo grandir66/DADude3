@@ -4969,20 +4969,7 @@ async function viewInventoryDevice(deviceId) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${storageInfo.raid_arrays.map(r => {
-                                    const statusBadge = (r.status || '').toLowerCase().includes('active') || (r.status || '').toLowerCase().includes('clean') ? 'success' : 
-                                                       (r.status || '').toLowerCase().includes('degraded') ? 'danger' : 'warning';
-                                    const devices = r.devices && Array.isArray(r.devices) ? r.devices.join(', ') : (r.devices || '-');
-                                    return \`
-                                    <tr>
-                                        <td>\${r.name || '-'}</td>
-                                        <td><span class="badge bg-info">\${r.level || '-'}</span></td>
-                                        <td><span class="badge bg-\${statusBadge}">\${r.status || '-'}</span></td>
-                                        <td style="font-size: 0.85em;">\${devices}</td>
-                                        <td>\${r.size_gb ? r.size_gb.toFixed(0) + ' GB' : '-'}</td>
-                                    </tr>
-                                    \`;
-                                }).join('')}
+                                ${storageInfo.raid_arrays.map(r => '<tr><td>' + (r.name || '-') + '</td><td><span class="badge bg-info">' + (r.level || '-') + '</span></td><td><span class="badge bg-' + (((r.status || '').toLowerCase().includes('active') || (r.status || '').toLowerCase().includes('clean')) ? 'success' : ((r.status || '').toLowerCase().includes('degraded') ? 'danger' : 'warning')) + '">' + (r.status || '-') + '</span></td><td style="font-size: 0.85em;">' + (r.devices && Array.isArray(r.devices) ? r.devices.join(', ') : (r.devices || '-')) + '</td><td>' + (r.size_gb ? r.size_gb.toFixed(0) + ' GB' : '-') + '</td></tr>').join('')}
                             </tbody>
                         </table>
                     </div>
