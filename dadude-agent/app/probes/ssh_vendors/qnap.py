@@ -215,6 +215,26 @@ class QNAPProbe(SSHVendorProbe):
         """Ottiene info hardware (CPU, RAM, uptime)"""
         info = {}
         
+        # RAM info - metodo Linux standard (più affidabile)
+        meminfo = self.exec_cmd("cat /proc/meminfo 2>/dev/null", timeout=3)
+        if meminfo:
+            for line in meminfo.split('\n'):
+                try:
+                    if 'MemTotal:' in line:
+                        # MemTotal in kB
+                        mem_kb = int(line.split()[1])
+                        info["ram_total_mb"] = mem_kb // 1024
+                        info["ram_total_gb"] = round(mem_kb / (1024 * 1024), 2)
+                        self._log_debug(f"RAM Total from /proc/meminfo: {info['ram_total_mb']} MB")
+                    elif 'MemFree:' in line:
+                        info["ram_free_mb"] = int(line.split()[1]) // 1024
+                    elif 'MemAvailable:' in line:
+                        info["ram_available_mb"] = int(line.split()[1]) // 1024
+                    elif 'SwapTotal:' in line:
+                        info["swap_total_mb"] = int(line.split()[1]) // 1024
+                except (ValueError, IndexError):
+                    pass
+        
         # CPU info
         cpuinfo = self.exec_cmd("cat /proc/cpuinfo 2>/dev/null", timeout=3)
         if cpuinfo:

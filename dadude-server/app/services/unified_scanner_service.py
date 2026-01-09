@@ -626,7 +626,14 @@ class UnifiedScannerService:
             if mem.get("total_bytes"):
                 result.ram_usage_percent = (mem.get("used_bytes", 0) / mem["total_bytes"]) * 100
         
-        # Fallback: ram_total_mb/ram_free_mb (usato da Synology/QNAP)
+        # Fallback 1: ram_total_gb diretto (usato da QNAP probe aggiornato)
+        if result.ram_total_gb == 0:
+            ram_gb = agent_data.get("ram_total_gb", 0)
+            if ram_gb > 0:
+                result.ram_total_gb = ram_gb
+                logger.debug(f"[MERGE_AGENT] RAM from ram_total_gb: {ram_gb}GB")
+        
+        # Fallback 2: ram_total_mb/ram_free_mb (usato da Synology/QNAP)
         if result.ram_total_gb == 0:
             ram_mb = agent_data.get("ram_total_mb", 0)
             if ram_mb > 0:

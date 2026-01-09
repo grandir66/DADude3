@@ -183,20 +183,22 @@ class SynologyProbe(SSHVendorProbe):
         if cpu_cores and cpu_cores.isdigit():
             info["cpu_cores"] = int(cpu_cores)
         
-        # RAM
-        mem = self.exec_cmd("cat /proc/meminfo 2>/dev/null | grep MemTotal", timeout=3)
-        if mem:
-            try:
-                info["ram_total_mb"] = int(mem.split()[1]) // 1024
-            except:
-                pass
-        
-        mem_free = self.exec_cmd("cat /proc/meminfo 2>/dev/null | grep MemAvailable", timeout=3)
-        if mem_free:
-            try:
-                info["ram_free_mb"] = int(mem_free.split()[1]) // 1024
-            except:
-                pass
+        # RAM - leggi da /proc/meminfo
+        meminfo = self.exec_cmd("cat /proc/meminfo 2>/dev/null", timeout=3)
+        if meminfo:
+            for line in meminfo.split('\n'):
+                try:
+                    if 'MemTotal:' in line:
+                        mem_kb = int(line.split()[1])
+                        info["ram_total_mb"] = mem_kb // 1024
+                        info["ram_total_gb"] = round(mem_kb / (1024 * 1024), 2)
+                        self._log_debug(f"RAM Total: {info['ram_total_mb']} MB ({info['ram_total_gb']} GB)")
+                    elif 'MemFree:' in line:
+                        info["ram_free_mb"] = int(line.split()[1]) // 1024
+                    elif 'MemAvailable:' in line:
+                        info["ram_available_mb"] = int(line.split()[1]) // 1024
+                except (ValueError, IndexError):
+                    pass
         
         # Uptime
         uptime = self.exec_cmd("uptime -p 2>/dev/null || uptime", timeout=3)
