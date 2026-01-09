@@ -192,8 +192,8 @@ class DeviceProbeService:
             return ProbeResult(
                 success=True,
                 protocol="mikrotik_api",
-                device_type="mikrotik",
-                category="router",
+                device_type="router",  # Sottocategoria: router (non mikrotik)
+                category="network",    # Categoria: network (non router)
                 os_family="RouterOS",
                 os_version=info.get("version"),
                 hostname=info.get("identity"),
@@ -323,19 +323,39 @@ class DeviceProbeService:
                 
                 # 2. Check for Ubiquiti UniFi/EdgeOS
                 if not device_detected:
-                    stdin, stdout, stderr = client.exec_command("cat /etc/board.info 2>/dev/null || mca-cli-op info 2>/dev/null", timeout=5)
+                    # Try multiple commands to identify Ubiquiti
+                    stdin, stdout, stderr = client.exec_command("cat /etc/board.info 2>/dev/null; mca-cli-op info 2>/dev/null; info 2>/dev/null", timeout=10)
                     ubnt_out = stdout.read().decode()
-                    if ubnt_out and ('ubnt' in ubnt_out.lower() or 'ubiquiti' in ubnt_out.lower() or 'board.' in ubnt_out.lower()):
-                        info["os_family"] = "UniFi"
+                    
+                    if ubnt_out and ('ubnt' in ubnt_out.lower() or 'ubiquiti' in ubnt_out.lower() or 'board.' in ubnt_out.lower() or 'model:' in ubnt_out.lower()):
+                        info["os_family"] = "UniFi OS"
                         info["device_type"] = "network"
                         info["category"] = "ap" if 'uap' in uname_all or 'u6' in uname_all or 'u7' in uname_all else "switch"
                         info["manufacturer"] = "Ubiquiti"
                         device_detected = True
+                        
+                        # Parse board.info or info output
                         for line in ubnt_out.split('\n'):
-                            if 'board.name' in line.lower() or 'model' in line.lower():
-                                info["model"] = line.split('=')[-1].strip() if '=' in line else line.split(':')[-1].strip()
-                            elif 'board.sysid' in line.lower() or 'serialno' in line.lower():
-                                info["serial_number"] = line.split('=')[-1].strip() if '=' in line else line.split(':')[-1].strip()
+                            ll = line.lower().strip()
+                            if 'board.name' in ll or ll.startswith('model:'):
+                                val = line.split('=')[-1] if '=' in line else line.split(':')[-1]
+                                info["model"] = val.strip()
+                            elif 'board.sysid' in ll or ll.startswith('mac address:'):
+                                # Serial usually not in info command, but board.info has it
+                                pass
+                        
+                        # Get UniFi firmware version
+                        # Try /etc/version first, then parsing 'info' output
+                        if 'version:' in ubnt_out.lower():
+                            for line in ubnt_out.split('\n'):
+                                if line.lower().startswith('version:'):
+                                    info["os_version"] = line.split(':', 1)[1].strip()
+                                    break
+                        else:
+                            stdin, stdout, stderr = client.exec_command("cat /etc/version 2>/dev/null", timeout=5)
+                            fw_ver = stdout.read().decode().strip()
+                            if fw_ver:
+                                info["os_version"] = fw_ver
                 
                 # 3. Check for Synology DSM
                 if not device_detected:
@@ -383,7 +403,23 @@ class DeviceProbeService:
                     if ver_out:
                         info["os_version"] = ver_out
                 
-                # 6. Standard Linux detection
+                # 6. Check for Proxmox VE (BEFORE Debian check - Proxmox is based on Debian)
+                if not device_detected:
+                    # Check for /etc/pve directory (most reliable Proxmox indicator)
+                    stdin, stdout, stderr = client.exec_command("test -d /etc/pve && echo 'proxmox' || echo ''", timeout=3)
+                    pve_dir_check = stdout.read().decode().strip()
+                    if pve_dir_check == 'proxmox' or "Proxmox" in os_info:
+                        info["os_family"] = "Proxmox VE"
+                        info["device_type"] = "hypervisor"
+                        info["category"] = "server"
+                        device_detected = True
+                        # Get Proxmox version
+                        stdin, stdout, stderr = client.exec_command("pveversion 2>/dev/null", timeout=5)
+                        pve_out = stdout.read().decode().strip()
+                        if pve_out:
+                            info["os_version"] = pve_out
+                
+                # 7. Standard Linux detection
                 if not device_detected:
                     if "Ubuntu" in os_info:
                         info["os_family"] = "Ubuntu"
@@ -397,15 +433,6 @@ class DeviceProbeService:
                     elif "Alpine" in os_info:
                         info["os_family"] = "Alpine"
                         info["device_type"] = "linux"
-                    elif "Proxmox" in os_info:
-                        info["os_family"] = "Proxmox"
-                        info["device_type"] = "linux"
-                        info["category"] = "hypervisor"
-                        # Get Proxmox version
-                        stdin, stdout, stderr = client.exec_command("pveversion 2>/dev/null", timeout=5)
-                        pve_out = stdout.read().decode().strip()
-                        if pve_out:
-                            info["os_version"] = pve_out
                     elif "SUSE" in os_info or "openSUSE" in os_info:
                         info["os_family"] = "SUSE"
                         info["device_type"] = "linux"
@@ -771,7 +798,7 @@ class DeviceProbeService:
                                                    "nanobeam", "powerbeam", "airmax"]):
                 vendor = "Ubiquiti"
                 device_type = "network"
-                os_family = "UniFi"
+                os_family = "UniFi OS"
                 # Estrai modello dal sysDescr (es: "Linux U6-LR 5.60.23" -> "U6-LR")
                 model = None
                 if sys_descr_orig:
@@ -799,8 +826,8 @@ class DeviceProbeService:
                 logger.info(f"SNMP: Identified Ubiquiti device - model={model}, category={category}")
             elif sys_object_id.startswith("1.3.6.1.4.1.14988"):  # MikroTik
                 vendor = "MikroTik"
-                device_type = "mikrotik"
-                category = "router"
+                device_type = "router"
+                category = "network"
                 os_family = "RouterOS"
             elif sys_object_id.startswith("1.3.6.1.4.1.9"):  # Cisco
                 vendor = "Cisco"
@@ -2357,15 +2384,16 @@ class DeviceProbeService:
         
         if (ports & linux_ports or services & linux_services) and not (ports & windows_ports):
             # Determina ruolo
+            # Linux è sempre server di default, non network
+            # SNMP su Linux non significa che sia un network device
             if 3306 in ports or 5432 in ports or "mysql" in services or "postgresql" in services:
                 category = "server"  # Database server
             elif 25 in ports or 110 in ports or 143 in ports or "smtp" in services:
                 category = "server"  # Mail server
             elif 80 in ports or 443 in ports or "http" in services:
                 category = "server"  # Web server
-            elif 22 in ports and 161 in ports:
-                category = "network"  # Network device gestibile
             else:
+                # Default: Linux è sempre server, anche se ha solo SSH o SSH+SNMP
                 category = "server"
             
             return {
@@ -2382,14 +2410,14 @@ class DeviceProbeService:
             if 8728 in ports or "mikrotik-api" in services:
                 return {
                     "os_family": "RouterOS",
-                    "device_type": "mikrotik",
-                    "category": "router"
+                    "device_type": "router",  # Specifico (Sottocategoria)
+                    "category": "network"     # Generico (Categoria)
                 }
             else:
                 return {
                     "os_family": "Unknown",
-                    "device_type": "network",
-                    "category": "switch"
+                    "device_type": "switch",  # Specifico (Sottocategoria)
+                    "category": "network"     # Generico (Categoria)
                 }
         
         # Appliance indicators

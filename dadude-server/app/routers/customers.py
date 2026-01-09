@@ -2894,26 +2894,39 @@ async def identify_discovered_devices(
                     elif any(x in os_family_lower for x in ["qts", "qnap", "synology"]):
                         device.device_type = "nas"
                 
-                # Category - determina da device_type o os_family se non specificato
-                if probe_result.category:
-                    device.category = probe_result.category
-                elif device.device_type:
-                    # Mappa device_type a category
-                    if device.device_type == "windows":
-                        device.category = "workstation" if not device.category else device.category
-                    elif device.device_type == "linux":
-                        device.category = "server" if not device.category else device.category
-                    elif device.device_type == "mikrotik":
-                        device.category = "router" if not device.category else device.category
-                    elif device.device_type == "network":
-                        device.category = "switch" if not device.category else device.category
-                    elif device.device_type == "hypervisor":
-                        device.category = "hypervisor" if not device.category else device.category
-                    elif device.device_type == "nas":
-                        device.category = "storage" if not device.category else device.category
+                # Determina category e subcategory usando il servizio centralizzato
+                from ..services.category_service import determine_category_and_subcategory
                 
-                # OS e version
-                if probe_result.os_family and not device.os_family:
+                category, subcategory = determine_category_and_subcategory(
+                    device_type=device.device_type,
+                    os_name=probe_result.os_family if probe_result else None,
+                    os_family=device.os_family or (probe_result.os_family if probe_result else None),
+                    manufacturer=device.vendor or (extra_info.get("manufacturer") if extra_info else None),
+                    model=device.model or (extra_info.get("model") if extra_info else None),
+                    open_ports=open_ports,
+                    probe_result_category=probe_result.category if probe_result else None,
+                )
+                
+                if category:
+                    device.category = category
+                if subcategory:
+                    device.subcategory = subcategory
+                
+                # OS e version - Normalizza prima di salvare
+                from ..services.os_normalizer import normalize_os
+                
+                normalized_os = normalize_os(
+                    os_name=probe_result.os_family if probe_result else None,
+                    os_version=probe_result.os_version if probe_result else None,
+                    os_family=device.os_family or (probe_result.os_family if probe_result else None),
+                    manufacturer=device.vendor or (probe_result.vendor if probe_result else None),
+                    model=device.model or (probe_result.model if probe_result else None)
+                )
+                
+                if normalized_os and not device.os_family:
+                    logger.info(f"[DISCOVERY] Normalized OS: '{probe_result.os_family if probe_result else None}' -> '{normalized_os}'")
+                    device.os_family = normalized_os
+                elif probe_result.os_family and not device.os_family:
                     device.os_family = probe_result.os_family
                 if probe_result.os_version and not device.os_version:
                     device.os_version = probe_result.os_version
@@ -2981,12 +2994,6 @@ async def identify_discovered_devices(
                     if open_port_numbers & windows_ports:
                         device.device_type = "windows"
                         device.os_family = device.os_family or "Windows"
-                        if 3389 in open_port_numbers:
-                            device.category = device.category or "workstation"
-                        elif 389 in open_port_numbers or 636 in open_port_numbers:
-                            device.category = device.category or "server"  # Domain Controller
-                        else:
-                            device.category = device.category or "server"
                         if not device.identified_by:
                             device.identified_by = "port_inference"
                         updated = True
@@ -2994,30 +3001,37 @@ async def identify_discovered_devices(
                     elif 22 in open_port_numbers:
                         device.device_type = "linux"
                         device.os_family = device.os_family or "Linux"
-                        if any(p in open_port_numbers for p in [3306, 5432, 27017]):
-                            device.category = device.category or "server"  # Database server
-                        elif 80 in open_port_numbers or 443 in open_port_numbers:
-                            device.category = device.category or "server"  # Web server
-                        else:
-                            device.category = device.category or "server"
                         if not device.identified_by:
                             device.identified_by = "port_inference"
                         updated = True
                     # Network device indicators
                     elif 161 in open_port_numbers:
                         device.device_type = "network"
-                        device.category = device.category or "switch"
                         if not device.identified_by:
                             device.identified_by = "port_inference"
                         updated = True
                     # MikroTik indicators
                     elif 8728 in open_port_numbers:
                         device.device_type = "mikrotik"
-                        device.category = device.category or "router"
                         device.os_family = device.os_family or "RouterOS"
                         if not device.identified_by:
                             device.identified_by = "port_inference"
                         updated = True
+                    
+                    # Determina category e subcategory dopo aver determinato device_type
+                    if updated:
+                        from ..services.category_service import determine_category_and_subcategory
+                        category, subcategory = determine_category_and_subcategory(
+                            device_type=device.device_type,
+                            os_family=device.os_family,
+                            manufacturer=device.vendor,
+                            model=device.model,
+                            open_ports=open_ports,
+                        )
+                        if category:
+                            device.category = category
+                        if subcategory:
+                            device.subcategory = subcategory
             
             if updated:
                 session.add(device)

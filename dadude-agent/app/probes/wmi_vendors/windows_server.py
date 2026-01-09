@@ -165,11 +165,40 @@ class WindowsServerProbe(WMIVendorProbe):
                 info["is_domain_controller"] = domain_role in (4, 5)
                 info["is_domain_member"] = domain_role in (1, 3, 4, 5)
                 
+                # Rileva se è una VM basandosi su manufacturer
+                manufacturer_lower = info["manufacturer"].lower()
+                if manufacturer_lower in ["qemu", "vmware, inc.", "microsoft corporation", "xen", "innotek gmbh"]:
+                    info["is_virtual_machine"] = True
+                    info["vm_type"] = manufacturer_lower.split(",")[0].split()[0]  # "qemu", "vmware", etc.
+                else:
+                    info["is_virtual_machine"] = False
+                
                 total_bytes = self._safe_int(r.get("TotalPhysicalMemory"))
                 if total_bytes:
                     info["ram_total_gb"] = self._bytes_to_gb(total_bytes)
         except Exception as e:
             self._log_debug(f"System info failed: {e}")
+        
+        # BIOS Info
+        try:
+            bios_results = self.wmi_query("""
+                SELECT SerialNumber, SMBIOSBIOSVersion, Manufacturer, ReleaseDate
+                FROM Win32_BIOS
+            """)
+            if bios_results:
+                r = bios_results[0]
+                bios_serial = (r.get("SerialNumber") or "").strip()
+                if bios_serial and bios_serial not in ["", "To Be Filled By O.E.M.", "System Serial Number"]:
+                    info["bios_serial"] = bios_serial
+                    # Usa BIOS serial come serial_number se non già impostato
+                    if not info.get("serial_number"):
+                        info["serial_number"] = bios_serial
+                info["bios_version"] = r.get("SMBIOSBIOSVersion", "")
+                info["bios_manufacturer"] = r.get("Manufacturer", "")
+                info["bios_date"] = self._wmi_datetime_to_str(r.get("ReleaseDate", ""))
+        except Exception as e:
+            self._log_debug(f"BIOS info failed: {e}")
+        
         return info
     
     def _get_cpu_info(self) -> Dict[str, Any]:
@@ -210,8 +239,8 @@ class WindowsServerProbe(WMIVendorProbe):
                     modules.append({
                         "capacity_gb": self._bytes_to_gb(cap),
                         "speed_mhz": self._safe_int(r.get("Speed")),
-                        "manufacturer": r.get("Manufacturer", "").strip(),
-                        "part_number": r.get("PartNumber", "").strip(),
+                        "manufacturer": (r.get("Manufacturer") or "").strip(),
+                        "part_number": (r.get("PartNumber") or "").strip(),
                     })
                 info["ram_modules"] = modules
                 info["ram_total_gb"] = self._bytes_to_gb(total_bytes)
@@ -234,11 +263,11 @@ class WindowsServerProbe(WMIVendorProbe):
             """)
             for r in disk_results:
                 disks.append({
-                    "device": r.get("DeviceID", ""),
-                    "model": r.get("Model", ""),
+                    "device": r.get("DeviceID") or "",
+                    "model": r.get("Model") or "",
                     "size_gb": self._bytes_to_gb(r.get("Size")),
-                    "type": r.get("MediaType", ""),
-                    "serial": r.get("SerialNumber", "").strip(),
+                    "type": r.get("MediaType") or "",
+                    "serial": (r.get("SerialNumber") or "").strip(),
                 })
             
             # Volumi logici

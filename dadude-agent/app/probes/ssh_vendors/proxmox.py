@@ -87,17 +87,28 @@ class ProxmoxProbe(SSHVendorProbe):
     
     def _get_pve_version(self) -> Dict[str, Any]:
         """Ottiene versione Proxmox VE"""
+        import re
         info = {}
         
         # pveversion
         pveversion = self.exec_cmd("pveversion 2>/dev/null", timeout=3)
         if pveversion:
             info["pve_full_version"] = pveversion.strip()
-            # Parse: pve-manager/7.4-3/xxxxxxxx
-            for part in pveversion.split('/'):
-                if part and part[0].isdigit():
-                    info["os_version"] = part.split('/')[0]
-                    break
+            # Parse: pve-manager/9.1.4/xxxxxxxx - estrae solo versione pulita (9.1.4)
+            version_match = re.search(r'pve-manager/(\d+\.\d+\.\d+)', pveversion)
+            if version_match:
+                info["os_version"] = version_match.group(1)
+            else:
+                # Fallback: cerca prima parte numerica
+                for part in pveversion.split('/'):
+                    if part and part[0].isdigit():
+                        # Estrai solo versione principale (X.Y.Z)
+                        version_match = re.search(r'(\d+\.\d+\.\d+)', part)
+                        if version_match:
+                            info["os_version"] = version_match.group(1)
+                        else:
+                            info["os_version"] = part.split()[0] if part.split() else part
+                        break
         
         # Kernel
         kernel = self.exec_cmd("uname -r", timeout=3)

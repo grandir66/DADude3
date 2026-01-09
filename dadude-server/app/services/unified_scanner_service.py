@@ -75,6 +75,8 @@ class UnifiedScanResult:
     target: str
     status: str = "pending"
     protocol_used: str = ""
+    identified_by: str = ""  # Metodo di identificazione (ssh, snmp, wmi, multiplo)
+    credential_used: str = ""  # Nome credenziale usata
     scan_timestamp: str = ""
     scan_duration_seconds: float = 0
     
@@ -136,12 +138,19 @@ class UnifiedScanResult:
     vms: List[Dict] = field(default_factory=list)
     hypervisor_type: str = ""
     
+    # VM Detection (se questo device è una VM)
+    vm_type: str = ""  # "qemu", "vmware", "hyperv", "virtualbox", etc.
+    is_virtual_machine: bool = False
+    
     # Security
     antivirus_status: str = ""
     firewall_status: str = ""
     
     # Open ports rilevate
     open_ports: List[Dict] = field(default_factory=list)
+    
+    # Custom fields (per dati aggiuntivi Linux/Windows/etc)
+    custom_fields: Dict[str, Any] = field(default_factory=dict)
     
     # Errors
     errors: List[str] = field(default_factory=list)
@@ -218,10 +227,17 @@ class UnifiedScannerService:
                 logger.warning(f"Could not retrieve device info: {e}")
             
             # 1. Determina protocolli da usare BASANDOSI SUL TIPO DI DEVICE E MANUFACTURER
+            # Combina credentials e credentials_list per il check
+            combined_creds = dict(request.credentials or {})
+            if request.credentials_list:
+                for cred_type, cred_list in request.credentials_list.items():
+                    if cred_list and len(cred_list) > 0:
+                        combined_creds[cred_type] = cred_list[0]  # Prima credenziale di ogni tipo
+            
             protocols_to_try = await self._determine_protocols(
                 request.target_address,
                 request.protocols,
-                request.credentials,
+                combined_creds,
                 device_type=existing_device_type,
                 manufacturer=existing_manufacturer
             )
@@ -354,10 +370,15 @@ class UnifiedScannerService:
                 available = ["ssh", "snmp"]
                 logger.info(f"[PROTOCOL] Device type '{device_type}' → SSH then SNMP")
             
-            # UNKNOWN / ALTRI → prima SNMP poi SSH (più safe)
+            # UNKNOWN / ALTRI → determina in base alle credenziali disponibili
             else:
-                available = ["snmp", "ssh"]
-                logger.info(f"[PROTOCOL] Device type '{device_type}' unknown → SNMP then SSH")
+                # Se abbiamo credenziali WMI/WinRM, proviamo WinRM per Windows
+                if credentials.get("wmi") or credentials.get("winrm"):
+                    available = ["snmp", "winrm", "ssh"]
+                    logger.info(f"[PROTOCOL] Device type '{device_type}' unknown, WMI creds available → SNMP, WinRM, SSH")
+                else:
+                    available = ["snmp", "ssh"]
+                    logger.info(f"[PROTOCOL] Device type '{device_type}' unknown → SNMP then SSH")
         else:
             # Usa i protocolli esplicitamente richiesti
             available = [p for p in requested if p != "auto"]
@@ -439,13 +460,23 @@ class UnifiedScannerService:
             all_errors = []
             
             # Determina quali protocolli provare
+            # PRIORITÀ: WMI > SNMP > SSH
+            # Se abbiamo credenziali WMI, proviamo prima quelle (più probabile Windows)
+            # SSH viene provato per ultimo perché Windows non risponde a SSH
             protos_to_try = []
-            if "auto" in protocols or "ssh" in protocols:
-                protos_to_try.append(("ssh", ssh_creds_list))
+            
+            # 1. WMI/WinRM ha priorità più alta (Windows)
+            if ("auto" in protocols or "wmi" in protocols or "winrm" in protocols) and wmi_creds_list:
+                protos_to_try.append(("wmi", wmi_creds_list))
+                logger.info(f"[UNIFIED_SCAN] WMI credentials available ({len(wmi_creds_list)}) - will try WMI first")
+            
+            # 2. SNMP (funziona su molti dispositivi)
             if "auto" in protocols or "snmp" in protocols:
                 protos_to_try.append(("snmp", snmp_creds_list))
-            if "auto" in protocols or "wmi" in protocols or "winrm" in protocols:
-                protos_to_try.append(("wmi", wmi_creds_list))
+            
+            # 3. SSH per ultimo (Linux/Unix, non Windows)
+            if "auto" in protocols or "ssh" in protocols:
+                protos_to_try.append(("ssh", ssh_creds_list))
             
             for proto_type, creds_to_try in protos_to_try:
                 if agent_result and agent_result.success:
@@ -576,6 +607,19 @@ class UnifiedScannerService:
         # Protocollo usato
         result.protocol_used = agent_data.get("protocol_used", ",".join(protocols))
         
+        # Identified by - formatta in modo user-friendly
+        protocols_list = result.protocol_used.split(",") if result.protocol_used else protocols
+        protocols_list = [p.strip().upper() for p in protocols_list if p.strip()]
+        if len(protocols_list) > 1:
+            result.identified_by = "Multiplo (" + ", ".join(protocols_list) + ")"
+        elif len(protocols_list) == 1:
+            result.identified_by = protocols_list[0]
+        else:
+            result.identified_by = "Unknown"
+        
+        # Credential used (se disponibile nei dati)
+        result.credential_used = agent_data.get("credential_used", "")
+        
         # System info - cerca prima in system_info, poi fallback al livello top (per Synology/QNAP)
         si = agent_data.get("system_info", {})
         
@@ -667,11 +711,22 @@ class UnifiedScannerService:
         result.interfaces = agent_data.get("network_interfaces", []) or agent_data.get("interfaces", [])
         if result.interfaces:
             for iface in result.interfaces:
+                # Supporta sia ipv4_addresses (array) che ipv4 (singolo)
+                ipv4 = None
                 if iface.get("ipv4_addresses"):
-                    result.primary_ip = iface["ipv4_addresses"][0]
-                if iface.get("mac_address"):
-                    result.primary_mac = iface["mac_address"]
-                if result.primary_ip:
+                    ipv4 = iface["ipv4_addresses"][0] if isinstance(iface["ipv4_addresses"], list) else iface["ipv4_addresses"]
+                elif iface.get("ipv4"):
+                    ipv4 = iface["ipv4"]
+                
+                if ipv4 and not result.primary_ip:
+                    result.primary_ip = ipv4
+                
+                # MAC address
+                mac = iface.get("mac_address") or iface.get("mac")
+                if mac and not result.primary_mac:
+                    result.primary_mac = mac
+                
+                if result.primary_ip and result.primary_mac:
                     break
         
         result.lldp_neighbors = agent_data.get("lldp_neighbors", [])
@@ -690,6 +745,105 @@ class UnifiedScannerService:
         result.software = agent_data.get("software", [])
         result.software_count = len(result.software)
         
+        # Linux-specific: Installed services (all services, not just running)
+        if "installed_services" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            result.custom_fields["installed_services"] = agent_data.get("installed_services", [])
+            result.custom_fields["installed_services_count"] = agent_data.get("installed_services_count", 0)
+        
+        # Linux-specific: Installed software (dpkg/rpm)
+        if "installed_software" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            result.custom_fields["installed_software"] = agent_data.get("installed_software", [])
+            result.custom_fields["installed_software_count"] = agent_data.get("installed_software_count", 0)
+        
+        # Linux-specific: Cron jobs
+        if "cron_jobs" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            result.custom_fields["cron_jobs"] = agent_data.get("cron_jobs", [])
+            result.custom_fields["cron_jobs_count"] = agent_data.get("cron_jobs_count", 0)
+        
+        # Linux-specific: Running processes
+        if "running_processes" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            result.custom_fields["running_processes"] = agent_data.get("running_processes", [])
+        
+        # Linux-specific: Detailed storage (partitions, RAID, LVM, etc.)
+        if "partitions" in agent_data or "raid_arrays" in agent_data or "lvm_volumes" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            if "partitions" in agent_data:
+                result.custom_fields["partitions"] = agent_data.get("partitions", [])
+            if "raid_arrays" in agent_data:
+                result.custom_fields["raid_arrays"] = agent_data.get("raid_arrays", [])
+            if "lvm_volumes" in agent_data:
+                result.custom_fields["lvm_volumes"] = agent_data.get("lvm_volumes", [])
+            if "volume_groups" in agent_data:
+                result.custom_fields["volume_groups"] = agent_data.get("volume_groups", [])
+            if "fstab_entries" in agent_data:
+                result.custom_fields["fstab_entries"] = agent_data.get("fstab_entries", [])
+            if "disk_usage" in agent_data:
+                result.custom_fields["disk_usage"] = agent_data.get("disk_usage", {})
+            if "inode_usage" in agent_data:
+                result.custom_fields["inode_usage"] = agent_data.get("inode_usage", [])
+            if "swap" in agent_data:
+                result.custom_fields["swap"] = agent_data.get("swap", [])
+        
+        # Linux-specific: Network configuration
+        if "dns_servers" in agent_data or "default_gateway" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            if "dns_servers" in agent_data:
+                result.custom_fields["dns_servers"] = agent_data.get("dns_servers", [])
+            if "default_gateway" in agent_data:
+                result.custom_fields["default_gateway"] = agent_data.get("default_gateway")
+            if "hostname_fqdn" in agent_data:
+                result.custom_fields["hostname_fqdn"] = agent_data.get("hostname_fqdn")
+            if "network_connections" in agent_data:
+                result.custom_fields["network_connections"] = agent_data.get("network_connections", [])
+        
+        # Linux-specific: System details
+        if "timezone" in agent_data or "locale" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            if "timezone" in agent_data:
+                result.custom_fields["timezone"] = agent_data.get("timezone")
+            if "locale" in agent_data:
+                result.custom_fields["locale"] = agent_data.get("locale")
+            if "ntp_servers" in agent_data:
+                result.custom_fields["ntp_servers"] = agent_data.get("ntp_servers", [])
+            if "selinux_status" in agent_data:
+                result.custom_fields["selinux_status"] = agent_data.get("selinux_status")
+            if "apparmor_status" in agent_data:
+                result.custom_fields["apparmor_status"] = agent_data.get("apparmor_status")
+            if "boot_time" in agent_data:
+                result.custom_fields["boot_time"] = agent_data.get("boot_time")
+            if "last_reboot" in agent_data:
+                result.custom_fields["last_reboot"] = agent_data.get("last_reboot")
+            if "kernel_modules" in agent_data:
+                result.custom_fields["kernel_modules"] = agent_data.get("kernel_modules", [])
+        
+        # Linux-specific: Firewall info
+        if "firewall_type" in agent_data or "firewall_enabled" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            if "firewall_type" in agent_data:
+                result.custom_fields["firewall_type"] = agent_data.get("firewall_type")
+            if "firewall_enabled" in agent_data:
+                result.custom_fields["firewall_enabled"] = agent_data.get("firewall_enabled")
+            if "firewall_rules" in agent_data:
+                result.custom_fields["firewall_rules"] = agent_data.get("firewall_rules", [])
+            if "firewall_rules_count" in agent_data:
+                result.custom_fields["firewall_rules_count"] = agent_data.get("firewall_rules_count", 0)
+            if "firewall_services" in agent_data:
+                result.custom_fields["firewall_services"] = agent_data.get("firewall_services")
+        
+        # Linux-specific: Databases
+        if "databases" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            result.custom_fields["databases"] = agent_data.get("databases", [])
+        
+        # Linux-specific: Web servers
+        if "web_servers" in agent_data:
+            result.custom_fields = result.custom_fields or {}
+            result.custom_fields["web_servers"] = agent_data.get("web_servers", [])
+        
         # Shares (se presente)
         if "shares" in agent_data:
             result.shares = agent_data.get("shares", [])
@@ -702,6 +856,31 @@ class UnifiedScannerService:
         # VMs
         result.vms = agent_data.get("vms", [])
         result.hypervisor_type = agent_data.get("hypervisor_type", "")
+        
+        # VM Detection (se questo device è una VM)
+        # Cerca in system_info o direttamente in agent_data
+        result.vm_type = si.get("vm_type") or agent_data.get("vm_type", "")
+        result.is_virtual_machine = si.get("is_virtual_machine", False) or agent_data.get("is_virtual_machine", False)
+        
+        # Fallback: rileva VM da manufacturer se non già rilevato
+        if not result.is_virtual_machine and result.manufacturer:
+            vm_manufacturers = ["qemu", "vmware", "vmware, inc.", "microsoft corporation", "xen", "kvm", "virtualbox", "innotek"]
+            if result.manufacturer.lower() in vm_manufacturers:
+                result.is_virtual_machine = True
+                if not result.vm_type:
+                    # Estrai tipo VM dal manufacturer
+                    mfr_lower = result.manufacturer.lower()
+                    if "qemu" in mfr_lower:
+                        result.vm_type = "qemu"
+                    elif "vmware" in mfr_lower:
+                        result.vm_type = "vmware"
+                    elif "microsoft" in mfr_lower:
+                        result.vm_type = "hyperv"
+                    elif "virtualbox" in mfr_lower or "innotek" in mfr_lower:
+                        result.vm_type = "virtualbox"
+                    else:
+                        result.vm_type = mfr_lower.split(",")[0].split()[0]
+                logger.info(f"[MERGE_AGENT] Detected VM by manufacturer: {result.manufacturer} -> vm_type={result.vm_type}")
         
         # Security
         result.antivirus_status = agent_data.get("antivirus_status", "")
@@ -758,6 +937,10 @@ class UnifiedScannerService:
         
         # Ubiquiti
         if "ubiquiti" in manufacturer or "ubnt" in manufacturer:
+            if "switch" in hostname:
+                return DeviceType.SWITCH.value
+            if "router" in hostname or "gateway" in hostname:
+                return DeviceType.ROUTER.value
             return DeviceType.ACCESS_POINT.value
         
         # Fortinet

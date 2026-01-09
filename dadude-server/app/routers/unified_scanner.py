@@ -232,7 +232,8 @@ async def _save_unified_scan_to_inventory(
     from ..models.inventory import (
         InventoryDevice, LLDPNeighbor, CDPNeighbor, NetworkInterface,
         ProxmoxHost, ProxmoxVM, ProxmoxStorage,
-        LinuxDetails, MikroTikDetails, NetworkDeviceDetails
+        LinuxDetails, MikroTikDetails, NetworkDeviceDetails,
+        WindowsDetails, DiskInfo, ServiceInfo, InstalledSoftware
     )
     
     summary = {
@@ -241,6 +242,9 @@ async def _save_unified_scan_to_inventory(
         "lldp_neighbors_saved": 0,
         "cdp_neighbors_saved": 0,
         "interfaces_saved": 0,
+        "disks_saved": 0,
+        "services_saved": 0,
+        "software_saved": 0,
         "custom_fields_updated": False,
     }
     
@@ -297,10 +301,24 @@ async def _save_unified_scan_to_inventory(
             update_field(device, "name", scan_result.hostname, summary)
             update_field(device, "hostname", scan_result.hostname, summary)
         
-        # OS info - forza aggiornamento per evitare che "DSM" venga ignorato perché più corto di "Windows"
-        if scan_result.os_name:
+        # OS info - normalizza prima di salvare (importante per UniFi, Synology, etc.)
+        from ..services.os_normalizer import normalize_os
+        
+        normalized_os = normalize_os(
+            os_name=scan_result.os_name,
+            os_version=scan_result.os_version,
+            os_family=device.os_family,
+            manufacturer=scan_result.manufacturer or device.manufacturer,
+            model=scan_result.model or device.model
+        )
+        
+        if normalized_os:
+            logger.info(f"[SAVE_UNIFIED] Normalized OS: '{scan_result.os_name}' -> '{normalized_os}' (was: '{device.os_family}')")
+            update_field(device, "os_family", normalized_os, summary, force=True)
+        elif scan_result.os_name:
             logger.info(f"[SAVE_UNIFIED] Setting os_family from os_name: '{scan_result.os_name}' (was: '{device.os_family}')")
-            update_field(device, "os_family", scan_result.os_name, summary, force=True)  # os_family per compatibilità
+            update_field(device, "os_family", scan_result.os_name, summary, force=True)
+        
         if scan_result.os_version:
             update_field(device, "os_version", scan_result.os_version, summary)
         
@@ -321,6 +339,36 @@ async def _save_unified_scan_to_inventory(
         # Device type - solo se significativo (non "unknown")
         if scan_result.device_type and scan_result.device_type != "unknown":
             update_field(device, "device_type", scan_result.device_type, summary)
+        
+        # Determina category e subcategory usando il servizio centralizzato
+        from ..services.category_service import determine_category_and_subcategory
+        
+        # Prendi os_family dal device esistente o da scan_result
+        os_family_value = device.os_family or scan_result.os_name
+        
+        category, subcategory = determine_category_and_subcategory(
+            device_type=scan_result.device_type,
+            os_name=scan_result.os_name,
+            os_family=os_family_value,
+            manufacturer=scan_result.manufacturer,
+            model=scan_result.model,
+            open_ports=scan_result.open_ports,
+            hypervisor_type=getattr(scan_result, 'hypervisor_type', None),
+            vm_type=getattr(scan_result, 'vm_type', None),
+        )
+        
+        logger.info(f"[SAVE_UNIFIED] Category/Subcategory determined: category={category}, subcategory={subcategory} "
+                   f"(device_type={scan_result.device_type}, os_name={scan_result.os_name}, "
+                   f"hypervisor_type={getattr(scan_result, 'hypervisor_type', None)})")
+        
+        if category:
+            update_field(device, "category", category, summary)
+        if subcategory:
+            update_field(device, "subcategory", subcategory, summary)
+            logger.info(f"[SAVE_UNIFIED] Subcategory '{subcategory}' saved to device {device.id}")
+        else:
+            logger.warning(f"[SAVE_UNIFIED] No subcategory determined for device {device.id} "
+                          f"(category={category}, device_type={scan_result.device_type})")
         
         # CPU
         update_field(device, "cpu_model", scan_result.cpu_model, summary)
@@ -371,6 +419,23 @@ async def _save_unified_scan_to_inventory(
             device.open_ports = scan_result.open_ports
             summary["fields_updated"].append("open_ports")
         
+        # Identified by (metodo di identificazione: SSH, SNMP, WMI, Multiplo)
+        if scan_result.protocol_used:
+            protocols_list = [p.strip().upper() for p in scan_result.protocol_used.split(",") if p.strip()]
+            if len(protocols_list) > 1:
+                identified_by_value = "Multiplo (" + ", ".join(protocols_list) + ")"
+            elif len(protocols_list) == 1:
+                identified_by_value = protocols_list[0]
+            else:
+                identified_by_value = None
+            
+            if identified_by_value:
+                update_field(device, "identified_by", identified_by_value, summary)
+        
+        # Credential used (nome credenziale usata)
+        if hasattr(scan_result, 'credential_used') and scan_result.credential_used:
+            update_field(device, "credential_used", scan_result.credential_used, summary)
+        
         # Timestamps
         device.last_seen = datetime.utcnow()
         device.last_scan = datetime.utcnow()
@@ -388,7 +453,7 @@ async def _save_unified_scan_to_inventory(
             device.custom_fields = {}
         
         # Crea copia per evitare problemi SQLAlchemy con mutazioni in-place
-        custom_fields = dict(device.custom_fields)
+        custom_fields = dict(device.custom_fields) if device.custom_fields else {}
         custom_fields_changed = False
         
         # Merge con dati esistenti (non sovrascrive completamente)
@@ -414,10 +479,19 @@ async def _save_unified_scan_to_inventory(
             custom_fields["firewall_rules_count"] = scan_result.firewall_rules_count
             custom_fields_changed = True
         
+        # Merge tutti i custom_fields da scan_result (include dati Linux aggiuntivi)
+        if scan_result.custom_fields:
+            for key, value in scan_result.custom_fields.items():
+                if value:  # Solo se ha un valore
+                    custom_fields[key] = value
+                    custom_fields_changed = True
+                    logger.debug(f"[SAVE_UNIFIED] Saving custom_field: {key} (type: {type(value).__name__})")
+        
         # Assegna il nuovo dict e marca come modificato
         if custom_fields_changed:
             device.custom_fields = custom_fields
             flag_modified(device, "custom_fields")
+            logger.info(f"[SAVE_UNIFIED] Updated custom_fields for device {device_id}: {list(custom_fields.keys())[:10]}")
         
         summary["custom_fields_updated"] = custom_fields_changed
         
@@ -1097,6 +1171,251 @@ async def _save_unified_scan_to_inventory(
             except Exception as e:
                 logger.error(f"Error saving network interfaces: {e}", exc_info=True)
         
+        # 7. Salva WINDOWS DETAILS nella tabella relazionale
+        if scan_result.status == "success":
+            os_family = (scan_result.os_name or device.os_family or "").lower()
+            device_type_lower = (scan_result.device_type or device.device_type or "").lower()
+            
+            if "windows" in os_family or device_type_lower in ["windows_server", "windows_workstation", "windows"]:
+                try:
+                    existing_win = session.query(WindowsDetails).filter(
+                        WindowsDetails.device_id == device_id
+                    ).first()
+                    
+                    # Estrai dati Windows da custom_fields se presenti
+                    cf = scan_result.custom_fields or {}
+                    
+                    # Dati di base per WindowsDetails
+                    win_data = {
+                        "edition": cf.get("windows_edition") or cf.get("edition"),
+                        "domain_role": cf.get("domain_role"),
+                        "domain_name": cf.get("domain") or device.domain,
+                        "bios_version": cf.get("bios_version"),
+                        "tpm_version": cf.get("tpm_version"),
+                        "antivirus_name": cf.get("antivirus_name") or cf.get("antivirus"),
+                        "antivirus_status": cf.get("antivirus_status"),
+                        "firewall_enabled": cf.get("firewall_enabled"),
+                        "bitlocker_status": cf.get("bitlocker_status"),
+                        "local_admins": cf.get("local_admins"),
+                        "logged_users": cf.get("logged_users") or scan_result.logged_in_users,
+                        "pending_updates": cf.get("pending_updates"),
+                        "uptime_days": cf.get("uptime_days"),
+                    }
+                    
+                    # Rimuovi chiavi con valori None
+                    win_data = {k: v for k, v in win_data.items() if v is not None}
+                    
+                    if existing_win:
+                        for key, value in win_data.items():
+                            if hasattr(existing_win, key):
+                                setattr(existing_win, key, value)
+                        existing_win.last_updated = datetime.utcnow()
+                        summary["windows_details_updated"] = True
+                        logger.info(f"[SAVE_UNIFIED] Updated WindowsDetails for device {device_id}")
+                    else:
+                        new_win = WindowsDetails(
+                            id=uuid.uuid4().hex[:8],
+                            device_id=device_id,
+                            **{k: v for k, v in win_data.items() if hasattr(WindowsDetails, k)}
+                        )
+                        session.add(new_win)
+                        summary["windows_details_created"] = True
+                        logger.info(f"[SAVE_UNIFIED] Created new WindowsDetails for device {device_id}")
+                except Exception as e:
+                    logger.error(f"Error saving Windows details: {e}", exc_info=True)
+        
+        # 8. Salva DISKS nella tabella relazionale
+        if scan_result.disks or scan_result.volumes:
+            try:
+                # Debug: log struttura dati
+                logger.debug(f"[SAVE_UNIFIED] Disks type: {type(scan_result.disks)}")
+                if scan_result.disks:
+                    logger.debug(f"[SAVE_UNIFIED] First disk: {scan_result.disks[0] if scan_result.disks else 'empty'}")
+                logger.debug(f"[SAVE_UNIFIED] Volumes type: {type(scan_result.volumes)}")
+                if scan_result.volumes:
+                    logger.debug(f"[SAVE_UNIFIED] First volume: {scan_result.volumes[0] if scan_result.volumes else 'empty'}")
+                
+                # Combina disks e volumes
+                all_disks = []
+                
+                # Aggiungi dischi fisici
+                for disk in (scan_result.disks or []):
+                    # Trunca disk_type a max 20 caratteri
+                    raw_type = disk.get("type") or disk.get("disk_type") or "hdd"
+                    if len(raw_type) > 20:
+                        raw_type = raw_type[:20]
+                    
+                    all_disks.append({
+                        "name": disk.get("name") or disk.get("device", "Unknown"),
+                        "mount_point": disk.get("mount") or disk.get("mount_point"),
+                        "disk_type": raw_type,
+                        "filesystem": disk.get("filesystem"),
+                        "size_gb": disk.get("size_gb") or disk.get("size", 0),
+                        "used_gb": disk.get("used_gb"),
+                        "free_gb": disk.get("free_gb"),
+                        "percent_used": disk.get("percent_used") or disk.get("usage_percent"),
+                        "model": disk.get("model") or disk.get("friendly_name"),
+                        "serial": disk.get("serial") or disk.get("serial_number"),
+                        "smart_status": disk.get("smart_status") or disk.get("health"),
+                        "is_system": disk.get("is_system", False),
+                    })
+                
+                # Aggiungi volumes (partizioni/volumi logici)
+                for vol in (scan_result.volumes or []):
+                    # Evita duplicati (se già presente come disco fisico)
+                    vol_name = vol.get("name") or vol.get("device") or vol.get("mount_point", "").split("/")[-1] or vol.get("drive_letter")
+                    
+                    # Se il nome è vuoto, usa un nome default con il mount_point o lettera drive
+                    if not vol_name or not vol_name.strip():
+                        mount = vol.get("mount_point") or vol.get("path") or vol.get("drive_letter", "")
+                        if mount:
+                            # Pulisci il mount point per usarlo come nome
+                            clean_mount = mount.replace("/", "_").replace("\\", "_").replace(":", "")
+                            vol_name = "Volume_" + clean_mount
+                        else:
+                            vol_name = "Volume_" + str(len(all_disks) + 1)
+                    
+                    if not any(d["name"] == vol_name for d in all_disks):
+                        # Calcola size_gb da bytes se necessario
+                        size_gb = vol.get("size_gb", 0)
+                        if not size_gb and vol.get("total_bytes"):
+                            size_gb = round(vol.get("total_bytes", 0) / (1024**3), 2)
+                        
+                        free_gb = vol.get("free_gb", 0)
+                        if not free_gb and vol.get("available_bytes"):
+                            free_gb = round(vol.get("available_bytes", 0) / (1024**3), 2)
+                        
+                        used_gb = vol.get("used_gb", 0)
+                        if not used_gb and vol.get("used_bytes"):
+                            used_gb = round(vol.get("used_bytes", 0) / (1024**3), 2)
+                        
+                        all_disks.append({
+                            "name": vol_name,
+                            "mount_point": vol.get("mount_point") or vol.get("path"),
+                            "disk_type": "volume",
+                            "filesystem": vol.get("filesystem"),
+                            "size_gb": size_gb,
+                            "used_gb": used_gb,
+                            "free_gb": free_gb,
+                            "percent_used": vol.get("usage_percent") or vol.get("use_percent"),
+                            "is_system": vol.get("mount_point") in ["/", "C:", "C:\\"],
+                        })
+                
+                # Elimina vecchi dischi e inserisci nuovi
+                if all_disks:
+                    session.query(DiskInfo).filter(DiskInfo.device_id == device_id).delete()
+                    
+                    for idx, disk_data in enumerate(all_disks):
+                        disk_name = disk_data.get("name", "") or f"Disk_{idx + 1}"
+                        if not disk_name.strip():
+                            disk_name = f"Disk_{idx + 1}"
+                        new_disk = DiskInfo(
+                            id=uuid.uuid4().hex[:8],
+                            device_id=device_id,
+                            name=disk_name,
+                            mount_point=disk_data.get("mount_point"),
+                            disk_type=disk_data.get("disk_type"),
+                            filesystem=disk_data.get("filesystem"),
+                            size_gb=disk_data.get("size_gb"),
+                            used_gb=disk_data.get("used_gb"),
+                            free_gb=disk_data.get("free_gb"),
+                            percent_used=disk_data.get("percent_used"),
+                            model=disk_data.get("model"),
+                            serial=disk_data.get("serial"),
+                            smart_status=disk_data.get("smart_status"),
+                            is_system=disk_data.get("is_system", False),
+                        )
+                        session.add(new_disk)
+                        summary["disks_saved"] += 1
+                    
+                    # Flush per salvare immediatamente i dischi e catturare errori
+                    session.flush()
+                    logger.info(f"[SAVE_UNIFIED] Saved {summary['disks_saved']} disks for device {device_id}")
+            except Exception as e:
+                logger.error(f"Error saving disks: {e}", exc_info=True)
+                session.rollback()
+        
+        # 9. Salva SERVICES nella tabella relazionale
+        if scan_result.services:
+            try:
+                logger.debug(f"[SAVE_UNIFIED] Starting to save {len(scan_result.services)} services for device {device_id}")
+                
+                # Elimina vecchi servizi
+                session.query(ServiceInfo).filter(ServiceInfo.device_id == device_id).delete()
+                
+                for idx, svc in enumerate(scan_result.services):
+                    if isinstance(svc, dict):
+                        svc_name = svc.get("name") or svc.get("service", "")
+                        if not svc_name:
+                            continue
+                        
+                        # Trunca campi lunghi per evitare errori DB
+                        display_name = svc.get("display_name") or svc.get("title")
+                        if display_name and len(display_name) > 255:
+                            display_name = display_name[:255]
+                        
+                        executable_path = svc.get("path") or svc.get("executable_path")
+                        if executable_path and len(executable_path) > 500:
+                            executable_path = executable_path[:500]
+                        
+                        new_svc = ServiceInfo(
+                            id=uuid.uuid4().hex[:8],
+                            device_id=device_id,
+                            name=svc_name[:255] if len(svc_name) > 255 else svc_name,
+                            display_name=display_name,
+                            description=svc.get("description"),
+                            service_type=svc.get("type") or svc.get("service_type") or "windows_service",
+                            status=svc.get("status") or svc.get("state"),
+                            start_type=svc.get("start_type") or svc.get("startup_type"),
+                            user_account=svc.get("user") or svc.get("user_account"),
+                            executable_path=executable_path,
+                            pid=svc.get("pid"),
+                            port=svc.get("port"),
+                        )
+                        session.add(new_svc)
+                        summary["services_saved"] += 1
+                
+                if summary["services_saved"] > 0:
+                    # Flush per salvare immediatamente i servizi
+                    session.flush()
+                    logger.info(f"[SAVE_UNIFIED] Saved {summary['services_saved']} services for device {device_id}")
+            except Exception as e:
+                logger.error(f"Error saving services: {e}", exc_info=True)
+                session.rollback()
+        
+        # 10. Salva SOFTWARE nella tabella relazionale
+        if scan_result.software:
+            try:
+                # Elimina vecchio software
+                session.query(InstalledSoftware).filter(InstalledSoftware.device_id == device_id).delete()
+                
+                for sw in scan_result.software:
+                    if isinstance(sw, dict):
+                        sw_name = sw.get("name") or sw.get("title", "")
+                        if not sw_name:
+                            continue
+                        
+                        new_sw = InstalledSoftware(
+                            id=uuid.uuid4().hex[:8],
+                            device_id=device_id,
+                            name=sw_name,
+                            version=sw.get("version"),
+                            vendor=sw.get("vendor") or sw.get("publisher"),
+                            install_location=sw.get("install_location") or sw.get("path"),
+                            size_mb=sw.get("size_mb"),
+                            is_update=sw.get("is_update", False),
+                        )
+                        session.add(new_sw)
+                        summary["software_saved"] += 1
+                
+                if summary["software_saved"] > 0:
+                    # Flush per salvare immediatamente il software
+                    session.flush()
+                    logger.info(f"[SAVE_UNIFIED] Saved {summary['software_saved']} software for device {device_id}")
+            except Exception as e:
+                logger.error(f"Error saving software: {e}", exc_info=True)
+                session.rollback()
+        
         # Aggiorna summary con custom_fields_updated se ci sono state modifiche dopo la riga 397
         # (servizi e storage_info vengono salvati dopo)
         if custom_fields_changed:
@@ -1107,7 +1426,9 @@ async def _save_unified_scan_to_inventory(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in _save_unified_scan_to_inventory: {e}", exc_info=True)
+        import traceback
+        logger.error(f"Error in _save_unified_scan_to_inventory: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 

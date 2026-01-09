@@ -156,7 +156,23 @@ class MACLookupService:
                     vendor = result.get('vendor', '')
                     if 'device_type' not in result or result.get('device_type') == 'unknown':
                         result['device_type'] = get_device_type_from_vendor(vendor)
-                        result['category'] = result['device_type']
+                        
+                        # Fix per Ubiquiti
+                        if "ubiquiti" in vendor.lower() or "ubnt" in vendor.lower():
+                            result['category'] = 'network'
+                            if result['device_type'] == 'network': # Se generico, assumi AP
+                                result['device_type'] = 'ap'
+                        # Fix per MikroTik
+                        elif "mikrotik" in vendor.lower() or "routerboard" in vendor.lower():
+                            result['category'] = 'network'
+                            result['device_type'] = 'router'
+                        else:
+                            result['category'] = result['device_type']
+                            
+                        # Fix categorie generiche
+                        if result['device_type'] in ['router', 'switch', 'firewall', 'ap']:
+                            result['category'] = 'network'
+                    
                     if 'os_family' not in result or result.get('os_family') == 'unknown':
                         result['os_family'] = get_os_from_vendor(vendor)
                     

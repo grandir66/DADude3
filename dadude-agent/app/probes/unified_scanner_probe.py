@@ -18,6 +18,11 @@ from .ssh_vendors import (
     LinuxProbe, ProxmoxProbe, SynologyProbe, QNAPProbe
 )
 
+# Import moduli vendor-specific per WMI/Windows
+from .wmi_vendors import (
+    WindowsServerProbe, WindowsWorkstationProbe, HyperVProbe
+)
+
 
 async def probe(
     target: str,
@@ -128,29 +133,38 @@ async def probe(
                 protocols.append("winrm")
             logger.info(f"[UNIFIED] Auto-detected protocols: {protocols}")
         else:
-            # Per protocolli espliciti, filtra solo SSH/WinRM in base alle porte
-            # SNMP viene sempre provato perché usa UDP
+            # Per protocolli espliciti, filtra in base alle porte
+            # Ma aggiungi automaticamente protocolli migliori se le porte sono aperte
             available_protocols = []
+            winrm_ports = {135, 5985, 5986}
+            has_winrm_ports = bool(ports_set & winrm_ports)
+            has_snmp_port = 161 in ports_set
+            
             for proto in protocols:
                 if proto == "auto":
                     continue
                 if proto == "snmp":
-                    # SNMP usa UDP, prova sempre
-                    available_protocols.append(proto)
+                    # SNMP usa UDP - aggiungi solo se porta 161 è aperta o non abbiamo alternative migliori
+                    if has_snmp_port:
+                        available_protocols.append(proto)
+                        logger.info(f"[UNIFIED] SNMP port 161 detected, adding SNMP probe")
+                    elif not has_winrm_ports and 22 not in ports_set:
+                        # Nessuna altra porta aperta, prova SNMP comunque (UDP non rilevabile)
+                        available_protocols.append(proto)
+                        logger.info(f"[UNIFIED] No TCP ports detected, trying SNMP anyway (UDP)")
+                    else:
+                        logger.info(f"[UNIFIED] SNMP port 161 not detected, skipping SNMP (better protocols available)")
                 elif proto == "ssh":
-                    # SSH: prova sempre se richiesto esplicitamente, anche se port scan non trova porta 22
-                    # Alcuni dispositivi (es. UniFi) possono avere firewall o porte non standard
-                    # Il probe SSH stesso gestirà l'errore di connessione
                     if 22 in ports_set:
                         available_protocols.append(proto)
                         logger.info(f"[UNIFIED] SSH port 22 detected, adding SSH probe")
                     else:
-                        # Port scan non ha trovato porta 22, ma proviamo comunque SSH
-                        # perché alcuni dispositivi possono avere firewall che blocca il port scan
-                        # ma permette connessioni SSH dirette
-                        logger.warning(f"[UNIFIED] Port scan didn't find port 22, but trying SSH anyway (device may have firewall)")
-                        available_protocols.append(proto)
-                        result["warnings"].append("Port scan didn't detect SSH port 22, but trying SSH probe anyway")
+                        logger.debug(f"[UNIFIED] SSH port 22 not detected, skipping SSH")
+                elif proto in ["winrm", "wmi"]:
+                    if has_winrm_ports:
+                        if proto not in available_protocols and "winrm" not in available_protocols:
+                            available_protocols.append("winrm")
+                            logger.info(f"[UNIFIED] WinRM ports {ports_set & winrm_ports} detected, adding WinRM probe")
                 else:
                     required_ports = proto_ports.get(proto, [])
                     if not required_ports or any(p in ports_set for p in required_ports):
@@ -158,6 +172,18 @@ async def probe(
                     else:
                         logger.warning(f"[UNIFIED] Skipping {proto} - required ports {required_ports} not open")
                         result["warnings"].append(f"{proto}: porte richieste non aperte ({required_ports})")
+            
+            # AUTO-ADD: Se porte WinRM sono aperte ma WinRM non è nella lista, aggiungilo
+            # MA solo se abbiamo credenziali WMI valide!
+            wmi_creds = credentials.get("wmi", {})
+            has_wmi_creds = bool(wmi_creds.get("username"))
+            
+            if has_winrm_ports and "winrm" not in available_protocols and has_wmi_creds:
+                available_protocols.insert(0, "winrm")  # Priorità alta per Windows
+                logger.info(f"[UNIFIED] Auto-adding WinRM probe (ports {ports_set & winrm_ports} open, user={wmi_creds.get('username')})")
+            elif has_winrm_ports and "winrm" not in available_protocols and not has_wmi_creds:
+                logger.warning(f"[UNIFIED] WinRM ports {ports_set & winrm_ports} open but NO WMI credentials provided - skipping WinRM")
+            
             protocols = available_protocols
             logger.info(f"[UNIFIED] Filtered protocols based on open ports: {protocols}")
         
@@ -250,27 +276,60 @@ async def probe(
             )
             is_mikrotik = "mikrotik" in manufacturer.lower() or "routeros" in result.get("os_name", "").lower()
             
-            # Se SNMP ha restituito pochi dati E (è UniFi/MikroTik O ha dati minimi), prova SSH
+            # Se SNMP ha restituito pochi dati E (è UniFi/MikroTik O ha dati minimi), prova fallback
             if has_minimal_data or is_unifi or is_mikrotik:
-                logger.info(f"[UNIFIED] SNMP returned minimal data for {target}, trying SSH fallback (UniFi={is_unifi}, MikroTik={is_mikrotik})")
-                try:
-                    ssh_timeout = max(timeout * 7 // 10, 90)
-                    logger.debug(f"SSH fallback probe for {target} with timeout {ssh_timeout}s")
-                    ssh_result = await _probe_ssh(
-                        target,
-                        credentials.get("ssh", {}),
-                        ssh_timeout,
-                        include_software,
-                        include_services
-                    )
-                    if ssh_result:
-                        _merge_results(result, ssh_result)
-                        if "ssh" not in protocols_used:
-                            protocols_used.append("ssh")
-                        logger.info(f"[UNIFIED] SSH fallback succeeded for {target}")
-                except Exception as e:
-                    logger.warning(f"SSH fallback failed for {target}: {e}")
-                    result["warnings"].append(f"ssh_fallback: {str(e)}")
+                logger.info(f"[UNIFIED] SNMP returned minimal data for {target}, trying fallback (UniFi={is_unifi}, MikroTik={is_mikrotik})")
+                
+                # Determina quale fallback usare in base alle porte aperte
+                winrm_ports = {135, 5985, 5986}
+                ssh_port = 22
+                
+                fallback_tried = False
+                
+                # Prova WinRM se le porte Windows sono aperte E abbiamo credenziali WMI
+                wmi_creds = credentials.get("wmi", {})
+                if (ports_set & winrm_ports) and wmi_creds.get("username"):
+                    logger.info(f"[UNIFIED] Trying WinRM fallback for {target} (ports {ports_set & winrm_ports} open)")
+                    try:
+                        winrm_timeout = max(timeout * 4 // 5, 120)
+                        logger.debug(f"WinRM fallback probe for {target} with timeout {winrm_timeout}s")
+                        winrm_result = await _probe_winrm(
+                            target,
+                            wmi_creds,
+                            winrm_timeout,
+                            include_software,
+                            include_services
+                        )
+                        if winrm_result and winrm_result.get("hostname"):
+                            _merge_results(result, winrm_result)
+                            if "winrm" not in protocols_used:
+                                protocols_used.append("winrm")
+                            logger.info(f"[UNIFIED] WinRM fallback succeeded for {target}")
+                            fallback_tried = True
+                    except Exception as e:
+                        logger.warning(f"WinRM fallback failed for {target}: {e}")
+                        result["warnings"].append(f"winrm_fallback: {str(e)}")
+                
+                # Se WinRM non ha funzionato o non era disponibile, prova SSH
+                if not fallback_tried:
+                    try:
+                        ssh_timeout = max(timeout * 7 // 10, 90)
+                        logger.debug(f"SSH fallback probe for {target} with timeout {ssh_timeout}s")
+                        ssh_result = await _probe_ssh(
+                            target,
+                            credentials.get("ssh", {}),
+                            ssh_timeout,
+                            include_software,
+                            include_services
+                        )
+                        if ssh_result:
+                            _merge_results(result, ssh_result)
+                            if "ssh" not in protocols_used:
+                                protocols_used.append("ssh")
+                            logger.info(f"[UNIFIED] SSH fallback succeeded for {target}")
+                    except Exception as e:
+                        logger.warning(f"SSH fallback failed for {target}: {e}")
+                        result["warnings"].append(f"ssh_fallback: {str(e)}")
         
         result["protocol_used"] = ",".join(protocols_used)
         
@@ -300,6 +359,44 @@ async def probe(
     for key, value in result.get("system_info", {}).items():
         if key not in result or not result[key]:
             result[key] = value
+    
+    # Calcola disk_total_gb e disk_free_gb da volumes se non già calcolati (0 = non calcolato)
+    current_disk_total = result.get("disk_total_gb") or 0
+    if result.get("volumes") and current_disk_total == 0:
+        total_gb = 0
+        free_gb = 0
+        for vol in result["volumes"]:
+            total_gb += vol.get("size_gb", 0) or 0
+            free_gb += vol.get("free_gb", 0) or 0
+        if total_gb > 0:
+            result["disk_total_gb"] = round(total_gb, 2)
+            result["disk_free_gb"] = round(free_gb, 2)
+            result["disk_used_gb"] = round(total_gb - free_gb, 2)
+            logger.info(f"[UNIFIED] Calculated disk totals from volumes: total={total_gb}GB, free={free_gb}GB")
+    
+    # Propaga campi importanti per classificazione VM
+    # Se il probe ha rilevato che è una VM, propaga il campo
+    if result.get("is_virtual_machine") or result.get("vm_type"):
+        result["vm_type"] = result.get("vm_type", "")
+        result["is_virtual_machine"] = True
+    elif result.get("manufacturer"):
+        # Rileva VM basandosi su manufacturer anche se il probe non l'ha fatto
+        vm_manufacturers = ["qemu", "vmware", "vmware, inc.", "microsoft corporation", "xen", "kvm", "virtualbox", "innotek"]
+        if result["manufacturer"].lower() in vm_manufacturers:
+            result["is_virtual_machine"] = True
+            # Estrai tipo VM dal manufacturer
+            mfr_lower = result["manufacturer"].lower()
+            if "qemu" in mfr_lower:
+                result["vm_type"] = "qemu"
+            elif "vmware" in mfr_lower:
+                result["vm_type"] = "vmware"
+            elif "microsoft" in mfr_lower:
+                result["vm_type"] = "hyperv"
+            elif "virtualbox" in mfr_lower or "innotek" in mfr_lower:
+                result["vm_type"] = "virtualbox"
+            else:
+                result["vm_type"] = mfr_lower.split(",")[0].split()[0]
+            logger.debug(f"[UNIFIED] Detected VM by manufacturer: {result['manufacturer']} -> vm_type={result['vm_type']}")
     
     return result
 
@@ -680,31 +777,6 @@ async def _probe_ssh(
                                 return sudo_output
                         except Exception as e:
                             logger.debug(f"SSH: sudo command with stdin failed: {cmd_clean[:50]}... error: {e}")
-                        
-                        # Metodo 3: Prova su -c (per QNAP e altri sistemi che richiedono su invece di sudo)
-                        # Formato: echo 'password' | su -c 'command'
-                        try:
-                            cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
-                            # su -c richiede il comando tra apici
-                            su_cmd = f'echo "{escaped_password}" | su -c \'{cmd_clean}\''
-                            logger.debug(f"SSH: trying su -c, cmd_clean: {cmd_clean[:80]}...")
-                            stdin, stdout, stderr = client.exec_command(su_cmd, timeout=timeout)
-                            su_output = stdout.read().decode().strip()
-                            su_error = stderr.read().decode().strip()
-                            
-                            # Rimuovi prompt password
-                            lines = []
-                            for line in su_output.split('\n'):
-                                line_lower = line.lower()
-                                if 'password' not in line_lower:
-                                    lines.append(line)
-                            su_output = '\n'.join(lines)
-                            
-                            if su_output and len(su_output.strip()) > 0:
-                                logger.debug(f"SSH: su -c command succeeded: {cmd_clean[:50]}...")
-                                return su_output
-                        except Exception as e:
-                            logger.debug(f"SSH: su -c command failed: {cmd_clean[:50]}... error: {e}")
                     
                     # Fallback: prova sudo senza password (se configurato NOPASSWD)
                     sudo_cmd = f"sudo {cmd}"
@@ -774,10 +846,88 @@ async def _probe_ssh(
                     logger.debug(f"[UNIFIED] Vendor {vendor_probe_class.VENDOR_NAME} detection failed, skipping vendor-specific probe")
                 
                 client.close()
-                
+            
             except Exception as e:
                 logger.warning(f"[UNIFIED] Vendor-specific probe failed for {target}: {e}")
                 # Continua con risultato base anche se probe vendor-specific fallisce
+                try:
+                    client.close()
+                except:
+                    pass
+        
+        # 4. Fallback: Se nessun vendor rilevato, usa LinuxProbe per dati generici Linux
+        if not vendor_probe_class:
+            logger.info(f"[UNIFIED] No specific vendor detected for {target}, using LinuxProbe for generic Linux data")
+            try:
+                import paramiko
+                from io import StringIO
+                
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                
+                connect_args = {
+                    "hostname": target,
+                    "port": port,
+                    "username": username,
+                    "timeout": min(timeout // 2, 30),
+                    "banner_timeout": 30,
+                    "auth_timeout": 20,
+                    "allow_agent": False,
+                    "look_for_keys": False,
+                }
+                
+                if private_key:
+                    key = paramiko.RSAKey.from_private_key(StringIO(private_key))
+                    connect_args["pkey"] = key
+                else:
+                    connect_args["password"] = password
+                
+                client.connect(**connect_args)
+                
+                def exec_cmd(cmd: str, timeout: int = 5) -> str:
+                    """Esegue comando SSH"""
+                    try:
+                        stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
+                        output = stdout.read().decode().strip()
+                        return output
+                    except Exception as e:
+                        logger.debug(f"SSH exec_cmd '{cmd[:50]}...' failed: {e}")
+                        return ""
+                
+                def exec_cmd_sudo(cmd: str, timeout: int = 5) -> str:
+                    """Esegue comando con sudo se necessario"""
+                    output = exec_cmd(cmd, timeout=timeout)
+                    if output and len(output.strip()) > 0:
+                        return output
+                    # Prova con sudo se password disponibile
+                    ssh_password = credentials.get("password")
+                    if ssh_password:
+                        try:
+                            cmd_clean = cmd.replace(' 2>/dev/null', '').replace(' 2>&1', '')
+                            sudo_cmd = f'echo "{ssh_password}" | sudo -S env "PATH=$PATH" {cmd_clean}'
+                            stdin, stdout, stderr = client.exec_command(sudo_cmd, timeout=timeout)
+                            sudo_output = stdout.read().decode().strip()
+                            # Rimuovi prompt password dall'output
+                            lines = [l for l in sudo_output.split('\n') if 'password' not in l.lower()]
+                            return '\n'.join(lines)
+                        except:
+                            pass
+                    return output
+                
+                # Usa LinuxProbe per raccogliere dati generici
+                linux_probe = LinuxProbe(exec_cmd, exec_cmd_sudo)
+                if linux_probe.detect():
+                    linux_result = linux_probe.probe(target)
+                    # Merge dati Linux con risultato base
+                    if linux_result:
+                        for key, value in linux_result.items():
+                            if value and key not in result:
+                                result[key] = value
+                        logger.info(f"[UNIFIED] LinuxProbe collected: services={len(linux_result.get('services', []))}, users={len(linux_result.get('users', []))}, listening_ports={len(linux_result.get('listening_ports', []))}")
+                
+                client.close()
+            except Exception as e:
+                logger.debug(f"[UNIFIED] LinuxProbe fallback failed for {target}: {e}")
                 try:
                     client.close()
                 except:
@@ -803,34 +953,166 @@ async def _probe_winrm(
     include_software: bool,
     include_services: bool
 ) -> Optional[Dict]:
-    """Probe WinRM/WMI"""
+    """Probe WinRM/WMI con integrazione moduli vendor-specific"""
     try:
-        from .wmi_probe import probe as wmi_probe
+        from impacket.dcerpc.v5.dcom import wmi as dcom_wmi
+        from impacket.dcerpc.v5.dcomrt import DCOMConnection
         
         username = credentials.get("username")
         password = credentials.get("password")
         domain = credentials.get("domain", "")
         
         if not username:
+            logger.warning(f"[UNIFIED] WinRM probe: No username provided for {target}")
             return None
         
-        result = await asyncio.wait_for(
-            wmi_probe(
+        if not password:
+            logger.warning(f"[UNIFIED] WinRM probe: No password provided for {target}")
+            return None
+        
+        effective_domain = domain if domain else ""
+        
+        # Log credenziali (mascherato per sicurezza)
+        pwd_masked = f"{password[:2]}***{password[-1]}" if password and len(password) > 3 else "***"
+        logger.info(f"[UNIFIED] WinRM probe: connecting to {target} as {effective_domain}\\{username if effective_domain else username} (pwd: {pwd_masked})")
+        
+        # Crea connessione WMI in thread separato (bloccante)
+        loop = asyncio.get_event_loop()
+        
+        def create_wmi_connection():
+            """Crea connessione WMI e ritorna iWbemServices"""
+            dcom = DCOMConnection(
                 target,
                 username=username,
                 password=password,
-                domain=domain
-            ),
-            timeout=timeout
+                domain=effective_domain
+            )
+            
+            iInterface = dcom.CoCreateInstanceEx(
+                dcom_wmi.CLSID_WbemLevel1Login,
+                dcom_wmi.IID_IWbemLevel1Login
+            )
+            iWbemLevel1Login = dcom_wmi.IWbemLevel1Login(iInterface)
+            iWbemServices = iWbemLevel1Login.NTLMLogin('//./root/cimv2', dcom_wmi.NULL, dcom_wmi.NULL)
+            
+            return dcom, iWbemServices
+        
+        # Crea connessione WMI
+        dcom, iWbemServices = await asyncio.wait_for(
+            loop.run_in_executor(None, create_wmi_connection),
+            timeout=min(timeout // 4, 30)  # Timeout per connessione
         )
         
+        # Crea funzione wmi_query per i vendor probes
+        def wmi_query(query: str, namespace: str = None) -> List[Dict]:
+            """Esegue query WMI e ritorna lista di risultati come dict"""
+            try:
+                # Se namespace specificato, usa quello, altrimenti default cimv2
+                if namespace:
+                    # Per namespace diversi, crea nuova connessione al namespace
+                    try:
+                        iInterface = dcom.CoCreateInstanceEx(
+                            dcom_wmi.CLSID_WbemLevel1Login,
+                            dcom_wmi.IID_IWbemLevel1Login
+                        )
+                        iWbemLevel1Login = dcom_wmi.IWbemLevel1Login(iInterface)
+                        ns_services = iWbemLevel1Login.NTLMLogin(f'//./{namespace}', dcom_wmi.NULL, dcom_wmi.NULL)
+                        result = ns_services.ExecQuery(query)
+                    except Exception as e:
+                        logger.debug(f"WMI query with namespace {namespace} failed, trying default: {e}")
+                        # Fallback a namespace default
+                        result = iWbemServices.ExecQuery(query)
+                else:
+                    result = iWbemServices.ExecQuery(query)
+                
+                results = []
+                count = 0
+                while count < 1000:  # Limite sicurezza
+                    try:
+                        item = result.Next(0xffffffff, 1)[0]
+                        props = item.getProperties()
+                        # Converti props in dict semplice
+                        result_dict = {}
+                        for key, value_obj in props.items():
+                            val = value_obj.get('value', None)
+                            if isinstance(val, bytes):
+                                try:
+                                    val = val.decode('utf-8', errors='replace')
+                                except:
+                                    val = str(val)
+                            result_dict[key] = val
+                        results.append(result_dict)
+                        count += 1
+                    except:
+                        break
+                return results
+            except Exception as e:
+                logger.debug(f"WMI query failed: {query[:50]}... error: {e}")
+                return []
+        
+        # Rileva tipo Windows usando vendor probes in ordine di priorità
+        vendor_probes = [
+            HyperVProbe(wmi_query),  # Priorità 5 - prova prima
+            WindowsServerProbe(wmi_query),  # Priorità 10
+            WindowsWorkstationProbe(wmi_query),  # Priorità 20
+        ]
+        
+        # Ordina per priorità
+        vendor_probes.sort(key=lambda p: p.DETECTION_PRIORITY)
+        
+        detected_probe = None
+        result = None
+        
+        # Prova detection per ogni probe
+        for probe_instance in vendor_probes:
+            try:
+                if probe_instance.detect():
+                    logger.info(f"[UNIFIED] Detected Windows type: {probe_instance.DEVICE_TYPE} for {target}")
+                    detected_probe = probe_instance
+                    # Esegui probe completo
+                    result = probe_instance.probe(target)
+                    break
+            except Exception as e:
+                logger.debug(f"[UNIFIED] Detection failed for {probe_instance.DEVICE_TYPE}: {e}")
+                continue
+        
+        # Se nessun vendor rilevato, usa probe base come fallback
+        if not detected_probe:
+            logger.info(f"[UNIFIED] No specific Windows type detected for {target}, using basic WMI probe")
+            from .wmi_probe import probe as wmi_probe
+            
+            result = await asyncio.wait_for(
+                wmi_probe(
+                    target,
+                    username=username,
+                    password=password,
+                    domain=domain
+                ),
+                timeout=timeout
+            )
+        
+        # Chiudi connessione
+        try:
+            dcom.disconnect()
+        except:
+            pass
+        
         if result and result.get("hostname"):
-            return _normalize_winrm_result(result)
+            return _normalize_wmi_vendor_result(result)
         
     except asyncio.TimeoutError:
-        logger.warning(f"WinRM probe timeout for {target}")
+        logger.warning(f"[UNIFIED] WinRM probe timeout for {target}")
     except Exception as e:
-        logger.warning(f"WinRM probe error for {target}: {e}")
+        error_str = str(e).lower()
+        if "access_denied" in error_str:
+            logger.error(f"[UNIFIED] WinRM ACCESS DENIED for {target} - Check credentials: user={credentials.get('username')}, domain={credentials.get('domain', '(none)')}")
+            logger.error(f"[UNIFIED] Possible causes: 1) Wrong username/password 2) User not in 'Remote Management Users' group 3) WMI access blocked by policy")
+        elif "connection refused" in error_str:
+            logger.error(f"[UNIFIED] WinRM CONNECTION REFUSED for {target} - WinRM service may not be running or firewall is blocking")
+        else:
+            logger.warning(f"[UNIFIED] WinRM probe error for {target}: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
     
     return None
 
@@ -885,18 +1167,6 @@ def _normalize_ssh_result(data: Dict) -> Dict:
     """Normalizza risultato SSH nel formato unificato"""
     # Preserva os_name se già impostato dal vendor probe (es. DSM per Synology)
     os_name = data.get("os_name") or data.get("os") or data.get("distro", "")
-    
-    # Serial number - cerca diverse chiavi usate dai probe vendor
-    serial_number = data.get("serial_number") or data.get("serial") or ""
-    
-    # RAM - cerca diverse chiavi (QNAP/Synology usano ram_total_mb)
-    ram_total_mb = data.get("ram_total_mb") or data.get("memory_total_mb") or 0
-    ram_free_mb = data.get("ram_free_mb") or data.get("memory_free_mb") or 0
-    ram_used_mb = ram_total_mb - ram_free_mb if ram_total_mb else (data.get("memory_used_mb") or 0)
-    
-    # RAM in GB se disponibile direttamente
-    ram_total_gb = data.get("ram_total_gb") or 0
-    
     result = {
         "system_info": {
             "hostname": data.get("hostname", ""),
@@ -906,15 +1176,9 @@ def _normalize_ssh_result(data: Dict) -> Dict:
             "kernel_version": data.get("kernel", ""),
             "manufacturer": data.get("manufacturer", ""),
             "model": data.get("model", ""),
-            "serial_number": serial_number,
+            "serial_number": data.get("serial", ""),
             "uptime": data.get("uptime", ""),
         },
-        # Aggiungi serial_number e RAM anche al livello top per il merge sul server
-        "serial_number": serial_number,
-        "ram_total_mb": int(ram_total_mb),
-        "ram_total_gb": float(ram_total_gb) if ram_total_gb else round(int(ram_total_mb) / 1024, 2) if ram_total_mb else 0,
-        "ram_free_mb": int(ram_free_mb),
-        "ram_used_mb": int(ram_used_mb),
         "cpu": {
             "model": data.get("cpu_model", ""),
             "cores_physical": data.get("cpu_cores", 0),
@@ -924,9 +1188,9 @@ def _normalize_ssh_result(data: Dict) -> Dict:
             "load_15min": data.get("load_15", 0),
         },
         "memory": {
-            "total_bytes": int(ram_total_mb) * 1024 * 1024 if ram_total_mb else 0,
-            "used_bytes": int(ram_used_mb) * 1024 * 1024 if ram_used_mb else 0,
-            "free_bytes": int(ram_free_mb) * 1024 * 1024 if ram_free_mb else 0,
+            "total_bytes": int(data.get("memory_total_mb", 0) or 0) * 1024 * 1024,
+            "used_bytes": int(data.get("memory_used_mb", 0) or 0) * 1024 * 1024,
+            "free_bytes": int(data.get("memory_free_mb", 0) or 0) * 1024 * 1024,
         },
         "disks": _safe_list(data.get("disks") or (data.get("storage_info", {}).get("disks") if isinstance(data.get("storage_info"), dict) else [])),
         "volumes": _safe_list(data.get("volumes") or data.get("filesystems") or (data.get("storage_info", {}).get("volumes") if isinstance(data.get("storage_info"), dict) else [])),
@@ -975,8 +1239,89 @@ def _normalize_ssh_result(data: Dict) -> Dict:
     return result
 
 
+def _normalize_wmi_vendor_result(data: Dict) -> Dict:
+    """Normalizza risultato WMI vendor probe nel formato unificato"""
+    # I vendor probes ritornano già dati strutturati, mappiamo al formato unificato
+    result = {
+        "system_info": {
+            "hostname": data.get("hostname", ""),
+            "device_type": data.get("device_type", "windows"),
+            "os_name": data.get("os_name", ""),
+            "os_version": data.get("os_version", ""),
+            "os_build": data.get("os_build", ""),
+            "os_family": data.get("os_family", "Windows"),
+            "architecture": data.get("architecture", ""),
+            "manufacturer": data.get("manufacturer", ""),
+            "model": data.get("model", ""),
+            "serial_number": data.get("serial_number", ""),
+            "bios_version": data.get("bios_version", ""),
+            "bios_serial": data.get("bios_serial", ""),
+            "bios_manufacturer": data.get("bios_manufacturer", ""),
+            "bios_date": data.get("bios_date", ""),
+            "domain": data.get("domain", ""),
+            "domain_role": data.get("domain_role", ""),
+            "is_domain_controller": data.get("is_domain_controller", False),
+            "is_domain_member": data.get("is_domain_member", False),
+            "is_virtual_machine": data.get("is_virtual_machine", False),
+            "vm_type": data.get("vm_type", ""),
+            "install_date": data.get("install_date", ""),
+            "last_boot": data.get("last_boot", ""),
+        },
+        "cpu": {
+            "model": data.get("cpu_model", ""),
+            "cores_physical": data.get("cpu_cores", 0),
+            "cores_logical": data.get("cpu_threads", 0),
+            "speed_mhz": data.get("cpu_speed_mhz", 0),
+            "load_percent": data.get("cpu_usage_percent", 0),
+        },
+        "memory": {
+            "total_bytes": int((data.get("ram_total_gb", 0) or 0) * 1024 * 1024 * 1024),
+            "free_bytes": int((data.get("ram_free_mb", 0) or 0) * 1024 * 1024),
+            "usage_percent": data.get("ram_usage_percent", 0),
+            "modules": _safe_list(data.get("ram_modules")),
+        },
+        "disks": _safe_list(data.get("disks")),
+        "volumes": _safe_list(data.get("volumes")),
+        "network_interfaces": _safe_list(data.get("interfaces")),
+        "services": _safe_list(data.get("services")),
+        "software": _safe_list(data.get("software")),
+        "users": _safe_list(data.get("local_users")),
+        "server_roles": _safe_list(data.get("server_roles")),
+        "pending_updates": _safe_list(data.get("pending_updates")),
+        "antivirus_status": data.get("antivirus_name", ""),
+        "antivirus_enabled": data.get("antivirus_enabled", False),
+        "firewall_enabled": data.get("firewall_enabled", False),
+        "primary_ip": data.get("primary_ip", ""),
+        "primary_mac": data.get("primary_mac", ""),
+        "default_gateway": data.get("default_gateway", ""),
+        "dns_servers": _safe_list(data.get("dns_servers")),
+    }
+    
+    # Calcola used_bytes se non presente
+    if result["memory"]["total_bytes"] and not result["memory"].get("used_bytes"):
+        free_bytes = result["memory"].get("free_bytes", 0)
+        result["memory"]["used_bytes"] = result["memory"]["total_bytes"] - free_bytes
+    
+    # Calcola usage percent se non presente
+    if result["memory"]["total_bytes"] and not result["memory"].get("usage_percent"):
+        used_bytes = result["memory"].get("used_bytes", 0)
+        result["memory"]["usage_percent"] = (used_bytes / result["memory"]["total_bytes"]) * 100
+    
+    # Hyper-V specific data
+    if data.get("device_type") == "hyperv":
+        result["hyperv"] = {
+            "vms": _safe_list(data.get("vms")),
+            "vm_count": data.get("vm_count", 0),
+            "vms_running": data.get("vms_running", 0),
+            "virtual_switches": _safe_list(data.get("virtual_switches")),
+            "storage": data.get("hyperv_storage", {}),
+        }
+    
+    return result
+
+
 def _normalize_winrm_result(data: Dict) -> Dict:
-    """Normalizza risultato WinRM nel formato unificato"""
+    """Normalizza risultato WinRM nel formato unificato (fallback per wmi_probe.py)"""
     result = {
         "system_info": {
             "hostname": data.get("hostname", ""),

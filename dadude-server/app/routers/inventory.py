@@ -874,7 +874,21 @@ async def auto_detect_device(
                     
                     # OS
                     # Priorità: os_family da scan_result (più affidabile per Synology/QNAP)
-                    if scan_result.get("os_family"):
+                    # Normalizza OS prima di salvare
+                    from ..services.os_normalizer import normalize_os
+                    
+                    normalized_os = normalize_os(
+                        os_name=scan_result.get("os_name"),
+                        os_version=scan_result.get("os_version") or scan_result.get("version"),
+                        os_family=scan_result.get("os_family") or device.os_family,
+                        manufacturer=scan_result.get("manufacturer") or scan_result.get("vendor") or device.manufacturer,
+                        model=scan_result.get("model") or device.model
+                    )
+                    
+                    if normalized_os:
+                        logger.info(f"[AUTO_DETECT] Normalized OS: '{scan_result.get('os_name')}' -> '{normalized_os}'")
+                        device.os_family = normalized_os
+                    elif scan_result.get("os_family"):
                         device.os_family = scan_result["os_family"]
                     # os_name viene usato solo se os_family non è già impostato
                     elif scan_result.get("os_name"):
@@ -1016,56 +1030,29 @@ async def auto_detect_device(
                                     device.device_type = "windows"
                                     logger.info(f"Setting device_type from os_version: windows")
                     
-                    # Determina category in base ai dati raccolti
-                    if not device.category:
-                        # Categoria basata su porte aperte e tipo dispositivo
-                        windows_ports = [3389, 445, 139, 389, 135, 5985, 5986]
-                        server_ports = [3306, 5432, 1433, 1521, 27017, 6379]  # Database
-                        network_ports = [161, 162, 8728, 8729, 8291]  # SNMP, MikroTik
-                        
-                        open_port_numbers = [p.get("port") for p in open_ports if p.get("open")]
-                        
-                        if device.device_type == "windows":
-                            # Windows: determina se server o workstation
-                            if any(p in open_port_numbers for p in server_ports):
-                                device.category = "server"
-                            elif 3389 in open_port_numbers:  # RDP
-                                device.category = "workstation"
-                            else:
-                                device.category = "server"  # Default per Windows
-                        elif device.device_type == "linux":
-                            # Linux: determina se server o workstation
-                            if any(p in open_port_numbers for p in server_ports):
-                                device.category = "server"
-                            elif 22 in open_port_numbers and not any(p in open_port_numbers for p in server_ports):
-                                device.category = "workstation"
-                            else:
-                                device.category = "server"  # Default per Linux
-                        elif device.device_type == "mikrotik":
-                            device.category = "router"
-                        elif device.device_type == "network":
-                            # Network device: determina tipo
-                            if any(p in open_port_numbers for p in [8728, 8729, 8291]):
-                                device.category = "router"
-                            elif 161 in open_port_numbers:
-                                # SNMP: potrebbe essere switch, router, firewall
-                                device.category = "switch"  # Default, può essere cambiato manualmente
-                            else:
-                                device.category = "network"
-                        else:
-                            # Tipo sconosciuto: prova a determinare da porte
-                            if any(p in open_port_numbers for p in network_ports):
-                                device.category = "network"
-                            elif any(p in open_port_numbers for p in server_ports):
-                                device.category = "server"
-                            else:
-                                device.category = "other"
+                    # Determina category e subcategory usando il servizio centralizzato
+                    from ..services.category_service import determine_category_and_subcategory
                     
-                    # Salva anche device_type e category espliciti dal scan_result se presenti
+                    category, subcategory = determine_category_and_subcategory(
+                        device_type=device.device_type,
+                        os_name=scan_result.get("os_name"),
+                        os_family=device.os_family or scan_result.get("os_family"),
+                        manufacturer=device.manufacturer or scan_result.get("manufacturer"),
+                        model=device.model or scan_result.get("model"),
+                        open_ports=open_ports,
+                        probe_result_category=scan_result.get("category"),
+                        scan_result_category=scan_result.get("category"),
+                    )
+                    
+                    # Aggiorna category e subcategory se determinate
+                    if category:
+                        device.category = category
+                    if subcategory:
+                        device.subcategory = subcategory
+                    
+                    # Salva anche device_type esplicito dal scan_result se presente
                     if scan_result.get("device_type") and scan_result["device_type"] != "unknown":
                         device.device_type = scan_result["device_type"]
-                    if scan_result.get("category"):
-                        device.category = scan_result["category"]
                     
                     # Firmware/Version
                     firmware = scan_result.get("firmware_version") or scan_result.get("bios_version")
@@ -2728,6 +2715,7 @@ async def list_inventory_devices(
                     "domain": d.domain,
                     "device_type": d.device_type,
                     "category": d.category,
+                    "subcategory": getattr(d, 'subcategory', None),
                     "manufacturer": d.manufacturer,
                     "model": d.model,
                     "primary_ip": d.primary_ip,
@@ -2781,6 +2769,16 @@ async def get_inventory_device(device_id: str):
             raise HTTPException(status_code=404, detail="Dispositivo non trovato")
         
         # Base info
+        # Costruisci os_name normalizzato se disponibile
+        os_name = None
+        if device.os_family or device.os_version:
+            if device.os_family and device.os_version:
+                os_name = f"{device.os_family} {device.os_version}".strip()
+            elif device.os_family:
+                os_name = device.os_family
+            elif device.os_version:
+                os_name = device.os_version
+        
         result = {
             "id": device.id,
             "customer_id": device.customer_id,
@@ -2789,6 +2787,7 @@ async def get_inventory_device(device_id: str):
             "domain": device.domain,
             "device_type": device.device_type,
             "category": device.category,
+            "subcategory": getattr(device, 'subcategory', None),
             "manufacturer": device.manufacturer,
             "model": device.model,
             "serial_number": device.serial_number,
@@ -2797,20 +2796,29 @@ async def get_inventory_device(device_id: str):
             "primary_mac": device.primary_mac,
             "mac_address": device.mac_address or device.primary_mac,
             "site_name": device.site_name,
-            "location": device.location,
+            "location": getattr(device, 'location', None),
             "status": device.status,
+            "monitored": device.monitored,
+            "monitoring_type": device.monitoring_type,
+            "monitoring_port": device.monitoring_port,
+            "monitoring_agent_id": device.monitoring_agent_id,
             "monitor_source": device.monitor_source,
+            "netwatch_id": device.netwatch_id,
             "dude_device_id": device.dude_device_id,
             "last_seen": device.last_seen.isoformat() if device.last_seen else None,
             "last_scan": device.last_scan.isoformat() if device.last_scan else None,
+            "last_check": device.last_check.isoformat() if device.last_check else None,
             "os_family": device.os_family,
             "os_version": device.os_version,
+            "os_name": os_name,
             "os_build": device.os_build,
             "architecture": device.architecture,
             "cpu_model": device.cpu_model,
             "cpu_cores": device.cpu_cores,
             "cpu_threads": device.cpu_threads,
             "ram_total_gb": device.ram_total_gb,
+            "disk_total_gb": device.disk_total_gb,
+            "disk_free_gb": device.disk_free_gb,
             "description": device.description,
             "notes": device.notes,
             "tags": device.tags,
@@ -2819,8 +2827,14 @@ async def get_inventory_device(device_id: str):
             "identified_by": device.identified_by,
             "credential_used": device.credential_used,
             "credential_id": device.credential_id,
+            "credential_ids": getattr(device, 'credential_ids', None),
             "firmware_version": getattr(device, 'firmware_version', None),
             "interface_count": getattr(device, 'interface_count', None),
+            "feature": getattr(device, 'feature', None),
+            "cespite": getattr(device, 'cespite', None),
+            "first_seen_at": device.first_seen_at.isoformat() if device.first_seen_at else None,
+            "last_verified_at": device.last_verified_at.isoformat() if device.last_verified_at else None,
+            "verification_count": device.verification_count,
             "created_at": device.created_at.isoformat() if device.created_at else None,
             "updated_at": device.updated_at.isoformat() if device.updated_at else None,
         }
@@ -2933,12 +2947,56 @@ async def get_inventory_device(device_id: str):
             {
                 "name": d.name,
                 "mount_point": d.mount_point,
+                "disk_type": d.disk_type,
                 "size_gb": d.size_gb,
                 "used_gb": d.used_gb,
+                "free_gb": d.free_gb,
+                "percent_used": d.percent_used,
                 "filesystem": d.filesystem,
+                "model": d.model,
+                "serial": d.serial,
+                "smart_status": d.smart_status,
+                "is_system": d.is_system,
             }
             for d in device.disks
         ]
+        
+        # Services
+        result["services"] = [
+            {
+                "name": s.name,
+                "display_name": s.display_name,
+                "description": s.description,
+                "service_type": s.service_type,
+                "status": s.status,
+                "start_type": s.start_type,
+                "user_account": s.user_account,
+                "executable_path": s.executable_path,
+                "pid": s.pid,
+                "port": s.port,
+                "is_critical": s.is_critical,
+                "monitored": s.monitored,
+            }
+            for s in device.services
+        ]
+        
+        # Software
+        result["software"] = [
+            {
+                "name": sw.name,
+                "version": sw.version,
+                "vendor": sw.vendor,
+                "install_location": sw.install_location,
+                "size_mb": sw.size_mb,
+                "is_update": sw.is_update,
+            }
+            for sw in device.software
+        ]
+        
+        # Conteggi per UI
+        result["services_count"] = len(result["services"])
+        result["software_count"] = len(result["software"])
+        result["disks_count"] = len(result["disks"])
         
         # Type-specific details - Restituisce TUTTI i campi disponibili
         if device.device_type == "windows" and device.windows_details:
@@ -3595,8 +3653,9 @@ async def delete_inventory_device(device_id: str):
 
 
 @router.put("/devices/{device_id}")
+@router.patch("/devices/{device_id}")
 async def update_inventory_device(device_id: str, updates: dict):
-    """Aggiorna dispositivo"""
+    """Aggiorna dispositivo (supporta PUT e PATCH)"""
     from ..models.database import init_db, get_session
     from ..models.inventory import InventoryDevice
     from ..config import get_settings
@@ -3619,21 +3678,35 @@ async def update_inventory_device(device_id: str, updates: dict):
         
         # Campi aggiornabili
         allowed_fields = [
-            'name', 'hostname', 'device_type', 'category', 'manufacturer',
-            'model', 'serial_number', 'asset_tag', 'site_name', 'location',
-            'description', 'notes', 'tags', 'status', 'credential_id',
-            'os_family', 'os_version', 'domain'
+            'name', 'hostname', 'device_type', 'category', 'subcategory',
+            'manufacturer', 'model', 'serial_number', 'asset_tag', 'site_name', 
+            'location', 'feature', 'cespite', 'description', 'notes', 'tags', 
+            'status', 'credential_id', 'credential_ids', 'os_family', 'os_version', 'domain'
         ]
         
         for field, value in updates.items():
             if field in allowed_fields:
-                # Protezione speciale per credential_id: preserva se non viene esplicitamente passato o se viene passato None
+                # Protezione speciale per credential_id
                 if field == 'credential_id':
-                    # Permetti solo se viene esplicitamente passato un valore non-None
-                    # Se viene passato None o non viene passato, preserva quello esistente
-                    if value is not None:
+                    # Stringa vuota = rimuovi credenziale
+                    if value == '' or value is None:
+                        setattr(device, field, None)
+                    else:
                         setattr(device, field, value)
-                    # Se value è None, non fare nulla (preserva esistente)
+                elif field == 'credential_ids':
+                    # Credenziali multiple - accetta stringa JSON o null
+                    if value == '' or value is None or value == 'null':
+                        setattr(device, field, None)
+                    else:
+                        # Valida che sia un JSON array valido
+                        try:
+                            parsed = json.loads(value) if isinstance(value, str) else value
+                            if isinstance(parsed, list):
+                                setattr(device, field, json.dumps(parsed))
+                            else:
+                                setattr(device, field, value)
+                        except json.JSONDecodeError:
+                            setattr(device, field, value)
                 else:
                     setattr(device, field, value)
         
@@ -4532,27 +4605,14 @@ async def get_device_types(customer_id: Optional[str] = Query(None)):
 @router.get("/categories")
 async def get_categories(customer_id: Optional[str] = Query(None)):
     """
-    Restituisce lista di valori unici per category dall'inventario.
-    Utile per autocompletamento nei form.
+    Restituisce lista di tutte le categorie disponibili dalla gerarchia.
+    Utile per dropdown nei form.
     """
-    from ..models.database import init_db, get_session
-    from ..models.inventory import InventoryDevice
-    from ..config import get_settings
-    from sqlalchemy import distinct
-    
-    settings = get_settings()
-    db_url = settings.database_url
-    engine = init_db(db_url)
-    session = get_session(engine)
+    from ..services.category_service import get_all_categories
     
     try:
-        query = session.query(InventoryDevice.category).distinct()
-        
-        if customer_id:
-            query = query.filter(InventoryDevice.customer_id == customer_id)
-        
-        categories = [c[0] for c in query.filter(InventoryDevice.category.isnot(None)).all() if c[0]]
-        categories.sort()
+        # Restituisce tutte le categorie dalla gerarchia definita
+        categories = get_all_categories()
         
         return {
             "success": True,
@@ -4561,8 +4621,37 @@ async def get_categories(customer_id: Optional[str] = Query(None)):
     except Exception as e:
         logger.error(f"Error fetching categories: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        session.close()
+
+
+@router.get("/subcategories")
+async def get_subcategories(category: Optional[str] = Query(None)):
+    """
+    Restituisce lista di sottocategorie per una categoria specifica.
+    Se category non è specificata, restituisce tutte le sottocategorie.
+    """
+    from ..services.category_service import get_subcategories_for_category, get_all_categories
+    
+    try:
+        if category:
+            # Restituisce solo le subcategories per la categoria specificata
+            subcategories = get_subcategories_for_category(category)
+        else:
+            # Restituisce tutte le subcategories di tutte le categorie
+            all_categories = get_all_categories()
+            subcategories = []
+            for cat in all_categories:
+                subcategories.extend(get_subcategories_for_category(cat))
+            subcategories = list(set(subcategories))  # Rimuovi duplicati
+            subcategories.sort()
+        
+        return {
+            "success": True,
+            "values": subcategories,
+            "category": category
+        }
+    except Exception as e:
+        logger.error(f"Error fetching subcategories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/os-families")

@@ -703,10 +703,13 @@ class CommandHandler:
                 },
             }
             
-            # Log credenziali SSH per debug (senza password)
+            # Log credenziali per debug (senza password)
             logger.info(f"[UNIFIED] SSH credentials: username={credentials['ssh'].get('username')}, "
                        f"password={'***' if credentials['ssh'].get('password') else 'None'}, "
                        f"port={credentials['ssh'].get('port')}")
+            logger.info(f"[UNIFIED] WMI credentials: username={credentials['wmi'].get('username')}, "
+                       f"password={'***' if credentials['wmi'].get('password') else 'None'}, "
+                       f"domain={credentials['wmi'].get('domain')}")
             
             result = await unified_probe(
                 target=target,

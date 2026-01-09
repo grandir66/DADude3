@@ -142,14 +142,14 @@ VENDOR_DATABASE = {
     'FC:EC:DA': {'vendor': 'Ubiquiti', 'type': 'network', 'os': 'unknown'},
     
     # MikroTik
-    '00:0C:42': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    '4C:5E:0C': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    '64:D1:54': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    '6C:3B:6B': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    'B8:69:F4': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    'C4:AD:34': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    'D4:CA:6D': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
-    'E4:8D:8C': {'vendor': 'MikroTik', 'type': 'router', 'os': 'routeros'},
+    '00:0C:42': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    '4C:5E:0C': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    '64:D1:54': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    '6C:3B:6B': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    'B8:69:F4': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    'C4:AD:34': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    'D4:CA:6D': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
+    'E4:8D:8C': {'vendor': 'MikroTik', 'type': 'router', 'category': 'network', 'os': 'routeros'},
     
     # TP-Link
     '00:1D:0F': {'vendor': 'TP-Link', 'type': 'network', 'os': 'unknown'},

@@ -72,6 +72,16 @@
                 <i class="bi bi-gear"></i>
             </button>
         </template>
+        
+        <template #cell-actions="{ row }">
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-info" 
+                        @click="unifiedScan(row.id, row.address)"
+                        title="Scansione">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </template>
     </data-table>
 </div>
 
@@ -143,7 +153,8 @@ if (typeof Vue !== 'undefined' && Vue.createApp && typeof window.DataTable !== '
                 { key: 'device_type', label: 'Tipo', field: 'device_type', sortable: true },
                 { key: 'group', label: 'Gruppo', field: 'group', sortable: true },
                 { key: 'monitoring', label: 'Monitoraggio', field: (row) => this.getMonitoringLabel(row), sortable: false },
-                { key: 'last_seen', label: 'Ultimo Contatto', field: 'last_seen', sortable: true }
+                { key: 'last_seen', label: 'Ultimo Contatto', field: 'last_seen', sortable: true },
+                { key: 'actions', label: 'Azioni', field: 'id', sortable: false }
             ],
             monitoringOptions: [
                 { value: 'none', label: 'Nessuno' },
@@ -336,6 +347,112 @@ if (typeof Vue !== 'undefined' && Vue.createApp && typeof window.DataTable !== '
                     window.toastError('Errore: ' + e.message);
                 }
             }
+        },
+        async unifiedScan(deviceId, address) {
+            // Chiudi modal dettagli se aperto
+            const detailModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
+            if (detailModal) {
+                detailModal.hide();
+            }
+            
+            // Mostra modal con due aree: Unified Scanner e Auto-detect
+            const modalContent = `
+                <input type="hidden" id="unifiedScanAddress" value="${address}">
+                <div class="row">
+                    <!-- Colonna Unified Scanner -->
+                    <div class="col-md-7 border-end">
+                        <h5 class="mb-3 text-primary"><i class="bi bi-layers"></i> Unified Scanner</h5>
+                        <p class="text-muted small mb-3">Nuovo scanner modulare completo.</p>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Protocolli:</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <div class="form-check me-2">
+                                    <input class="form-check-input" type="checkbox" id="protoAuto" checked>
+                                    <label class="form-check-label" for="protoAuto">Auto</label>
+                                </div>
+                                <div class="form-check me-2">
+                                    <input class="form-check-input" type="checkbox" id="protoSSH">
+                                    <label class="form-check-label" for="protoSSH">SSH</label>
+                                </div>
+                                <div class="form-check me-2">
+                                    <input class="form-check-input" type="checkbox" id="protoSNMP">
+                                    <label class="form-check-label" for="protoSNMP">SNMP</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="protoWinRM">
+                                    <label class="form-check-label" for="protoWinRM">WinRM</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Opzioni:</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="includeSoftware" checked>
+                                        <label class="form-check-label small" for="includeSoftware">Software</label>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="includeServices" checked>
+                                        <label class="form-check-label small" for="includeServices">Servizi</label>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="includeUsers">
+                                        <label class="form-check-label small" for="includeUsers">Utenti</label>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="autoSave" checked>
+                                        <label class="form-check-label small" for="autoSave">Salva DB</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid mt-4">
+                            <button class="btn btn-primary" onclick="executeUnifiedScan('${deviceId}')">
+                                <i class="bi bi-play-fill"></i> Avvia Unified Scan
+                            </button>
+                        </div>
+                        
+                        <div id="unifiedScanProgress" class="mt-3 d-none">
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                            </div>
+                            <small class="text-muted d-block text-center mt-1">Scansione in corso...</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Colonna Auto-detect -->
+                    <div class="col-md-5 bg-light p-3 rounded">
+                        <h5 class="mb-3 text-secondary"><i class="bi bi-magic"></i> Auto-detect</h5>
+                        <p class="text-muted small mb-3">Scanner legacy (verrà dismesso).</p>
+                        
+                        <div class="alert alert-white border small shadow-sm">
+                            <ul class="mb-0 ps-3">
+                                <li>Usa credenziali assegnate</li>
+                                <li>Testa credenziali default</li>
+                                <li>Scan porte rapido</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-grid mt-4">
+                            <button class="btn btn-outline-secondary" onclick="autoDetectDevice('${deviceId}', '${address}')">
+                                <i class="bi bi-bullseye"></i> Avvia Auto-detect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            showModal('<i class="bi bi-search"></i> Scansione Dispositivo', modalContent, 'lg');
         }
     },
     watch: {

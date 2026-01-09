@@ -1644,20 +1644,52 @@ def _detect_ubiquiti_unifi(exec_cmd) -> bool:
     """
     Rileva se il dispositivo è un Ubiquiti UniFi con shell limitata.
     Gli UniFi entrano in una shell limitata BusyBox, ma supportano il comando 'info'.
-    """
-    # Prova il comando 'info' tipico degli UniFi
-    info_out = exec_cmd("info", timeout=3)
-    if info_out and ("model" in info_out.lower() or "version" in info_out.lower() or "mac" in info_out.lower()):
-        return True
     
-    # Prova a vedere se siamo in una shell BusyBox di un UniFi
-    busybox = exec_cmd("busybox", timeout=3)
-    if busybox and "busybox" in busybox.lower():
-        # Controlla se esiste /etc/board.info (tipico UniFi)
-        board = exec_cmd("cat /etc/board.info 2>/dev/null", timeout=3)
-        if board and "board" in board.lower():
+    IMPORTANTE: Questa funzione deve essere MOLTO specifica per evitare falsi positivi
+    su macchine Linux normali che hanno busybox installato.
+    """
+    # Prima verifica: /etc/board.info è il file distintivo degli UniFi
+    board = exec_cmd("cat /etc/board.info 2>/dev/null", timeout=3)
+    if board:
+        board_lower = board.lower()
+        # Deve contenere pattern specifici UniFi, non solo "board"
+        if "ubnt" in board_lower or "unifi" in board_lower or "ubiquiti" in board_lower:
+            logger.debug(f"UniFi detection: board.info contains UniFi patterns: {board[:100]}")
+            return True
+        # Se contiene board.name con modelli UniFi tipici
+        if "board.name" in board_lower or "board.sysid" in board_lower:
+            logger.debug(f"UniFi detection: board.info has UniFi structure: {board[:100]}")
             return True
     
+    # Seconda verifica: Il comando 'info' tipico degli UniFi deve avere output UniFi-specifico
+    # ATTENZIONE: Su Linux normale 'info' può restituire manpage di GNU info!
+    info_out = exec_cmd("info 2>/dev/null", timeout=3)
+    if info_out:
+        info_lower = info_out.lower()
+        # Escludi output di GNU info (man pages)
+        if "gnu info" in info_lower or "info manual" in info_lower or "this is info" in info_lower:
+            logger.debug("UniFi detection: Skipping, this is GNU info command output")
+        else:
+            # Deve contenere pattern specifici UniFi, non solo parole generiche
+            unifi_patterns = [
+                "model:" in info_lower and ("u6" in info_lower or "uap" in info_lower or "usw" in info_lower or "udm" in info_lower or "usg" in info_lower),
+                "ubnt" in info_lower,
+                "unifi" in info_lower,
+                "board.name" in info_lower,
+                "ubiquiti" in info_lower,
+            ]
+            if any(unifi_patterns):
+                logger.debug(f"UniFi detection: 'info' command has UniFi patterns: {info_out[:100]}")
+                return True
+    
+    # Terza verifica: UniFi ha /usr/lib/unifi o simili
+    unifi_path = exec_cmd("test -d /usr/lib/unifi && echo UNIFI_FOUND 2>/dev/null", timeout=3)
+    if unifi_path and "UNIFI_FOUND" in unifi_path:
+        logger.debug("UniFi detection: /usr/lib/unifi exists")
+        return True
+    
+    # Non è un UniFi
+    logger.debug("UniFi detection: No UniFi patterns found, returning False")
     return False
 
 

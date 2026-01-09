@@ -65,6 +65,7 @@ class InventoryDevice(Base):
     
     # Credenziale associata per accesso al device
     credential_id = Column(String(8), ForeignKey("credentials.id"), nullable=True)
+    credential_ids = Column(Text, nullable=True)  # JSON array of credential IDs for multiple credentials
     
     # Identificazione
     name = Column(String(255), nullable=False)
@@ -73,7 +74,8 @@ class InventoryDevice(Base):
     
     # Tipo e categoria
     device_type = Column(String(20), default="other")  # windows, linux, mikrotik, network, etc
-    category = Column(String(50), nullable=True)  # server, workstation, router, switch, etc
+    category = Column(String(50), nullable=True)  # Network, Server, Storage, Security, etc
+    subcategory = Column(String(50), nullable=True)  # Router, Switch, Physical Server, VM Windows, etc.
     manufacturer = Column(String(100), nullable=True)
     model = Column(String(100), nullable=True)
     serial_number = Column(String(100), nullable=True)
@@ -125,9 +127,14 @@ class InventoryDevice(Base):
     
     # Note e metadata
     description = Column(Text, nullable=True)
-    notes = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)  # Note (da compilare manualmente)
     tags = Column(JSON, nullable=True)  # ["critical", "production", "backup"]
     custom_fields = Column(JSON, nullable=True)  # Campi personalizzati
+    
+    # Campi aggiuntivi per inventario
+    feature = Column(String(100), nullable=True)  # ES: DC, File Server, Print Server
+    location = Column(String(255), nullable=True)  # Location (da compilare manualmente)
+    cespite = Column(String(100), nullable=True)  # Cespite (da compilare manualmente)
     
     # Audit
     active = Column(Boolean, default=True)
@@ -156,6 +163,9 @@ class InventoryDevice(Base):
     __table_args__ = (
         Index('idx_inventory_customer', 'customer_id'),
         Index('idx_inventory_type', 'device_type'),
+        Index('idx_inventory_category', 'category'),
+        Index('idx_inventory_subcategory', 'subcategory'),
+        Index('idx_inventory_category_subcategory', 'category', 'subcategory'),
         Index('idx_inventory_ip', 'primary_ip'),
         Index('idx_inventory_status', 'status'),
         Index('idx_inventory_dude', 'dude_device_id'),
@@ -230,7 +240,7 @@ class DiskInfo(Base):
     name = Column(String(100), nullable=False)  # C:, /dev/sda, disk1
     mount_point = Column(String(255), nullable=True)
     
-    disk_type = Column(String(20), nullable=True)  # hdd, ssd, nvme, raid
+    disk_type = Column(String(50), nullable=True)  # hdd, ssd, nvme, raid, Fixed hard disk media, etc.
     filesystem = Column(String(50), nullable=True)  # NTFS, ext4, ZFS
     
     size_gb = Column(Float, nullable=True)

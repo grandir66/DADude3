@@ -80,7 +80,7 @@
 <!-- Tabs -->
 <ul class="nav nav-tabs mb-4" id="customerTabs">
     <li class="nav-item">
-        <a class="nav-link active" data-bs-toggle="tab" href="#networks">
+        <a class="nav-link" data-bs-toggle="tab" href="#networks">
             <i class="bi bi-diagram-3"></i> Reti ({{ networks|length }})
         </a>
     </li>
@@ -100,7 +100,7 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#inventory" onclick="loadInventory()">
+        <a class="nav-link active" data-bs-toggle="tab" href="#inventory" onclick="loadInventory()">
             <i class="bi bi-hdd-network"></i> Inventario <span id="inventoryCount" class="badge bg-secondary">0</span>
         </a>
     </li>
@@ -522,7 +522,7 @@
     </div>
     
     <!-- Tab Inventario -->
-    <div class="tab-pane fade" id="inventory">
+    <div class="tab-pane fade show active" id="inventory">
         <!-- Card Inventario Esistente -->
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -539,9 +539,11 @@
                         <option value="voip">VoIP</option>
                         <option value="other">Altri</option>
                     </select>
+                    <!-- Auto-Detect batch rimosso - sostituito da Unified Scanner
                     <button class="btn btn-warning btn-sm me-2" onclick="batchAutoDetect()" title="Auto-detect su tutti i dispositivi (usa credenziali default + porte rilevate)">
                         <i class="bi bi-bullseye"></i> Auto-Detect
                     </button>
+                    -->
                     <button class="btn btn-outline-secondary btn-sm me-2" onclick="batchScanPorts()" title="Scansiona porte di tutti i dispositivi">
                         <i class="bi bi-router"></i> Scansiona Porte
                     </button>
@@ -558,43 +560,85 @@
                     <div class="spinner-border text-primary" role="status"></div>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table class="table table-hover mb-0" id="inventoryTable" style="min-width: 1400px;">
-                        <thead>
+                    <table class="table table-hover table-sm mb-0" id="inventoryTable" style="min-width: 1400px;">
+                        <thead class="table-light">
                             <tr>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(0, 'text')">
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(0, 'text')" class="py-2 px-2">
                                     Nome <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(1, 'ip')">
-                                    IP <i class="bi bi-arrow-down-up sort-icon"></i>
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(1, 'ip')" class="py-2 px-2">
+                                    Indirizzo <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(2, 'text')">
-                                    MAC <i class="bi bi-arrow-down-up sort-icon"></i>
-                                </th>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(3, 'text')">
-                                    Tipo <i class="bi bi-arrow-down-up sort-icon"></i>
-                                </th>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(4, 'text')">
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(2, 'text')" class="py-2 px-2">
                                     Categoria <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(5, 'text')">
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(3, 'text')" class="py-2 px-2">
+                                    Sottocategoria <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(4, 'text')" class="py-2 px-2">
                                     OS <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th style="cursor: pointer;" onclick="sortInventoryTable(6, 'text')">
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(5, 'text')" class="py-2 px-2">
                                     Vendor <i class="bi bi-arrow-down-up sort-icon"></i>
                                 </th>
-                                <th>Servizi</th>
-                                <th>Credenziali</th>
-                                <th>Azioni</th>
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(6, 'text')" class="py-2 px-2">
+                                    Modello <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th style="cursor: pointer; display: none;" onclick="sortInventoryTable(7, 'text')" class="py-2 px-2">
+                                    Seriale <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(8, 'text')" class="py-2 px-2">
+                                    Feature <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(9, 'text')" class="py-2 px-2">
+                                    Location <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th style="cursor: pointer;" onclick="sortInventoryTable(10, 'text')" class="py-2 px-2">
+                                    Cespite <i class="bi bi-arrow-down-up sort-icon"></i>
+                                </th>
+                                <th class="py-2 px-2">Servizi</th>
+                                <th class="py-2 px-2">Azioni</th>
                             </tr>
                         </thead>
                         <tbody id="inventoryBody">
-                            <tr><td colspan="11" class="text-center py-4 text-muted">Clicca su "Dispositivi" per caricare i dati</td></tr>
+                            <tr><td colspan="9" class="text-center py-4 text-muted">Clicca su "Dispositivi" per caricare i dati</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
     </div>
+    
+    <style>
+        /* Compact inventory table styling */
+        #inventoryTable tbody td {
+            padding: 0.25rem 0.5rem !important;
+            font-size: 0.875rem;
+            vertical-align: middle;
+        }
+        
+        #inventoryTable thead th {
+            padding: 0.5rem !important;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .editable-cell {
+            min-height: 24px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .editable-cell:hover {
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .editable-cell input,
+        .editable-cell select {
+            width: 100%;
+        }
+    </style>
     
     <!-- Tab Device Duplicati -->
     <div class="tab-pane fade" id="duplicates">
@@ -2140,6 +2184,272 @@ async function updateDeviceField(deviceId, fieldName, fieldValue) {
     }
 }
 
+// Start editing a cell on double-click
+function startEditCell(cell) {
+    // Prevent if already editing
+    if (cell.querySelector('input') || cell.querySelector('select')) return;
+    
+    const deviceId = cell.getAttribute('data-device-id');
+    const fieldName = cell.getAttribute('data-field');
+    const apiEndpoint = cell.getAttribute('data-api-endpoint');
+    const originalValue = cell.getAttribute('data-original-value') || '';
+    
+    if (!deviceId || !fieldName) return;
+    
+    // Get current display value
+    const currentText = cell.querySelector('span')?.textContent || originalValue;
+    const currentValue = currentText === '-' ? '' : currentText;
+    
+    // Create input field
+    const inputId = `edit-${deviceId}-${fieldName}`;
+    const datalistId = `datalist-${deviceId}-${fieldName}`;
+    
+    // For Category, use select dropdown with all categories
+    if (fieldName === 'category') {
+        // Carica categorie dinamicamente
+        fetch('/api/v1/inventory/categories')
+            .then(r => r.json())
+            .then(data => {
+                const categories = data.values || [];
+                let optionsHtml = '<option value="">-</option>';
+                categories.forEach(cat => {
+                    const selected = currentValue === cat ? 'selected' : '';
+                    optionsHtml += `<option value="${cat}" ${selected}>${cat}</option>`;
+                });
+                
+                const selectHtml = `
+                    <select class="form-select form-select-sm" 
+                            id="${inputId}"
+                            style="font-size: 0.875rem; min-width: 150px;"
+                            onchange="handleCategoryChange('${deviceId}', this.value)"
+                            onblur="finishEditCell(this)"
+                            onkeypress="if(event.key==='Enter') this.blur(); if(event.key==='Escape') cancelEditCell(this)">
+                        ${optionsHtml}
+                    </select>
+                `;
+                cell.innerHTML = selectHtml;
+                const select = cell.querySelector('select');
+                select.focus();
+            })
+            .catch(e => {
+                console.error('Error loading categories:', e);
+                // Fallback con categorie hardcoded
+                const selectHtml = `
+                    <select class="form-select form-select-sm" 
+                            id="${inputId}"
+                            style="font-size: 0.875rem; min-width: 150px;"
+                            onchange="handleCategoryChange('${deviceId}', this.value)"
+                            onblur="finishEditCell(this)"
+                            onkeypress="if(event.key==='Enter') this.blur(); if(event.key==='Escape') cancelEditCell(this)">
+                        <option value="">-</option>
+                        <option value="Network" ${currentValue === 'Network' ? 'selected' : ''}>Network</option>
+                        <option value="Server" ${currentValue === 'Server' ? 'selected' : ''}>Server</option>
+                        <option value="Storage" ${currentValue === 'Storage' ? 'selected' : ''}>Storage</option>
+                        <option value="Security" ${currentValue === 'Security' ? 'selected' : ''}>Security</option>
+                        <option value="Endpoint" ${currentValue === 'Endpoint' ? 'selected' : ''}>Endpoint</option>
+                        <option value="Telephony" ${currentValue === 'Telephony' ? 'selected' : ''}>Telephony</option>
+                        <option value="Infrastructure" ${currentValue === 'Infrastructure' ? 'selected' : ''}>Infrastructure</option>
+                        <option value="Peripheral" ${currentValue === 'Peripheral' ? 'selected' : ''}>Peripheral</option>
+                        <option value="Surveillance" ${currentValue === 'Surveillance' ? 'selected' : ''}>Surveillance</option>
+                    </select>
+                `;
+                cell.innerHTML = selectHtml;
+                const select = cell.querySelector('select');
+                select.focus();
+            });
+    }
+    // For Subcategory, use select dropdown that depends on category
+    else if (fieldName === 'subcategory') {
+        // Trova la category corrente del device
+        const row = cell.closest('tr');
+        const categoryCell = row.querySelector('[data-field="category"]');
+        const currentCategory = categoryCell ? (categoryCell.getAttribute('data-original-value') || categoryCell.textContent.trim()) : '';
+        
+        // Carica subcategories dinamicamente
+        const url = currentCategory ? `/api/v1/inventory/subcategories?category=${encodeURIComponent(currentCategory)}` : '/api/v1/inventory/subcategories';
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const subcategories = data.values || [];
+                let optionsHtml = '<option value="">-</option>';
+                subcategories.forEach(sub => {
+                    const selected = currentValue === sub ? 'selected' : '';
+                    optionsHtml += `<option value="${sub}" ${selected}>${sub}</option>`;
+                });
+                
+                const selectHtml = `
+                    <select class="form-select form-select-sm" 
+                            id="${inputId}"
+                            style="font-size: 0.875rem; min-width: 150px;"
+                            onblur="finishEditCell(this)"
+                            onkeypress="if(event.key==='Enter') this.blur(); if(event.key==='Escape') cancelEditCell(this)">
+                        ${optionsHtml}
+                    </select>
+                `;
+                cell.innerHTML = selectHtml;
+                const select = cell.querySelector('select');
+                select.focus();
+            })
+            .catch(e => {
+                console.error('Error loading subcategories:', e);
+                // Fallback con input text
+                const inputHtml = `
+                    <input type="text" 
+                           class="form-control form-control-sm" 
+                           id="${inputId}"
+                           value="${currentValue.replace(/"/g, '&quot;')}" 
+                           placeholder="Sottocategoria..."
+                           style="font-size: 0.875rem; min-width: 150px;"
+                           onblur="finishEditCell(this)"
+                           onkeypress="if(event.key==='Enter') this.blur(); if(event.key==='Escape') cancelEditCell(this)">
+                `;
+                cell.innerHTML = inputHtml;
+                const input = cell.querySelector('input');
+                input.focus();
+                input.select();
+            });
+    } else {
+        // For other fields, use text input with datalist
+        const inputHtml = `
+            <input type="text" 
+                   class="form-control form-control-sm autocomplete-field" 
+                   id="${inputId}"
+                   data-device-id="${deviceId}" 
+                   data-field="${fieldName}"
+                   data-api-endpoint="${apiEndpoint}"
+                   value="${currentValue.replace(/"/g, '&quot;')}" 
+                   placeholder="${fieldName === 'os_family' ? 'OS...' : fieldName === 'manufacturer' ? 'Vendor...' : 'Sottocategoria...'}"
+                   list="${datalistId}"
+                   style="font-size: 0.875rem; min-width: 120px;"
+                   onblur="finishEditCell(this)"
+                   onkeypress="if(event.key==='Enter') this.blur(); if(event.key==='Escape') cancelEditCell(this)">
+            <datalist id="${datalistId}"></datalist>
+        `;
+        cell.innerHTML = inputHtml;
+        const input = cell.querySelector('input');
+        input.focus();
+        input.select();
+        
+        // Populate datalist if endpoint available
+        if (apiEndpoint && typeof populateDatalist === 'function') {
+            populateDatalist(datalistId, apiEndpoint);
+        }
+    }
+}
+
+// Finish editing and save
+async function finishEditCell(input) {
+    const cell = input.closest('.editable-cell');
+    if (!cell) return;
+    
+    const deviceId = cell.getAttribute('data-device-id');
+    const fieldName = cell.getAttribute('data-field');
+    const originalValue = cell.getAttribute('data-original-value') || '';
+    
+    let newValue = '';
+    if (input.tagName === 'SELECT') {
+        newValue = input.value.trim();
+    } else {
+        newValue = input.value.trim();
+    }
+    
+    // If value didn't change, restore display
+    if (newValue === originalValue || (newValue === '' && originalValue === '-')) {
+        restoreCellDisplay(cell, originalValue);
+        return;
+    }
+    
+    // Save the value
+    try {
+        await updateDeviceField(deviceId, fieldName, newValue || null);
+        
+        // Update display
+        const displayValue = newValue || '-';
+        restoreCellDisplay(cell, displayValue);
+        
+        // Update original value attribute
+        cell.setAttribute('data-original-value', displayValue);
+        
+        // Special handling for OS field - reload to show version
+        if (fieldName === 'os_family') {
+            // Reload inventory to get updated OS version
+            setTimeout(() => loadInventory(), 500);
+        }
+        
+        // Special handling for category - update subcategory dropdown if exists
+        if (fieldName === 'category') {
+            // Trova la cella subcategory nella stessa riga e aggiorna le opzioni
+            const row = cell.closest('tr');
+            const subcategoryCell = row.querySelector('[data-field="subcategory"]');
+            if (subcategoryCell && newValue) {
+                // Aggiorna le opzioni del dropdown subcategory
+                updateSubcategoryDropdown(subcategoryCell, newValue);
+            }
+        }
+    } catch (e) {
+        // On error, restore original display
+        restoreCellDisplay(cell, originalValue);
+    }
+}
+
+// Handle category change - update subcategory dropdown
+async function handleCategoryChange(deviceId, category) {
+    if (!category) return;
+    
+    // Trova la cella subcategory nella stessa riga
+    const row = document.querySelector(`tr[data-device-id="${deviceId}"]`);
+    if (!row) return;
+    
+    const subcategoryCell = row.querySelector('[data-field="subcategory"]');
+    if (!subcategoryCell) return;
+    
+    // Aggiorna le opzioni del dropdown subcategory
+    updateSubcategoryDropdown(subcategoryCell, category);
+}
+
+// Update subcategory dropdown based on category
+async function updateSubcategoryDropdown(subcategoryCell, category) {
+    try {
+        const response = await fetch(`/api/v1/inventory/subcategories?category=${encodeURIComponent(category)}`);
+        const data = await response.json();
+        const subcategories = data.values || [];
+        
+        // Se c'è già un select aperto, aggiornalo
+        const existingSelect = subcategoryCell.querySelector('select');
+        if (existingSelect) {
+            const currentValue = existingSelect.value;
+            let optionsHtml = '<option value="">-</option>';
+            subcategories.forEach(sub => {
+                const selected = currentValue === sub ? 'selected' : '';
+                optionsHtml += `<option value="${sub}" ${selected}>${sub}</option>`;
+            });
+            existingSelect.innerHTML = optionsHtml;
+        }
+    } catch (e) {
+        console.error('Error updating subcategory dropdown:', e);
+    }
+}
+
+// Cancel editing without saving
+function cancelEditCell(input) {
+    const cell = input.closest('.editable-cell');
+    if (!cell) return;
+    
+    const originalValue = cell.getAttribute('data-original-value') || '-';
+    restoreCellDisplay(cell, originalValue);
+}
+
+// Restore cell display
+function restoreCellDisplay(cell, value) {
+    cell.innerHTML = `<span class="small">${value}</span>`;
+}
+
+// Make functions globally available for inline event handlers
+window.startEditCell = startEditCell;
+window.finishEditCell = finishEditCell;
+window.cancelEditCell = cancelEditCell;
+window.restoreCellDisplay = restoreCellDisplay;
+
 // Helper per parsare open_ports (può essere stringa JSON o array)
 function parseOpenPorts(openPorts) {
     if (!openPorts) return [];
@@ -3565,11 +3875,12 @@ async function loadInventory() {
         const response = await fetch(url);
         const data = await response.json();
         
+        console.log('Inventory data loaded:', data.devices?.length || 0, 'devices');
         document.getElementById('inventoryCount').textContent = data.total || 0;
         tbody.innerHTML = '';
 
         if (!data.devices || data.devices.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4 text-muted">Nessun dispositivo in inventario. Esegui una scansione sopra.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">Nessun dispositivo in inventario. Esegui una scansione sopra.</td></tr>';
         } else {
             // Helper function per determinare azioni device
             // Genera solo i pulsanti applicabili al tipo di dispositivo
@@ -3624,6 +3935,9 @@ async function loadInventory() {
             
             // Applica ordinamento salvato
             const sortedDevices = applyInventorySort([...window.inventoryDevices]);
+            
+            console.log('Loading inventory with', sortedDevices.length, 'devices');
+            console.log('Table structure updated - new columns: Nome, Indirizzo (IP/MAC), Tipo, Categoria, OS, Vendor');
 
             sortedDevices.forEach(dev => {
                 const typeIcons = {
@@ -3713,80 +4027,79 @@ async function loadInventory() {
                     deviceNameHtml += `<br><small class="text-muted">${dev.hostname}</small>`;
                 }
 
+                // Format OS display (family + version)
+                const osDisplay = dev.os_family 
+                    ? (dev.os_version ? `${dev.os_family} ${dev.os_version}` : dev.os_family)
+                    : '-';
+                
+                // Merged IP/MAC column
+                const addressDisplay = `
+                    <div class="small">
+                        <div><strong>${dev.primary_ip || '-'}</strong></div>
+                        <div class="text-muted">${dev.mac_address || '-'}</div>
+                    </div>
+                `;
+                
+                // Tipo (category) - read-only display
+                const tipoDisplay = dev.category || '-';
+                const tipoCell = `<span class="small">${tipoDisplay}</span>`;
+                
+                // Sottocategoria (subcategory) - read-only display
+                const subcategoryValue = dev.subcategory;
+                const subcategoryDisplay = (subcategoryValue && subcategoryValue !== 'None' && subcategoryValue !== 'null' && subcategoryValue !== null) ? subcategoryValue : '-';
+                const subcategoryCell = `<span class="small">${subcategoryDisplay}</span>`;
+                
+                // OS - read-only display
+                const osDisplaySafe = osDisplay || '-';
+                const osCell = `<span class="small">${osDisplaySafe}</span>`;
+                
+                // Vendor - read-only display
+                const vendorDisplay = dev.manufacturer || '-';
+                const vendorCell = `<span class="small">${vendorDisplay}</span>`;
+                
+                // Modello - read-only display
+                const modelDisplay = dev.model || '-';
+                const modelCell = `<span class="small">${modelDisplay}</span>`;
+                
+                // Seriale - read-only display (hidden column)
+                const serialDisplay = dev.serial_number || '-';
+                const serialCell = `<span class="small">${serialDisplay}</span>`;
+                
+                // Feature - read-only display
+                const featureDisplay = dev.feature || '-';
+                const featureCell = `<span class="small">${featureDisplay}</span>`;
+                
+                // Location - read-only display
+                const locationDisplay = dev.location || '-';
+                const locationCell = `<span class="small">${locationDisplay}</span>`;
+                
+                // Cespite - read-only display
+                const cespiteDisplay = dev.cespite || '-';
+                const cespiteCell = `<span class="small">${cespiteDisplay}</span>`;
+
                 tbody.innerHTML += `
-                    <tr data-device-id="${dev.id}">
-                        <td style="white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                    <tr data-device-id="${dev.id}" class="align-middle">
+                        <td class="py-1 px-2" style="white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
                             ${deviceNameHtml}
                         </td>
-                        <td><code class="small">${dev.primary_ip || '-'}</code></td>
-                        <td><code class="small">${dev.mac_address || '-'}</code></td>
-                        <td>
-                            <input type="text" 
-                                   class="form-control form-control-sm autocomplete-field" 
-                                   data-device-id="${dev.id}" 
-                                   data-field="device_type"
-                                   data-api-endpoint="/api/v1/inventory/device-types"
-                                   value="${dev.device_type || ''}" 
-                                   placeholder="Tipo..."
-                                   list="device-types-list-${dev.id}"
-                                   style="min-width: 120px; font-size: 0.875rem;"
-                                   onblur="updateDeviceFieldFromInput(this)"
-                                   onkeypress="if(event.key==='Enter') this.blur()">
-                            <datalist id="device-types-list-${dev.id}"></datalist>
-                        </td>
-                        <td>
-                            <input type="text" 
-                                   class="form-control form-control-sm autocomplete-field" 
-                                   data-device-id="${dev.id}" 
-                                   data-field="category"
-                                   data-api-endpoint="/api/v1/inventory/categories"
-                                   value="${dev.category || ''}" 
-                                   placeholder="Categoria..."
-                                   list="categories-list-${dev.id}"
-                                   style="min-width: 120px; font-size: 0.875rem;"
-                                   onblur="updateDeviceFieldFromInput(this)"
-                                   onkeypress="if(event.key==='Enter') this.blur()">
-                            <datalist id="categories-list-${dev.id}"></datalist>
-                        </td>
-                        <td>
-                            <input type="text" 
-                                   class="form-control form-control-sm autocomplete-field" 
-                                   data-device-id="${dev.id}" 
-                                   data-field="os_family"
-                                   data-api-endpoint="/api/v1/inventory/os-families"
-                                   value="${dev.os_family || ''}" 
-                                   placeholder="OS..."
-                                   list="os-families-list-${dev.id}"
-                                   style="min-width: 120px; font-size: 0.875rem;"
-                                   onblur="updateDeviceFieldFromInput(this)"
-                                   onkeypress="if(event.key==='Enter') this.blur()">
-                            <datalist id="os-families-list-${dev.id}"></datalist>
-                        </td>
-                        <td>
-                            <input type="text" 
-                                   class="form-control form-control-sm autocomplete-field" 
-                                   data-device-id="${dev.id}" 
-                                   data-field="manufacturer"
-                                   data-api-endpoint="/api/v1/inventory/manufacturers"
-                                   value="${dev.manufacturer || ''}" 
-                                   placeholder="Vendor..."
-                                   list="manufacturers-list-${dev.id}"
-                                   style="min-width: 120px; font-size: 0.875rem;"
-                                   onblur="updateDeviceFieldFromInput(this)"
-                                   onkeypress="if(event.key==='Enter') this.blur()">
-                            <datalist id="manufacturers-list-${dev.id}"></datalist>
-                        </td>
-                        <td style="min-width: 120px;">${servicesDisplay}</td>
-                        <td>${credSelect}</td>
-                        <td>
+                        <td class="py-1 px-2">${addressDisplay}</td>
+                        <td class="py-1 px-2" style="white-space: nowrap;">${tipoCell}</td>
+                        <td class="py-1 px-2" style="white-space: nowrap;">${subcategoryCell}</td>
+                        <td class="py-1 px-2">${osCell}</td>
+                        <td class="py-1 px-2">${vendorCell}</td>
+                        <td class="py-1 px-2">${modelCell}</td>
+                        <td class="py-1 px-2" style="display: none;">${serialCell}</td>
+                        <td class="py-1 px-2">${featureCell}</td>
+                        <td class="py-1 px-2">${locationCell}</td>
+                        <td class="py-1 px-2">${cespiteCell}</td>
+                        <td class="py-1 px-2" style="min-width: 120px;">${servicesDisplay}</td>
+                        <td class="py-1 px-2">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div class="btn-group btn-group-sm">
                                     <button class="btn btn-outline-info" onclick="viewInventoryDevice('${dev.id}')" title="Dettagli">
                                         <i class="bi bi-eye"></i>
                                     </button>
-                                    <button class="btn btn-warning" onclick="autoDetectDevice('${dev.id}', '${dev.primary_ip}')" title="Auto-Detect">
-                                        <i class="bi bi-bullseye"></i>
-                                    </button>
+                                    <!-- Auto-Detect rimosso - sostituito da Unified Scanner -->
                                     <button class="btn btn-info" onclick="unifiedScan('${dev.id}', '${dev.primary_ip}')" title="Unified Scanner">
                                         <i class="bi bi-layers"></i>
                                     </button>
@@ -3826,7 +4139,7 @@ async function loadInventory() {
             await populateAllDatalists();
         }
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="13" class="text-center py-4 text-danger">Errore: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger">Errore: ${e.message}</td></tr>`;
     } finally {
         loading.style.display = 'none';
     }
@@ -3942,7 +4255,7 @@ function applyInventorySort(devices) {
                 valB = (b.name || '').toLowerCase();
                 compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
                 break;
-            case 1: // IP
+            case 1: // Indirizzo (IP/MAC merged - sort by IP)
                 const ipA = (a.primary_ip || '').split('.').map(num => parseInt(num || 0, 10));
                 const ipB = (b.primary_ip || '').split('.').map(num => parseInt(num || 0, 10));
                 for (let i = 0; i < 4; i++) {
@@ -3952,27 +4265,22 @@ function applyInventorySort(devices) {
                     }
                 }
                 break;
-            case 2: // MAC
-                valA = (a.mac_address || '').toLowerCase();
-                valB = (b.mac_address || '').toLowerCase();
-                compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
-                break;
-            case 3: // Tipo
-                valA = (a.device_type || '').toLowerCase();
-                valB = (b.device_type || '').toLowerCase();
-                compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
-                break;
-            case 4: // Categoria
+            case 2: // Tipo (category)
                 valA = (a.category || '').toLowerCase();
                 valB = (b.category || '').toLowerCase();
                 compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
                 break;
-            case 5: // OS
+            case 3: // Categoria (device_type)
+                valA = (a.device_type || '').toLowerCase();
+                valB = (b.device_type || '').toLowerCase();
+                compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
+                break;
+            case 4: // OS
                 valA = (a.os_family || '').toLowerCase();
                 valB = (b.os_family || '').toLowerCase();
                 compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
                 break;
-            case 6: // Vendor
+            case 5: // Vendor
                 valA = (a.manufacturer || '').toLowerCase();
                 valB = (b.manufacturer || '').toLowerCase();
                 compareResult = valA < valB ? -1 : (valA > valB ? 1 : 0);
@@ -4734,7 +5042,13 @@ async function viewInventoryDevice(deviceId) {
                         <tr><th>MAC Primario:</th><td>${device.primary_mac || '-'}</td></tr>
                         <tr><th>Tipo:</th><td><span class="badge bg-info">${device.device_type || 'other'}</span></td></tr>
                         <tr><th>Categoria:</th><td>${device.category || '-'}</td></tr>
+                        <tr><th>Sottocategoria:</th><td>${device.subcategory || '-'}</td></tr>
                         <tr><th>Stato:</th><td><span class="badge bg-${device.status === 'online' ? 'success' : device.status === 'offline' ? 'danger' : 'secondary'}">${device.status || 'unknown'}</span></td></tr>
+                        <tr><th>Sede:</th><td>${device.site_name || '-'}</td></tr>
+                        <tr><th>Location:</th><td>${device.location || '-'}</td></tr>
+                        <tr><th>Asset Tag:</th><td><code>${device.asset_tag || '-'}</code></td></tr>
+                        <tr><th>Feature:</th><td>${device.feature || '-'}</td></tr>
+                        <tr><th>Cespite:</th><td><code>${device.cespite || '-'}</code></td></tr>
                     </table>
                 </div>
                 <div class="col-md-6">
@@ -4743,9 +5057,13 @@ async function viewInventoryDevice(deviceId) {
                         <tr><th width="40%">Produttore:</th><td>${device.manufacturer || '-'}</td></tr>
                         <tr><th>Modello:</th><td>${device.model || '-'}</td></tr>
                         <tr><th>Seriale:</th><td>${device.serial_number || '-'}</td></tr>
-                        <tr><th>OS:</th><td>${device.os_family || '-'} ${device.os_version || ''}</td></tr>
-                        <tr><th>CPU:</th><td>${device.cpu_model || '-'} ${device.cpu_cores ? '(' + device.cpu_cores + ' cores)' : ''}</td></tr>
+                        <tr><th>OS:</th><td>${device.os_name || (device.os_family || '-') + ' ' + (device.os_version || '')}</td></tr>
+                        ${device.os_build ? `<tr><th>OS Build:</th><td>${device.os_build}</td></tr>` : ''}
+                        ${device.architecture ? `<tr><th>Architettura:</th><td><span class="badge bg-secondary">${device.architecture}</span></td></tr>` : ''}
+                        <tr><th>CPU:</th><td>${device.cpu_model || '-'} ${device.cpu_cores ? '(' + device.cpu_cores + ' cores' + (device.cpu_threads ? ', ' + device.cpu_threads + ' threads' : '') + ')' : ''}</td></tr>
                         <tr><th>RAM:</th><td>${device.ram_total_gb ? device.ram_total_gb + ' GB' : '-'}</td></tr>
+                        ${device.disk_total_gb ? `<tr><th>Storage Totale:</th><td>${device.disk_total_gb.toFixed(1)} GB</td></tr>` : ''}
+                        ${device.disk_free_gb ? `<tr><th>Storage Libero:</th><td>${device.disk_free_gb.toFixed(1)} GB</td></tr>` : ''}
                         ${device.firmware_version ? `<tr><th>Firmware:</th><td>${device.firmware_version}</td></tr>` : ''}
                         ${device.interface_count ? `<tr><th>Interfacce:</th><td>${device.interface_count}</td></tr>` : ''}
                         ${device.sysDescr ? `<tr><th>SysDescr:</th><td><small>${device.sysDescr}</small></td></tr>` : ''}
@@ -4762,46 +5080,78 @@ async function viewInventoryDevice(deviceId) {
             </div>
         `;
 
-        // Interfacce di rete
-        if (device.network_interfaces && device.network_interfaces.length > 0) {
+        // Sezione Identificazione e Rete
+        if (device.identified_by || device.credential_used || device.open_ports) {
+            let openPortsHtml = '';
+            if (device.open_ports && Array.isArray(device.open_ports) && device.open_ports.length > 0) {
+                openPortsHtml = device.open_ports.map(port => {
+                    const portInfo = typeof port === 'object' ? port : { port: port, protocol: 'tcp' };
+                    const portLabel = portInfo.service ? `${portInfo.port}/${portInfo.protocol || 'tcp'} (${portInfo.service})` : `${portInfo.port}/${portInfo.protocol || 'tcp'}`;
+                    return `<span class="badge bg-primary me-1" title="${portInfo.service || ''}">${portLabel}</span>`;
+                }).join('');
+            } else if (device.open_ports && typeof device.open_ports === 'string') {
+                try {
+                    const ports = JSON.parse(device.open_ports);
+                    if (Array.isArray(ports)) {
+                        openPortsHtml = ports.map(port => {
+                            const portInfo = typeof port === 'object' ? port : { port: port, protocol: 'tcp' };
+                            const portLabel = portInfo.service ? `${portInfo.port}/${portInfo.protocol || 'tcp'} (${portInfo.service})` : `${portInfo.port}/${portInfo.protocol || 'tcp'}`;
+                            return `<span class="badge bg-primary me-1" title="${portInfo.service || ''}">${portLabel}</span>`;
+                        }).join('');
+                    }
+                } catch (e) {
+                    openPortsHtml = `<span class="badge bg-secondary">${device.open_ports}</span>`;
+                }
+            }
+
             detailsHtml += `
                 <hr>
-                <h6 class="text-muted mb-3">Interfacce di Rete (${device.network_interfaces.length})</h6>
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped">
-                        <thead>
-                            <tr>
-                                <th>Nome</th>
-                                <th>MAC</th>
-                                <th>IP</th>
-                                <th>Velocità</th>
-                                <th>Stato</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                <h6 class="text-muted mb-3"><i class="bi bi-fingerprint"></i> Identificazione e Rete</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            ${device.identified_by ? `<tr><th width="40%">Identificato da:</th><td><span class="badge bg-info">${device.identified_by}</span></td></tr>` : ''}
+                            ${device.credential_used ? `<tr><th>Credenziale usata:</th><td>${device.credential_used}</td></tr>` : ''}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        ${openPortsHtml ? `
+                        <table class="table table-sm">
+                            <tr><th width="40%">Porte Aperte:</th><td>${openPortsHtml}</td></tr>
+                        </table>
+                        ` : ''}
+                    </div>
+                </div>
             `;
-            device.network_interfaces.forEach(nic => {
-                let ips = '-';
-                if (nic.ip_addresses) {
-                    try {
-                        const ipArr = typeof nic.ip_addresses === 'string' ? JSON.parse(nic.ip_addresses) : nic.ip_addresses;
-                        ips = Array.isArray(ipArr) ? ipArr.map(ip => ip.ip || ip).join(', ') : '-';
-                    } catch (e) {
-                        ips = String(nic.ip_addresses);
-                    }
-                }
-                detailsHtml += `
-                    <tr>
-                        <td><code>${nic.name}</code></td>
-                        <td><small>${nic.mac_address || '-'}</small></td>
-                        <td><small>${ips}</small></td>
-                        <td>${nic.speed_mbps ? nic.speed_mbps + ' Mbps' : '-'}</td>
-                        <td><span class="badge bg-${nic.admin_status === 'up' ? 'success' : 'secondary'}">${nic.admin_status || '-'}</span></td>
-                    </tr>
-                `;
-            });
-            detailsHtml += '</tbody></table></div>';
         }
+
+        // Sezione Monitoraggio
+        if (device.monitored || device.monitoring_type || device.monitor_source || device.netwatch_id || device.dude_device_id) {
+            detailsHtml += `
+                <hr>
+                <h6 class="text-muted mb-3"><i class="bi bi-activity"></i> Monitoraggio</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tr><th width="40%">Monitoraggio:</th><td><span class="badge bg-${device.monitored ? 'success' : 'secondary'}">${device.monitored ? 'Attivo' : 'Disattivo'}</span></td></tr>
+                            ${device.monitoring_type && device.monitoring_type !== 'none' ? `<tr><th>Tipo Monitoraggio:</th><td><span class="badge bg-info">${device.monitoring_type}</span></td></tr>` : ''}
+                            ${device.monitoring_port ? `<tr><th>Porta Monitoraggio:</th><td>${device.monitoring_port}</td></tr>` : ''}
+                            ${device.monitor_source ? `<tr><th>Sorgente:</th><td><span class="badge bg-secondary">${device.monitor_source}</span></td></tr>` : ''}
+                            ${device.monitoring_agent_id ? `<tr><th>Agent ID:</th><td><code>${device.monitoring_agent_id}</code></td></tr>` : ''}
+                            ${device.last_check ? `<tr><th>Ultimo Check:</th><td>${new Date(device.last_check).toLocaleString('it-IT')}</td></tr>` : ''}
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            ${device.netwatch_id ? `<tr><th width="40%">Netwatch ID:</th><td><code>${device.netwatch_id}</code></td></tr>` : ''}
+                            ${device.dude_device_id ? `<tr><th>Dude Device ID:</th><td><code>${device.dude_device_id}</code></td></tr>` : ''}
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Interfacce di rete - RIMOSSO dal tab Generale (disponibile nel tab Interfacce dedicato)
 
         // Dischi
         if (device.disks && device.disks.length > 0) {
@@ -4896,194 +5246,94 @@ async function viewInventoryDevice(deviceId) {
         // Parse storage_info da custom_fields (cf è già inizializzato sopra)
         const storageInfo = cf.storage_info || {};
         
-        // Sezione Storage Information (Synology/QNAP)
-        if (storageInfo.volumes || storageInfo.disks || storageInfo.raid) {
+        // Storage Information spostato nel tab Storage dedicato (non più nel tab Generale)
+
+        // Sezione Tracking e Audit (collapsabile)
+        if (device.first_seen_at || device.last_verified_at || device.verification_count !== undefined || device.created_at || device.updated_at) {
+            const trackingId = `tracking-${device.id}`;
             detailsHtml += `
                 <hr>
-                <h6 class="text-muted mb-3"><i class="bi bi-hdd-stack"></i> Storage Information</h6>
-                
-                ${storageInfo.volumes && storageInfo.volumes.length > 0 ? `
-                <div class="mb-3">
-                    <strong>Volumi (${storageInfo.volumes.length}):</strong>
-                    <div class="table-responsive mt-2">
-                        <table class="table table-sm table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Nome</th>
-                                    <th>Mount Point</th>
-                                    <th>Filesystem</th>
-                                    <th>Totale</th>
-                                    <th>Utilizzato</th>
-                                    <th>Libero</th>
-                                    <th>Uso %</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${storageInfo.volumes.map(v => {
-                                    // Converti usage_percent in numero se necessario
-                                    const usagePercent = typeof v.usage_percent === 'number' ? v.usage_percent : 
-                                                       (typeof v.usage_percent === 'string' ? parseFloat(v.usage_percent.replace('%', '')) : 
-                                                       (v.total_gb && v.used_gb ? Math.round((parseFloat(v.used_gb) / parseFloat(v.total_gb)) * 100) : 0));
-                                    const usagePercentNum = isNaN(usagePercent) ? 0 : usagePercent;
-                                    
-                                    // Estrai nome volume (usa name o ultima parte del mount_point)
-                                    const volName = v.name || v.mount_point?.split('/').pop() || v.path?.split('/').pop() || '-';
-                                    
-                                    return `
-                                    <tr>
-                                        <td><code>${volName}</code></td>
-                                        <td><small>${v.mount_point || v.path || '-'}</small></td>
-                                        <td><span class="badge bg-secondary">${v.filesystem || '-'}</span></td>
-                                        <td>${v.total_gb ? (typeof v.total_gb === 'number' ? v.total_gb.toFixed(1) : parseFloat(v.total_gb).toFixed(1)) + ' GB' : '-'}</td>
-                                        <td>${v.used_gb ? (typeof v.used_gb === 'number' ? v.used_gb.toFixed(1) : parseFloat(v.used_gb).toFixed(1)) + ' GB' : '-'}</td>
-                                        <td>${v.free_gb ? (typeof v.free_gb === 'number' ? v.free_gb.toFixed(1) : parseFloat(v.free_gb).toFixed(1)) + ' GB' : '-'}</td>
-                                        <td>
-                                            <div class="progress" style="height: 20px;">
-                                                <div class="progress-bar bg-${usagePercentNum > 90 ? 'danger' : usagePercentNum > 75 ? 'warning' : 'success'}" 
-                                                     style="width: ${usagePercentNum}%">
-                                                    ${usagePercentNum > 0 ? usagePercentNum.toFixed(1) + '%' : '-'}
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                `;
-                                }).join('')}
-                            </tbody>
-                        </table>
+                <div class="accordion" id="accordionTracking">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingTracking">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${trackingId}" aria-expanded="false" aria-controls="${trackingId}">
+                                <i class="bi bi-clock-history me-2"></i> Tracking e Audit
+                            </button>
+                        </h2>
+                        <div id="${trackingId}" class="accordion-collapse collapse" aria-labelledby="headingTracking" data-bs-parent="#accordionTracking">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <table class="table table-sm">
+                                            ${device.first_seen_at ? `<tr><th width="40%">Prima volta visto:</th><td>${new Date(device.first_seen_at).toLocaleString('it-IT')}</td></tr>` : ''}
+                                            ${device.last_verified_at ? `<tr><th>Ultima verifica:</th><td>${new Date(device.last_verified_at).toLocaleString('it-IT')}</td></tr>` : ''}
+                                            ${device.verification_count !== undefined ? `<tr><th>Numero verifiche:</th><td><span class="badge bg-info">${device.verification_count}</span></td></tr>` : ''}
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <table class="table table-sm">
+                                            ${device.created_at ? `<tr><th width="40%">Creato il:</th><td>${new Date(device.created_at).toLocaleString('it-IT')}</td></tr>` : ''}
+                                            ${device.updated_at ? `<tr><th>Aggiornato il:</th><td>${new Date(device.updated_at).toLocaleString('it-IT')}</td></tr>` : ''}
+                                            ${device.last_scan ? `<tr><th>Ultima scansione:</th><td>${new Date(device.last_scan).toLocaleString('it-IT')}</td></tr>` : ''}
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                ` : ''}
-                
-                ${(storageInfo.raid_arrays && storageInfo.raid_arrays.length > 0) ? `
-                <div class="mb-3">
-                    <strong>RAID Arrays (${storageInfo.raid_arrays.length}):</strong>
-                    <div class="table-responsive mt-2">
-                        <table class="table table-sm table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Nome</th>
-                                    <th>Livello</th>
-                                    <th>Stato</th>
-                                    <th>Dispositivi</th>
-                                    <th>Dimensione</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${storageInfo.raid_arrays.map(r => '<tr><td>' + (r.name || '-') + '</td><td><span class="badge bg-info">' + (r.level || '-') + '</span></td><td><span class="badge bg-' + (((r.status || '').toLowerCase().includes('active') || (r.status || '').toLowerCase().includes('clean')) ? 'success' : ((r.status || '').toLowerCase().includes('degraded') ? 'danger' : 'warning')) + '">' + (r.status || '-') + '</span></td><td style="font-size: 0.85em;">' + (r.devices && Array.isArray(r.devices) ? r.devices.join(', ') : (r.devices || '-')) + '</td><td>' + (r.size_gb ? r.size_gb.toFixed(0) + ' GB' : '-') + '</td></tr>').join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                ` : (storageInfo.raid ? `
-                <div class="mb-3">
-                    <strong>RAID:</strong>
-                    <table class="table table-sm">
-                        <tr><th width="30%">Livello:</th><td>${storageInfo.raid.level || '-'}</td></tr>
-                        <tr><th>Stato:</th><td><span class="badge bg-${(storageInfo.raid.status || '').toLowerCase().includes('active') ? 'success' : 'warning'}">${storageInfo.raid.status || '-'}</span></td></tr>
-                        <tr><th>Dispositivi:</th><td>${storageInfo.raid.devices ? (Array.isArray(storageInfo.raid.devices) ? storageInfo.raid.devices.join(', ') : storageInfo.raid.devices) : '-'}</td></tr>
-                        ${storageInfo.raid.degraded ? '<tr><th>Degradato:</th><td><span class="badge bg-danger">Sì</span></td></tr>' : ''}
-                    </table>
-                </div>
-                ` : '')}
-                
-                ${storageInfo.disks && storageInfo.disks.length > 0 ? `
-                <div class="mb-3">
-                    <strong>Dischi (${storageInfo.disks.length}):</strong>
-                    <div class="table-responsive mt-2">
-                        <table class="table table-sm table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Nome</th>
-                                    <th>Modello</th>
-                                    <th>Tipo</th>
-                                    <th>Dimensione</th>
-                                    <th>Seriale</th>
-                                    <th>Salute</th>
-                                    <th>Temperatura</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${storageInfo.disks.map(d => {
-                                    // Converti size in GB se necessario
-                                    let sizeGb = d.size_gb;
-                                    if (!sizeGb && d.size) {
-                                        // Prova a convertire da stringa (es. "2TB" -> 2048)
-                                        const sizeStr = String(d.size).toUpperCase();
-                                        if (sizeStr.includes('TB')) {
-                                            sizeGb = parseFloat(sizeStr) * 1024;
-                                        } else if (sizeStr.includes('GB')) {
-                                            sizeGb = parseFloat(sizeStr);
-                                        } else if (sizeStr.includes('MB')) {
-                                            sizeGb = parseFloat(sizeStr) / 1024;
-                                        } else if (d.size_bytes) {
-                                            sizeGb = d.size_bytes / (1024**3);
-                                        }
-                                    } else if (!sizeGb && d.size_bytes) {
-                                        sizeGb = d.size_bytes / (1024**3);
-                                    }
-                                    
-                                    const diskType = d.disk_type || d.type || '-';
-                                    const healthStatus = d.health || d.health_status || d.smart_status || '-';
-                                    const healthBadge = healthStatus === 'good' || healthStatus === 'healthy' || healthStatus === 'PASSED' ? 'success' : 
-                                                       healthStatus === 'warning' || healthStatus === 'degraded' || healthStatus === 'failing' || healthStatus === 'FAILED' ? 'danger' : 'secondary';
-                                    
-                                    return `
-                                    <tr>
-                                        <td><code>${d.name || d.device || '-'}</code></td>
-                                        <td>${d.model || '-'}</td>
-                                        <td><span class="badge bg-info">${diskType}</span></td>
-                                        <td>${sizeGb ? sizeGb.toFixed(1) + ' GB' : (d.size || '-')}</td>
-                                        <td><small>${d.serial || '-'}</small></td>
-                                        <td><span class="badge bg-${healthBadge}">${healthStatus}</span></td>
-                                        <td>${d.temperature || d.temperature_celsius ? (d.temperature || d.temperature_celsius) + '°C' : '-'}</td>
-                                    </tr>
-                                `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                ` : ''}
-                
-                ${(cf.shares && cf.shares.length > 0) ? `
-                <div class="mb-3">
-                    <strong>Share Condivise (${cf.shares_count || cf.shares.length}):</strong>
-                    <div class="table-responsive mt-2">
-                        <table class="table table-sm table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Nome</th>
-                                    <th>Path</th>
-                                    <th>Protocolli</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${cf.shares.map(s => {
-                                    const shareTypes = s.types || [s.type || 'SMB'];
-                                    return `
-                                    <tr>
-                                        <td><code>${s.name || '-'}</code></td>
-                                        <td><small>${s.path || '-'}</small></td>
-                                        <td>${shareTypes.map(t => `<span class="badge bg-primary me-1">${t}</span>`).join('')}</td>
-                                    </tr>
-                                `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                ` : ''}
-                
-                ${storageInfo.temperature ? `
-                <div class="mb-3">
-                    <strong>Temperatura:</strong>
-                    <table class="table table-sm">
-                        ${storageInfo.temperature.cpu ? '<tr><th width="30%">CPU:</th><td>' + storageInfo.temperature.cpu + '°C</td></tr>' : ''}
-                        ${storageInfo.temperature.system ? '<tr><th>Sistema:</th><td>' + storageInfo.temperature.system + '°C</td></tr>' : ''}
-                    </table>
-                </div>
-                ` : ''}
             `;
+        }
+
+        // Sezione Note e Metadati
+        if (device.description || device.notes || (device.tags && Array.isArray(device.tags) && device.tags.length > 0)) {
+            let tagsHtml = '';
+            if (device.tags && Array.isArray(device.tags) && device.tags.length > 0) {
+                tagsHtml = device.tags.map(tag => `<span class="badge bg-secondary me-1">${tag}</span>`).join('');
+            }
+
+            detailsHtml += `
+                <hr>
+                <h6 class="text-muted mb-3"><i class="bi bi-file-text"></i> Note e Metadati</h6>
+                <div class="row">
+                    <div class="col-md-12">
+                        <table class="table table-sm">
+                            ${device.description ? `<tr><th width="20%">Descrizione:</th><td>${device.description}</td></tr>` : ''}
+                            ${device.notes ? `<tr><th>Note:</th><td>${device.notes}</td></tr>` : ''}
+                            ${tagsHtml ? `<tr><th>Tag:</th><td>${tagsHtml}</td></tr>` : ''}
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Sezione Custom Fields (collapsabile)
+        if (device.custom_fields && Object.keys(cf).length > 0) {
+            const customFieldsId = `customFields-${device.id}`;
+            // Rimuovi campi già visualizzati per evitare duplicati
+            const filteredCf = { ...cf };
+            delete filteredCf.storage_info; // Già visualizzato
+            delete filteredCf.shares; // Già visualizzato
+            
+            if (Object.keys(filteredCf).length > 0) {
+                detailsHtml += `
+                    <hr>
+                    <div class="accordion" id="accordionCustomFields">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingCustomFields">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${customFieldsId}" aria-expanded="false" aria-controls="${customFieldsId}">
+                                    <i class="bi bi-code-square me-2"></i> Custom Fields (JSON)
+                                </button>
+                            </h2>
+                            <div id="${customFieldsId}" class="accordion-collapse collapse" aria-labelledby="headingCustomFields" data-bs-parent="#accordionCustomFields">
+                                <div class="accordion-body">
+                                    <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code>${JSON.stringify(filteredCf, null, 2)}</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
         }
         
         // Determina se mostrare tab avanzate
@@ -5114,6 +5364,23 @@ async function viewInventoryDevice(deviceId) {
         const isProxmox = deviceType === 'hypervisor' || 
                          (manufacturer && typeof manufacturer === 'string' && manufacturer.length > 0 && manufacturer.indexOf('proxmox') !== -1) || 
                          (osFamily && typeof osFamily === 'string' && osFamily.length > 0 && osFamily.indexOf('proxmox') !== -1);
+        
+        // Verifica se è un NAS (Synology/QNAP) o ha storage info
+        const isNAS = device.category === 'Storage' || 
+                     deviceType === 'storage' || deviceType === 'nas' ||
+                     (device.os_name && typeof device.os_name === 'string' && (
+                         device.os_name.toLowerCase().indexOf('synology') !== -1 || 
+                         device.os_name.toLowerCase().indexOf('qnap') !== -1 || 
+                         device.os_name.toLowerCase().indexOf('dsm') !== -1 || 
+                         device.os_name.toLowerCase().indexOf('qts') !== -1
+                     )) ||
+                     (manufacturer && typeof manufacturer === 'string' && (
+                         manufacturer.indexOf('synology') !== -1 || 
+                         manufacturer.indexOf('qnap') !== -1
+                     ));
+        
+        // Ha storage info da mostrare nel tab dedicato?
+        const hasStorageInfo = isNAS || (storageInfo && (storageInfo.volumes || storageInfo.disks || storageInfo.raid)) || (cf.shares && cf.shares.length > 0);
         
         // Crea struttura con tab Bootstrap
         let modalContent = `
@@ -5178,6 +5445,32 @@ async function viewInventoryDevice(deviceId) {
                     </button>
                 </li>
                 ` : ''}
+                ${hasStorageInfo ? `
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="storage-tab" data-bs-toggle="tab" data-bs-target="#storage" type="button" role="tab">
+                        <i class="bi bi-hdd-stack"></i> Storage
+                    </button>
+                </li>
+                ` : ''}
+                ${device.services && device.services.length > 0 ? `
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab">
+                        <i class="bi bi-gear-fill"></i> Servizi (${device.services.length})
+                    </button>
+                </li>
+                ` : ''}
+                ${device.software && device.software.length > 0 ? `
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="software-tab" data-bs-toggle="tab" data-bs-target="#software" type="button" role="tab">
+                        <i class="bi bi-box-seam"></i> Software (${device.software.length})
+                    </button>
+                </li>
+                ` : ''}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="edit-tab" data-bs-toggle="tab" data-bs-target="#edit" type="button" role="tab">
+                        <i class="bi bi-pencil-square"></i> Modifica
+                    </button>
+                </li>
             </ul>
             <div class="tab-content" id="deviceDetailTabContent">
                 <div class="tab-pane fade show active" id="general" role="tabpanel">
@@ -5270,54 +5563,10 @@ async function viewInventoryDevice(deviceId) {
                         </table>
                     </div>
                     ` : ''}
-                    ${cf.routes && cf.routes.length > 0 ? `
-                    <hr>
-                    <h6 class="text-muted mb-3"><i class="bi bi-signpost-split"></i> Routing Table (${cf.routes.length})</h6>
-                    <div style="max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
-                        ${cf.routes.map(r => '<div>' + r + '</div>').join('')}
-                    </div>
-                    ` : ''}
                     ${cf.hardware_inventory ? `
                     <hr>
                     <h6 class="text-muted mb-3"><i class="bi bi-cpu"></i> Hardware Inventory (lshw)</h6>
                     <pre style="max-height: 300px; overflow-y: auto; font-size: 0.75em; background: #f8f9fa; padding: 10px; border-radius: 4px;">${cf.hardware_inventory}</pre>
-                    ` : ''}
-                    ${cf.routing_table && cf.routing_table.length > 0 ? `
-                    <hr>
-                    <h6 class="text-muted mb-3"><i class="bi bi-signpost-split"></i> Routing Table (${cf.routing_count || cf.routing_table.length})</h6>
-                    <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
-                        <table class="table table-sm table-striped">
-                            <thead><tr><th>Destinazione</th><th>Gateway</th><th>Distanza</th><th>Interfaccia</th></tr></thead>
-                            <tbody>
-                                ${cf.routing_table.map(r => '<tr><td><code>' + (r.dst || r['dst-address'] || '-') + '</code></td><td>' + (r.gateway || '-') + '</td><td>' + (r.distance || '-') + '</td><td>' + (r['pref-src'] || r.interface || '-') + '</td></tr>').join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                    ` : ''}
-                    ${cf.arp_table && cf.arp_table.length > 0 ? `
-                    <hr>
-                    <h6 class="text-muted mb-3"><i class="bi bi-table"></i> ARP Table (${cf.arp_count || cf.arp_table.length})</h6>
-                    <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
-                        <table class="table table-sm table-striped">
-                            <thead><tr><th>IP</th><th>MAC</th><th>Interfaccia</th><th>Stato</th></tr></thead>
-                            <tbody>
-                                ${cf.arp_table.slice(0, 100).map(a => '<tr><td><code>' + (a.address || '-') + '</code></td><td><small>' + (a['mac-address'] || '-') + '</small></td><td>' + (a.interface || '-') + '</td><td><span class="badge bg-' + (a.status === 'reachable' ? 'success' : 'secondary') + '">' + (a.status || '-') + '</span></td></tr>').join('')}
-                            </tbody>
-                        </table>
-                        ${cf.arp_table.length > 100 ? '<div class="text-muted text-center">Mostrati 100 di ' + cf.arp_table.length + ' entries</div>' : ''}
-                    </div>
-                    ` : ''}
-                    ${cf.interfaces && cf.interfaces.length > 0 ? `
-                    <hr>
-                    <h6 class="text-muted mb-3"><i class="bi bi-ethernet"></i> Interfacce di Rete (${cf.interfaces_count || cf.interfaces.length})</h6>
-                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm table-striped">
-                            <thead><tr><th>Nome</th><th>MAC</th><th>Velocità</th><th>Admin Status</th><th>Oper Status</th></tr></thead>
-                            <tbody>
-                                ${cf.interfaces.map(iface => '<tr><td><code>' + (iface.name || '-') + '</code></td><td><small>' + (iface.mac_address || '-') + '</small></td><td>' + (iface.speed_mbps ? iface.speed_mbps + ' Mbps' : '-') + '</td><td><span class="badge bg-' + (iface.admin_status === 'up' ? 'success' : 'secondary') + '">' + (iface.admin_status || '-') + '</span></td><td><span class="badge bg-' + (iface.oper_status === 'up' ? 'success' : 'secondary') + '">' + (iface.oper_status || '-') + '</span></td></tr>').join('')}
-                            </tbody>
-                        </table>
-                    </div>
                     ` : ''}
                     ${(device.server_roles || cf.server_roles) && (device.server_roles || cf.server_roles).length > 0 ? `
                     <hr>
@@ -5662,15 +5911,593 @@ async function viewInventoryDevice(deviceId) {
                     </div>
                 </div>
                 ` : ''}
+                ${hasStorageInfo ? `
+                <div class="tab-pane fade" id="storage" role="tabpanel">
+                    <h6 class="text-muted mb-3"><i class="bi bi-hdd-stack"></i> Storage Information</h6>
+                    
+                    ${storageInfo.volumes && storageInfo.volumes.length > 0 ? `
+                    <div class="mb-3">
+                        <strong>Volumi (${storageInfo.volumes.length}):</strong>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Mount Point</th>
+                                        <th>Filesystem</th>
+                                        <th>Totale</th>
+                                        <th>Utilizzato</th>
+                                        <th>Libero</th>
+                                        <th>Uso %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${storageInfo.volumes.map(v => {
+                                        const usagePercent = typeof v.usage_percent === 'number' ? v.usage_percent : 
+                                                           (typeof v.usage_percent === 'string' ? parseFloat(v.usage_percent.replace('%', '')) : 
+                                                           (v.total_gb && v.used_gb ? Math.round((parseFloat(v.used_gb) / parseFloat(v.total_gb)) * 100) : 0));
+                                        const usagePercentNum = isNaN(usagePercent) ? 0 : usagePercent;
+                                        const volName = v.name || v.mount_point?.split('/').pop() || v.path?.split('/').pop() || '-';
+                                        return '<tr><td><code>' + volName + '</code></td><td><small>' + (v.mount_point || v.path || '-') + '</small></td><td><span class="badge bg-secondary">' + (v.filesystem || '-') + '</span></td><td>' + (v.total_gb ? (typeof v.total_gb === 'number' ? v.total_gb.toFixed(1) : parseFloat(v.total_gb).toFixed(1)) + ' GB' : '-') + '</td><td>' + (v.used_gb ? (typeof v.used_gb === 'number' ? v.used_gb.toFixed(1) : parseFloat(v.used_gb).toFixed(1)) + ' GB' : '-') + '</td><td>' + (v.free_gb ? (typeof v.free_gb === 'number' ? v.free_gb.toFixed(1) : parseFloat(v.free_gb).toFixed(1)) + ' GB' : '-') + '</td><td><div class="progress" style="height: 20px;"><div class="progress-bar bg-' + (usagePercentNum > 90 ? 'danger' : usagePercentNum > 75 ? 'warning' : 'success') + '" style="width: ' + usagePercentNum + '%">' + (usagePercentNum > 0 ? usagePercentNum.toFixed(1) + '%' : '-') + '</div></div></td></tr>';
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${(storageInfo.raid_arrays && storageInfo.raid_arrays.length > 0) ? `
+                    <div class="mb-3">
+                        <strong>RAID Arrays (${storageInfo.raid_arrays.length}):</strong>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Livello</th>
+                                        <th>Stato</th>
+                                        <th>Dispositivi</th>
+                                        <th>Dimensione</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${storageInfo.raid_arrays.map(r => '<tr><td>' + (r.name || '-') + '</td><td><span class="badge bg-info">' + (r.level || '-') + '</span></td><td><span class="badge bg-' + (((r.status || '').toLowerCase().includes('active') || (r.status || '').toLowerCase().includes('clean')) ? 'success' : ((r.status || '').toLowerCase().includes('degraded') ? 'danger' : 'warning')) + '">' + (r.status || '-') + '</span></td><td style="font-size: 0.85em;">' + (r.devices && Array.isArray(r.devices) ? r.devices.join(', ') : (r.devices || '-')) + '</td><td>' + (r.size_gb ? r.size_gb.toFixed(0) + ' GB' : '-') + '</td></tr>').join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    ` : (storageInfo.raid ? `
+                    <div class="mb-3">
+                        <strong>RAID:</strong>
+                        <table class="table table-sm">
+                            <tr><th width="30%">Livello:</th><td>${storageInfo.raid.level || '-'}</td></tr>
+                            <tr><th>Stato:</th><td><span class="badge bg-${(storageInfo.raid.status || '').toLowerCase().includes('active') ? 'success' : 'warning'}">${storageInfo.raid.status || '-'}</span></td></tr>
+                            <tr><th>Dispositivi:</th><td>${storageInfo.raid.devices ? (Array.isArray(storageInfo.raid.devices) ? storageInfo.raid.devices.join(', ') : storageInfo.raid.devices) : '-'}</td></tr>
+                            ${storageInfo.raid.degraded ? '<tr><th>Degradato:</th><td><span class="badge bg-danger">Sì</span></td></tr>' : ''}
+                        </table>
+                    </div>
+                    ` : '')}
+                    
+                    ${storageInfo.disks && storageInfo.disks.length > 0 ? `
+                    <div class="mb-3">
+                        <strong>Dischi Fisici (${storageInfo.disks.length}):</strong>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Modello</th>
+                                        <th>Tipo</th>
+                                        <th>Dimensione</th>
+                                        <th>Seriale</th>
+                                        <th>Salute</th>
+                                        <th>Temperatura</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${storageInfo.disks.map(d => {
+                                        let sizeGb = d.size_gb;
+                                        if (!sizeGb && d.size) {
+                                            const sizeStr = String(d.size).toUpperCase();
+                                            if (sizeStr.includes('TB')) { sizeGb = parseFloat(sizeStr) * 1024; }
+                                            else if (sizeStr.includes('GB')) { sizeGb = parseFloat(sizeStr); }
+                                            else if (sizeStr.includes('MB')) { sizeGb = parseFloat(sizeStr) / 1024; }
+                                            else if (d.size_bytes) { sizeGb = d.size_bytes / (1024**3); }
+                                        } else if (!sizeGb && d.size_bytes) { sizeGb = d.size_bytes / (1024**3); }
+                                        const diskType = d.disk_type || d.type || '-';
+                                        const healthStatus = d.health || d.health_status || d.smart_status || '-';
+                                        const healthBadge = healthStatus === 'good' || healthStatus === 'healthy' || healthStatus === 'PASSED' ? 'success' : 
+                                                           healthStatus === 'warning' || healthStatus === 'degraded' || healthStatus === 'failing' || healthStatus === 'FAILED' ? 'danger' : 'secondary';
+                                        return '<tr><td><code>' + (d.name || d.device || '-') + '</code></td><td>' + (d.model || '-') + '</td><td><span class="badge bg-info">' + diskType + '</span></td><td>' + (sizeGb ? sizeGb.toFixed(1) + ' GB' : (d.size || '-')) + '</td><td><small>' + (d.serial || '-') + '</small></td><td><span class="badge bg-' + healthBadge + '">' + healthStatus + '</span></td><td>' + (d.temperature || d.temperature_celsius ? (d.temperature || d.temperature_celsius) + '°C' : '-') + '</td></tr>';
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${(cf.shares && cf.shares.length > 0) ? `
+                    <div class="mb-3">
+                        <strong>Share Condivise (${cf.shares_count || cf.shares.length}):</strong>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Path</th>
+                                        <th>Protocolli</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${cf.shares.map(s => {
+                                        const shareTypes = s.types || [s.type || 'SMB'];
+                                        return '<tr><td><code>' + (s.name || '-') + '</code></td><td><small>' + (s.path || '-') + '</small></td><td>' + shareTypes.map(t => '<span class="badge bg-primary me-1">' + t + '</span>').join('') + '</td></tr>';
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    ${storageInfo.temperature ? `
+                    <div class="mb-3">
+                        <strong>Temperatura:</strong>
+                        <table class="table table-sm">
+                            ${storageInfo.temperature.cpu ? '<tr><th width="30%">CPU:</th><td>' + storageInfo.temperature.cpu + '°C</td></tr>' : ''}
+                            ${storageInfo.temperature.system ? '<tr><th>Sistema:</th><td>' + storageInfo.temperature.system + '°C</td></tr>' : ''}
+                        </table>
+                    </div>
+                    ` : ''}
+                </div>
+                ` : ''}
+                
+                <!-- Tab Servizi -->
+                ${device.services && device.services.length > 0 ? `
+                <div class="tab-pane fade" id="services" role="tabpanel">
+                    <h6 class="text-muted mb-3"><i class="bi bi-gear-fill"></i> Servizi Installati (${device.services.length})</h6>
+                    
+                    <!-- Filtro servizi -->
+                    <div class="mb-3">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control form-control-sm" id="serviceFilter" placeholder="Cerca servizio..." oninput="filterServices()">
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select form-select-sm" id="serviceStatusFilter" onchange="filterServices()">
+                                    <option value="">Tutti gli stati</option>
+                                    <option value="running">Running</option>
+                                    <option value="stopped">Stopped</option>
+                                    <option value="auto">Auto Start</option>
+                                    <option value="manual">Manual Start</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <span class="badge bg-success" id="runningCount">0 running</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped table-hover" id="servicesTable">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Display Name</th>
+                                    <th>Stato</th>
+                                    <th>Avvio</th>
+                                    <th>Account</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${device.services.map(svc => {
+                                    const statusBadge = svc.status === 'running' || svc.status === 'Running' 
+                                        ? '<span class="badge bg-success">Running</span>' 
+                                        : svc.status === 'stopped' || svc.status === 'Stopped'
+                                        ? '<span class="badge bg-secondary">Stopped</span>'
+                                        : '<span class="badge bg-warning">' + (svc.status || '-') + '</span>';
+                                    const startTypeBadge = svc.start_type === 'Auto' || svc.start_type === 'auto' || svc.start_type === 'automatic'
+                                        ? '<span class="badge bg-info">Auto</span>'
+                                        : svc.start_type === 'Manual' || svc.start_type === 'manual'
+                                        ? '<span class="badge bg-light text-dark">Manual</span>'
+                                        : svc.start_type === 'Disabled' || svc.start_type === 'disabled'
+                                        ? '<span class="badge bg-dark">Disabled</span>'
+                                        : '<span class="badge bg-secondary">' + (svc.start_type || '-') + '</span>';
+                                    return '<tr data-name="' + (svc.name || '').toLowerCase() + '" data-status="' + (svc.status || '').toLowerCase() + '" data-start="' + (svc.start_type || '').toLowerCase() + '">' +
+                                        '<td><code>' + (svc.name || '-') + '</code></td>' +
+                                        '<td><small>' + (svc.display_name || svc.name || '-') + '</small></td>' +
+                                        '<td>' + statusBadge + '</td>' +
+                                        '<td>' + startTypeBadge + '</td>' +
+                                        '<td><small>' + (svc.user_account || '-') + '</small></td>' +
+                                    '</tr>';
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+                
+                <!-- Tab Software -->
+                ${device.software && device.software.length > 0 ? `
+                <div class="tab-pane fade" id="software" role="tabpanel">
+                    <h6 class="text-muted mb-3"><i class="bi bi-box-seam"></i> Software Installato (${device.software.length})</h6>
+                    
+                    <!-- Filtro software -->
+                    <div class="mb-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control form-control-sm" id="softwareFilter" placeholder="Cerca software..." oninput="filterSoftware()">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped table-hover" id="softwareTable">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Versione</th>
+                                    <th>Vendor</th>
+                                    <th>Data Installazione</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${device.software.map(sw => {
+                                    const installDate = sw.install_date 
+                                        ? new Date(sw.install_date).toLocaleDateString('it-IT') 
+                                        : '-';
+                                    return '<tr data-name="' + (sw.name || '').toLowerCase() + '">' +
+                                        '<td>' + (sw.name || '-') + '</td>' +
+                                        '<td><code>' + (sw.version || '-') + '</code></td>' +
+                                        '<td><small>' + (sw.vendor || '-') + '</small></td>' +
+                                        '<td><small>' + installDate + '</small></td>' +
+                                    '</tr>';
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+                
+                <!-- Tab Modifica -->
+                <div class="tab-pane fade" id="edit" role="tabpanel">
+                    <form id="editDeviceForm" onsubmit="return saveDeviceChanges('${deviceId}', event)">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-muted mb-3"><i class="bi bi-info-circle"></i> Informazioni Base</h6>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Nome Dispositivo</label>
+                                    <input type="text" class="form-control form-control-sm" name="name" value="${(device.name || '').replace(/"/g, '&quot;')}">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Hostname</label>
+                                    <input type="text" class="form-control form-control-sm" name="hostname" value="${(device.hostname || '').replace(/"/g, '&quot;')}">
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Categoria</label>
+                                            <select class="form-select form-select-sm" name="category" id="editCategory" onchange="updateEditSubcategory()">
+                                                <option value="">-- Seleziona --</option>
+                                                <option value="Network" ${device.category === 'Network' ? 'selected' : ''}>Network</option>
+                                                <option value="Server" ${device.category === 'Server' ? 'selected' : ''}>Server</option>
+                                                <option value="Storage" ${device.category === 'Storage' ? 'selected' : ''}>Storage</option>
+                                                <option value="Security" ${device.category === 'Security' ? 'selected' : ''}>Security</option>
+                                                <option value="Endpoint" ${device.category === 'Endpoint' ? 'selected' : ''}>Endpoint</option>
+                                                <option value="Telephony" ${device.category === 'Telephony' ? 'selected' : ''}>Telephony</option>
+                                                <option value="Infrastructure" ${device.category === 'Infrastructure' ? 'selected' : ''}>Infrastructure</option>
+                                                <option value="Peripheral" ${device.category === 'Peripheral' ? 'selected' : ''}>Peripheral</option>
+                                                <option value="Surveillance" ${device.category === 'Surveillance' ? 'selected' : ''}>Surveillance</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Sottocategoria</label>
+                                            <select class="form-select form-select-sm" name="subcategory" id="editSubcategory">
+                                                <option value="">-- Seleziona --</option>
+                                                ${device.subcategory ? `<option value="${device.subcategory}" selected>${device.subcategory}</option>` : ''}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Sistema Operativo</label>
+                                    <input type="text" class="form-control form-control-sm" name="os_family" value="${(device.os_family || '').replace(/"/g, '&quot;')}">
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Produttore</label>
+                                            <input type="text" class="form-control form-control-sm" name="manufacturer" value="${(device.manufacturer || '').replace(/"/g, '&quot;')}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Modello</label>
+                                            <input type="text" class="form-control form-control-sm" name="model" value="${(device.model || '').replace(/"/g, '&quot;')}">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Numero Seriale</label>
+                                    <input type="text" class="form-control form-control-sm" name="serial_number" value="${(device.serial_number || '').replace(/"/g, '&quot;')}">
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h6 class="text-muted mb-3"><i class="bi bi-tag"></i> Gestione Asset</h6>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Feature/Ruolo</label>
+                                    <input type="text" class="form-control form-control-sm" name="feature" value="${(device.feature || '').replace(/"/g, '&quot;')}" 
+                                           placeholder="Es: File Server, Domain Controller, DNS, Print Server">
+                                    <small class="text-muted">Funzione principale del dispositivo</small>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Location</label>
+                                    <input type="text" class="form-control form-control-sm" name="location" value="${(device.location || '').replace(/"/g, '&quot;')}"
+                                           placeholder="Es: Rack A1, Ufficio IT, Piano 2">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Asset Tag</label>
+                                    <input type="text" class="form-control form-control-sm" name="asset_tag" value="${(device.asset_tag || '').replace(/"/g, '&quot;')}"
+                                           placeholder="Es: AST-001234">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Cespite</label>
+                                    <input type="text" class="form-control form-control-sm" name="cespite" value="${(device.cespite || '').replace(/"/g, '&quot;')}"
+                                           placeholder="Codice cespite aziendale">
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Note</label>
+                                    <textarea class="form-control form-control-sm" name="notes" rows="3" placeholder="Note aggiuntive...">${(device.notes || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                </div>
+                                
+                                <hr>
+                                
+                                <h6 class="text-muted mb-3"><i class="bi bi-key"></i> Credenziali Associate</h6>
+                                <div id="credentialsCheckboxes" class="mb-3">
+                                    <small class="text-muted">Seleziona le credenziali da usare per questo dispositivo (selezione multipla):</small>
+                                    <div class="mt-2" id="credentialsList">
+                                        <!-- Verrà popolato dinamicamente -->
+                                        <div class="text-center py-2"><span class="spinner-border spinner-border-sm"></span> Caricamento credenziali...</div>
+                                    </div>
+                                    <small class="text-muted mt-2 d-block">
+                                        <i class="bi bi-info-circle"></i> Le credenziali selezionate verranno testate durante le scansioni.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <hr>
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-secondary" onclick="document.querySelector('#general-tab').click()">Annulla</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg"></i> Salva Modifiche
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         `;
 
         // Mostra modal con dettagli dispositivo
         showModal('Dettagli Dispositivo: ' + device.name, modalContent, 'xl');
+        
+        // Carica credenziali per il tab Modifica (dopo che il modal è visibile)
+        // Usa credential_ids se disponibile, altrimenti fallback a credential_id
+        setTimeout(() => {
+            loadCredentialsForDevice(deviceId, device.credential_ids || device.credential_id || '');
+        }, 100);
 
     } catch (e) {
         alert('Errore caricamento dettagli: ' + e.message);
     }
+}
+
+// Categoria -> Sottocategoria mapping per il form di modifica
+const categorySubcategories = {
+    "Network": ["Router", "Switch", "Firewall", "Access Point", "Gateway"],
+    "Server": ["Physical Server", "Hypervisor", "VM Windows", "VM Linux"],
+    "Storage": ["NAS", "SAN"],
+    "Security": ["Firewall Appliance", "VPN Gateway", "IDS/IPS", "Proxy"],
+    "Endpoint": ["Desktop", "Laptop", "Thin Client", "Mobile Device"],
+    "Telephony": ["PBX", "VoIP Gateway", "IP Phone"],
+    "Infrastructure": ["UPS", "PDU", "Rack"],
+    "Peripheral": ["Printer", "Scanner", "MFP"],
+    "Surveillance": ["IP Camera", "NVR"]
+};
+
+// Aggiorna dropdown sottocategoria in base alla categoria selezionata
+function updateEditSubcategory() {
+    const categorySelect = document.getElementById('editCategory');
+    const subcategorySelect = document.getElementById('editSubcategory');
+    
+    if (!categorySelect || !subcategorySelect) return;
+    
+    const category = categorySelect.value;
+    const currentSubcategory = subcategorySelect.getAttribute('data-current') || '';
+    
+    subcategorySelect.innerHTML = '<option value="">-- Seleziona --</option>';
+    
+    if (category && categorySubcategories[category]) {
+        categorySubcategories[category].forEach(sub => {
+            const selected = sub === currentSubcategory ? 'selected' : '';
+            subcategorySelect.innerHTML += `<option value="${sub}" ${selected}>${sub}</option>`;
+        });
+    }
+}
+
+// Carica credenziali disponibili per il device
+async function loadCredentialsForDevice(deviceId, currentCredentialId) {
+    const container = document.getElementById('credentialsList');
+    if (!container) return;
+    
+    try {
+        // Ottieni credenziali del cliente
+        const customerId = '{{ customer.id }}';
+        const response = await fetch(`/api/v1/customers/${customerId}/credentials`);
+        
+        if (!response.ok) {
+            container.innerHTML = '<div class="text-danger">Errore caricamento credenziali</div>';
+            return;
+        }
+        
+        const data = await response.json();
+        const credentials = data.credentials || data;  // Supporta sia {credentials: [...]} che [...]
+        
+        if (!credentials || !Array.isArray(credentials) || credentials.length === 0) {
+            container.innerHTML = '<div class="text-muted">Nessuna credenziale disponibile per questo cliente</div>';
+            return;
+        }
+        
+        // Parsa le credenziali attuali (può essere un singolo ID o un array JSON)
+        let currentCredentials = [];
+        if (currentCredentialId) {
+            try {
+                // Prova a parsare come JSON array
+                currentCredentials = JSON.parse(currentCredentialId);
+                if (!Array.isArray(currentCredentials)) {
+                    currentCredentials = [currentCredentialId];
+                }
+            } catch (e) {
+                // È un singolo ID
+                currentCredentials = [currentCredentialId];
+            }
+        }
+        
+        // Genera checkbox per ogni credenziale (selezione multipla)
+        let html = '<div class="credential-checkboxes">';
+        credentials.forEach(cred => {
+            const isChecked = currentCredentials.includes(cred.id) ? 'checked' : '';
+            const typeClass = cred.credential_type === 'ssh' ? 'success' : 
+                             cred.credential_type === 'snmp' ? 'info' : 
+                             cred.credential_type === 'wmi' ? 'warning' : 
+                             cred.credential_type === 'mikrotik' ? 'danger' : 'primary';
+            
+            html += `
+                <div class="form-check mb-2">
+                    <input class="form-check-input credential-checkbox" type="checkbox" name="credential_ids" value="${cred.id}" id="cred_${cred.id}" ${isChecked}>
+                    <label class="form-check-label" for="cred_${cred.id}">
+                        <span class="badge bg-${typeClass} me-1">${cred.credential_type.toUpperCase()}</span>
+                        <strong>${cred.name}</strong>
+                        ${cred.username ? `<small class="text-muted">(${cred.username})</small>` : ''}
+                        ${cred.is_default ? '<span class="badge bg-secondary ms-1">default</span>' : ''}
+                    </label>
+                </div>
+            `;
+        });
+        html += '</div>';
+        
+        // Aggiungi pulsanti di selezione rapida
+        html += `
+            <div class="mt-2 d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllCredentials()">
+                    <i class="bi bi-check-all"></i> Seleziona tutte
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAllCredentials()">
+                    <i class="bi bi-x-lg"></i> Deseleziona tutte
+                </button>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Imposta current subcategory per aggiornamento dropdown
+        const subcategorySelect = document.getElementById('editSubcategory');
+        if (subcategorySelect) {
+            const currentValue = subcategorySelect.querySelector('option[selected]')?.value || '';
+            subcategorySelect.setAttribute('data-current', currentValue);
+            // Trigger update per popolare le opzioni
+            updateEditSubcategory();
+        }
+        
+    } catch (e) {
+        container.innerHTML = `<div class="text-danger">Errore: ${e.message}</div>`;
+    }
+}
+
+// Helper: Seleziona tutte le credenziali
+function selectAllCredentials() {
+    document.querySelectorAll('.credential-checkbox').forEach(cb => cb.checked = true);
+}
+
+// Helper: Deseleziona tutte le credenziali
+function deselectAllCredentials() {
+    document.querySelectorAll('.credential-checkbox').forEach(cb => cb.checked = false);
+}
+
+// Salva modifiche dispositivo
+async function saveDeviceChanges(deviceId, event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('editDeviceForm');
+    if (!form) return false;
+    
+    const formData = new FormData(form);
+    const data = {};
+    
+    // Converti FormData in oggetto (escludi credential_ids che gestiremo separatamente)
+    formData.forEach((value, key) => {
+        if (value !== '' && key !== 'credential_ids') {
+            data[key] = value;
+        }
+    });
+    
+    // Gestisci credenziali multiple (checkbox)
+    const selectedCredentials = [];
+    document.querySelectorAll('.credential-checkbox:checked').forEach(cb => {
+        selectedCredentials.push(cb.value);
+    });
+    
+    // Salva come JSON array per supportare credenziali multiple
+    if (selectedCredentials.length > 0) {
+        data.credential_ids = JSON.stringify(selectedCredentials);
+        // Mantieni anche credential_id per retrocompatibilità (prima credenziale selezionata)
+        data.credential_id = selectedCredentials[0];
+    } else {
+        data.credential_ids = null;
+        data.credential_id = null;
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/inventory/devices/${deviceId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            alert('✅ Modifiche salvate con successo!');
+            
+            // Chiudi modal e ricarica inventario
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
+            if (modal) modal.hide();
+            
+            loadInventory();
+        } else {
+            const error = await response.json();
+            alert('❌ Errore: ' + (error.detail || error.message || 'Salvataggio fallito'));
+        }
+    } catch (e) {
+        alert('❌ Errore: ' + e.message);
+    }
+    
+    return false;
 }
 
 function showModal(title, content, size = 'md', footerButtons = null) {
@@ -5698,7 +6525,7 @@ function showModal(title, content, size = 'md', footerButtons = null) {
     }
 
     // Aggiorna contenuto
-    modal.querySelector('.modal-title').textContent = title;
+    modal.querySelector('.modal-title').innerHTML = title;
     modal.querySelector('.modal-body').innerHTML = content;
     modal.querySelector('.modal-dialog').className = `modal-dialog modal-${size} modal-dialog-scrollable`;
     
@@ -5969,6 +6796,71 @@ async function backupProxmoxDevice(deviceId, deviceIp) {
         alert('Errore: ' + e.message);
     }
 }
+
+// ==========================================
+// FUNZIONI FILTRO SERVIZI E SOFTWARE
+// ==========================================
+
+function filterServices() {
+    const searchTerm = document.getElementById('serviceFilter')?.value.toLowerCase() || '';
+    const statusFilter = document.getElementById('serviceStatusFilter')?.value.toLowerCase() || '';
+    const table = document.getElementById('servicesTable');
+    if (!table) return;
+    
+    const rows = table.querySelectorAll('tbody tr');
+    let runningCount = 0;
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const name = row.dataset.name || '';
+        const status = row.dataset.status || '';
+        const startType = row.dataset.start || '';
+        
+        let matchesSearch = !searchTerm || name.includes(searchTerm);
+        let matchesStatus = !statusFilter || 
+            status.includes(statusFilter) || 
+            startType.includes(statusFilter);
+        
+        if (matchesSearch && matchesStatus) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+        
+        if (status === 'running') runningCount++;
+    });
+    
+    const countBadge = document.getElementById('runningCount');
+    if (countBadge) {
+        countBadge.textContent = runningCount + ' running';
+    }
+}
+
+function filterSoftware() {
+    const searchTerm = document.getElementById('softwareFilter')?.value.toLowerCase() || '';
+    const table = document.getElementById('softwareTable');
+    if (!table) return;
+    
+    const rows = table.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const name = row.dataset.name || '';
+        
+        if (!searchTerm || name.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+// Inizializza contatori quando il tab servizi viene mostrato
+document.addEventListener('shown.bs.tab', function(event) {
+    if (event.target.id === 'services-tab') {
+        filterServices(); // Aggiorna i contatori
+    }
+});
 
 // ==========================================
 // FUNZIONI PER INFORMAZIONI AVANZATE DEVICE
@@ -7009,81 +7901,112 @@ async function createVmInventoryDevices(deviceId) {
 let unifiedScanResultJson = null;
 
 async function unifiedScan(deviceId, address) {
+    console.log('Unified Scan Modal v2.0 loaded');
     // Chiudi modal dettagli se aperto
     const detailModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
     if (detailModal) {
         detailModal.hide();
     }
     
-    // Mostra modal con selezione protocollo
+    // Mostra modal con due aree: Unified Scanner e Auto-detect
     const modalContent = `
-        <div class="mb-4">
-            <label class="form-label fw-bold">Indirizzo Target:</label>
-            <input type="text" id="unifiedScanAddress" class="form-control" value="${address}" readonly>
-        </div>
-        <div class="mb-4">
-            <label class="form-label fw-bold">Protocolli:</label>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="protoAuto" checked>
-                <label class="form-check-label" for="protoAuto">
-                    <i class="bi bi-magic"></i> Auto-detect (consigliato)
-                </label>
+        <input type="hidden" id="unifiedScanAddress" value="${address}">
+        <div class="row">
+            <!-- Colonna Unified Scanner -->
+            <div class="col-md-7 border-end">
+                <h5 class="mb-3 text-primary"><i class="bi bi-layers"></i> Unified Scanner</h5>
+                <p class="text-muted small mb-3">Nuovo scanner modulare completo.</p>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Protocolli:</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        <div class="form-check me-2">
+                            <input class="form-check-input" type="checkbox" id="protoAuto" checked>
+                            <label class="form-check-label" for="protoAuto">Auto</label>
+                        </div>
+                        <div class="form-check me-2">
+                            <input class="form-check-input" type="checkbox" id="protoSSH">
+                            <label class="form-check-label" for="protoSSH">SSH</label>
+                        </div>
+                        <div class="form-check me-2">
+                            <input class="form-check-input" type="checkbox" id="protoSNMP">
+                            <label class="form-check-label" for="protoSNMP">SNMP</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="protoWinRM">
+                            <label class="form-check-label" for="protoWinRM">WinRM</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Opzioni:</label>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeSoftware" checked>
+                                <label class="form-check-label small" for="includeSoftware">Software</label>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeServices" checked>
+                                <label class="form-check-label small" for="includeServices">Servizi</label>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeUsers">
+                                <label class="form-check-label small" for="includeUsers">Utenti</label>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="autoSave" checked>
+                                <label class="form-check-label small" for="autoSave">Salva DB</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-grid mt-4">
+                    <button class="btn btn-primary" onclick="executeUnifiedScan('${deviceId}')">
+                        <i class="bi bi-play-fill"></i> Avvia Unified Scan
+                    </button>
+                </div>
+                
+                <div id="unifiedScanProgress" class="mt-3 d-none">
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                    </div>
+                    <small class="text-muted d-block text-center mt-1">Scansione in corso...</small>
+                </div>
             </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="protoSSH">
-                <label class="form-check-label" for="protoSSH">
-                    <i class="bi bi-terminal"></i> SSH (Linux, NAS, Proxmox)
-                </label>
+            
+            <!-- Colonna Auto-detect -->
+            <div class="col-md-5 bg-light p-3 rounded">
+                <h5 class="mb-3 text-secondary"><i class="bi bi-magic"></i> Auto-detect</h5>
+                <p class="text-muted small mb-3">Scanner legacy (verrà dismesso).</p>
+                
+                <div class="alert alert-white border small shadow-sm">
+                    <ul class="mb-0 ps-3">
+                        <li>Usa credenziali assegnate</li>
+                        <li>Testa credenziali default</li>
+                        <li>Scan porte rapido</li>
+                    </ul>
+                </div>
+                
+                <div class="d-grid mt-4">
+                    <button class="btn btn-outline-secondary" onclick="autoDetectDevice('${deviceId}', '${address}')">
+                        <i class="bi bi-bullseye"></i> Avvia Auto-detect
+                    </button>
+                </div>
             </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="protoSNMP">
-                <label class="form-check-label" for="protoSNMP">
-                    <i class="bi bi-broadcast"></i> SNMP (Switch, Router, AP)
-                </label>
-            </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="protoWinRM">
-                <label class="form-check-label" for="protoWinRM">
-                    <i class="bi bi-windows"></i> WinRM/WMI (Windows)
-                </label>
-            </div>
-        </div>
-        <div class="mb-4">
-            <label class="form-label fw-bold">Opzioni:</label>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="includeSoftware" checked>
-                <label class="form-check-label" for="includeSoftware">Includi software installato</label>
-            </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="includeServices" checked>
-                <label class="form-check-label" for="includeServices">Includi servizi</label>
-            </div>
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="includeUsers">
-                <label class="form-check-label" for="includeUsers">Includi utenti</label>
-            </div>
-            <div class="form-check mt-3">
-                <input class="form-check-input" type="checkbox" id="autoSave" checked>
-                <label class="form-check-label" for="autoSave">
-                    <i class="bi bi-save"></i> <strong>Salva automaticamente i risultati nel database</strong>
-                    <br><small class="text-muted">Se deselezionato, i dati saranno solo visualizzati e non salvati</small>
-                </label>
-            </div>
-        </div>
-        <div class="d-grid gap-2">
-            <button class="btn btn-primary btn-lg" onclick="executeUnifiedScan('${deviceId}')">
-                <i class="bi bi-play-fill"></i> Avvia Scansione Unificata
-            </button>
-        </div>
-        <div id="unifiedScanProgress" class="mt-4 d-none">
-            <div class="progress">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
-            </div>
-            <p class="text-center text-muted mt-2">Scansione in corso...</p>
         </div>
     `;
     
-    showModal('<i class="bi bi-layers"></i> Unified Scanner - ' + address, modalContent, 'lg');
+    // Rimuovi riferimento a IP nel titolo
+    showModal('Scansione Dispositivo', modalContent, 'lg');
 }
 
 async function executeUnifiedScan(deviceId) {
@@ -7161,91 +8084,131 @@ async function executeUnifiedScan(deviceId) {
 
 let currentUnifiedScanDeviceId = null;
 
-function showUnifiedScanResults(address, data, alreadySaved = false) {
+async function showUnifiedScanResults(address, data, alreadySaved = false) {
     // Salva device_id per il salvataggio
     currentUnifiedScanDeviceId = data.device_id || null;
-    // Usa il componente grafico UnifiedScannerDisplay
-    let html = '';
     
-    // Rendering principale con il componente grafico
-    if (window.UnifiedScannerDisplay) {
-        html = window.UnifiedScannerDisplay.render(data);
-    } else {
-        // Fallback se il componente non è caricato
-        html = `<div class="alert alert-warning">Componente grafico non disponibile. Visualizzazione JSON:</div>`;
-        html += `<pre class="bg-dark text-light p-3 rounded">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
-    }
+    // Dati fondamentali
+    const hostname = data.hostname || data.system_info?.hostname || '-';
+    const os = data.os || data.system_info?.os || '-';
+    const vendor = data.vendor || '-';
+    const ip = address || data.ip || '-';
+    const scanTime = data.scan_timestamp ? new Date(data.scan_timestamp).toLocaleString() : new Date().toLocaleString();
     
-    // Sezione Software (se presente, aggiunta extra)
-    if (data.installed_software && data.installed_software.length > 0) {
-        html += `
-            <div class="card mb-4 mt-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-box-seam me-2"></i>Software Installato</span>
-                    <span class="badge bg-dark">${data.installed_software.length}</span>
-                </div>
-                <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light sticky-top">
-                                <tr><th>Nome</th><th>Versione</th><th>Publisher</th></tr>
-                            </thead>
-                            <tbody>
-                                ${data.installed_software.slice(0, 100).map(sw => `
-                                    <tr>
-                                        <td>${escapeHtml(sw.name || '-')}</td>
-                                        <td><code>${escapeHtml(sw.version || '-')}</code></td>
-                                        <td class="text-muted">${escapeHtml(sw.publisher || sw.vendor || '-')}</td>
-                                    </tr>
-                                `).join('')}
-                                ${data.installed_software.length > 100 ? '<tr><td colspan="3" class="text-center text-muted py-2">... e altri ' + (data.installed_software.length - 100) + ' software</td></tr>' : ''}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    let html = `
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><th class="text-muted" style="width: 120px;">Hostname</th><td class="fw-bold">${hostname}</td></tr>
+                    <tr><th class="text-muted">Indirizzo IP</th><td><code>${ip}</code></td></tr>
+                </table>
             </div>
-        `;
-    }
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><th class="text-muted" style="width: 120px;">Sistema Op.</th><td>${os}</td></tr>
+                    <tr><th class="text-muted">Vendor</th><td>${vendor}</td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="text-muted small mb-3"><i class="bi bi-clock me-1"></i>Scansione: ${scanTime}</div>
+    `;
     
-    // Raw JSON collapsible
+    // JSON Viewer (espandibile)
     html += `
-        <div class="card mb-4">
-            <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#rawJsonCollapse">
-                <i class="bi bi-code-slash me-2"></i>Dati JSON Raw 
-                <span class="float-end"><i class="bi bi-chevron-down"></i></span>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center" 
+                 style="cursor: pointer;" 
+                 onclick="toggleJsonViewer(this)">
+                <span><i class="bi bi-code-slash me-2"></i>Dati Completi (JSON)</span>
+                <i class="bi bi-chevron-down transition-icon"></i>
             </div>
-            <div class="collapse" id="rawJsonCollapse">
-                <div class="card-body p-0">
-                    <pre class="json-raw-view m-0">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+            <div class="card-body p-0" style="display: none;">
+                <div class="json-viewer bg-dark text-light p-3 font-monospace small" style="max-height: 500px; overflow-y: auto;">
+                    ${renderJsonTree(data)}
                 </div>
             </div>
         </div>
     `;
     
-    // Footer buttons
+    // Footer actions
     html += `
-        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+        <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
             <div class="btn-group">
-                <button class="btn btn-outline-secondary" onclick="copyUnifiedScanJson()">
-                    <i class="bi bi-clipboard me-1"></i> Copia JSON
+                <button class="btn btn-sm btn-outline-secondary" onclick="copyUnifiedScanJson()">
+                    <i class="bi bi-clipboard"></i> Copia JSON
                 </button>
-                <button class="btn btn-outline-secondary" onclick="downloadUnifiedScanJson('${data.hostname || address}')">
-                    <i class="bi bi-download me-1"></i> Scarica JSON
+                <button class="btn btn-sm btn-outline-secondary" onclick="downloadUnifiedScanJson('${hostname}')">
+                    <i class="bi bi-download"></i> Scarica
                 </button>
             </div>
             ${alreadySaved ? `
-                <div class="text-success">
-                    <i class="bi bi-check-circle me-1"></i> Dati già salvati nel database
-                </div>
+                <span class="text-success fw-bold"><i class="bi bi-check-circle"></i> Salvato</span>
             ` : `
-                <button class="btn btn-success btn-lg" onclick="saveUnifiedScanToInventory('${currentUnifiedScanDeviceId || data.device_id || ''}')">
-                    <i class="bi bi-save me-1"></i> Salva in Inventario
+                <button class="btn btn-success" onclick="saveUnifiedScanToInventory('${currentUnifiedScanDeviceId || data.device_id || ''}')">
+                    <i class="bi bi-save"></i> Salva in Inventario
                 </button>
             `}
         </div>
     `;
     
-    showModal('<i class="bi bi-layers"></i> Unified Scanner - ' + address, html, 'xl');
+    showModal('Risultati Scansione', html, 'lg');
+}
+
+// JSON Tree Renderer
+function renderJsonTree(data) {
+    // Semplice visualizzazione JSON formattata con colori e indentazione
+    // Per "aree", raggruppiamo le chiavi principali
+    
+    if (typeof data !== 'object' || data === null) {
+        return `<span class="text-warning">${data}</span>`;
+    }
+    
+    let html = '<div class="ps-2">';
+    for (const [key, value] of Object.entries(data)) {
+        const isObject = typeof value === 'object' && value !== null;
+        const isEmpty = isObject && Object.keys(value).length === 0;
+        
+        html += `<div class="mb-1">`;
+        
+        if (isObject && !isEmpty) {
+            const collapseId = 'json-' + Math.random().toString(36).substr(2, 9);
+            html += `
+                <span class="text-info" style="cursor: pointer;" onclick="document.getElementById('${collapseId}').classList.toggle('d-none'); this.querySelector('i').classList.toggle('bi-caret-right-fill'); this.querySelector('i').classList.toggle('bi-caret-down-fill');">
+                    <i class="bi bi-caret-down-fill me-1" style="font-size: 0.8em;"></i>
+                    <span class="fw-bold">"${key}"</span>:
+                </span>
+                <div id="${collapseId}" class="border-start border-secondary ms-3 ps-2">
+                    ${renderJsonTree(value)}
+                </div>
+            `;
+        } else {
+            let valStr = JSON.stringify(value);
+            let colorClass = 'text-warning';
+            if (typeof value === 'string') colorClass = 'text-success';
+            if (typeof value === 'number') colorClass = 'text-danger';
+            if (typeof value === 'boolean') colorClass = 'text-primary';
+            
+            html += `<span class="text-secondary fw-bold">"${key}"</span>: <span class="${colorClass}">${valStr}</span>`;
+        }
+        
+        html += `</div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+function toggleJsonViewer(header) {
+    const body = header.nextElementSibling;
+    const icon = header.querySelector('.transition-icon');
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-up');
+    } else {
+        body.style.display = 'none';
+        icon.classList.remove('bi-chevron-up');
+        icon.classList.add('bi-chevron-down');
+    }
 }
 
 // Utility function per escape HTML (usata in unified scanner)
