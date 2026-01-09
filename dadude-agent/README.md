@@ -64,13 +64,70 @@ Vedi la guida completa in: **[docs/deployment/MIKROTIK_CONTAINER_SETUP.md](../do
 
 Per dettagli completi, vedi la [guida completa MikroTik](../docs/deployment/MIKROTIK_CONTAINER_SETUP.md).
 
+## Installazione su Proxmox LXC (Consigliata)
+
+**Metodo più semplice**: Esegui lo script direttamente sul nodo Proxmox:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/grandir66/dadude/main/dadude-agent/deploy/proxmox/install-from-git.sh | bash
+```
+
+Lo script:
+- Crea un container LXC Debian minimale
+- Installa Python e dipendenze
+- Scarica **SOLO** i file necessari da Git (niente codice server o file superflui)
+- Configura l'agent in modo interattivo
+- Installa il servizio systemd
+
+### Opzioni disponibili
+
+Puoi passare parametri via linea di comando:
+
+```bash
+bash install-from-git.sh \
+  --server-url https://dadude.domarc.it:8000 \
+  --agent-name "sede-milano" \
+  --ctid 1601 \
+  --bridge vmbr0 \
+  --ip 192.168.1.100/24 \
+  --gateway 192.168.1.1
+```
+
+| Opzione | Default | Descrizione |
+|---------|---------|-------------|
+| `--server-url` | `https://dadude.domarc.it:8000` | URL server DaDude |
+| `--agent-name` | (interattivo) | Nome descrittivo agent |
+| `--agent-token` | auto-generato | Token autenticazione |
+| `--ctid` | prossimo disponibile | ID container Proxmox |
+| `--hostname` | `dadude-agent-{name}` | Hostname container |
+| `--bridge` | (interattivo) | Bridge Proxmox |
+| `--vlan` | (opzionale) | VLAN tag |
+| `--ip` | `dhcp` | IP statico o DHCP |
+| `--gateway` | suggerito | Gateway rete |
+| `--dns` | da DHCP/gateway | Server DNS |
+| `--storage` | (interattivo) | Storage Proxmox |
+| `--memory` | `512` | RAM in MB |
+| `--disk` | `4` | Disco in GB |
+
+### Pulizia installazione esistente
+
+Se hai un agent con file superflui (codice server, docs, ecc.):
+
+```bash
+# Dry-run (mostra cosa verrebbe eliminato)
+curl -fsSL https://raw.githubusercontent.com/grandir66/dadude/main/dadude-agent/deploy/proxmox/cleanup-agent.sh | bash -s -- --dry-run
+
+# Esegui pulizia
+curl -fsSL https://raw.githubusercontent.com/grandir66/dadude/main/dadude-agent/deploy/proxmox/cleanup-agent.sh | bash
+```
+
 ## Installazione Docker Standalone
 
 ```bash
 docker run -d \
   --name dadude-agent \
   --network host \
-  -e DADUDE_SERVER_URL=https://your-server.com \
+  -e DADUDE_SERVER_URL=https://dadude.domarc.it:8000 \
   -e DADUDE_AGENT_TOKEN=your-token \
   -e DADUDE_AGENT_ID=agent-001 \
   ghcr.io/dadude/agent:latest
