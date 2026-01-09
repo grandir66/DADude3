@@ -34,8 +34,25 @@ except ImportError:
     logger.warning("VersionManager not available - auto-update features disabled")
 
 
-# Version
-AGENT_VERSION = "3.0.0"  # DaDude v3.0.0 - Unified Scanner, UDP Scan, Auto-update
+# Version - legge da file VERSION se esiste, altrimenti usa default
+def _get_version() -> str:
+    """Legge la versione dal file VERSION o usa default."""
+    from pathlib import Path
+    version_paths = [
+        Path(__file__).parent.parent / "VERSION",  # dadude-agent/VERSION
+        Path(__file__).parent.parent.parent / "VERSION",  # root/VERSION
+        Path("/opt/dadude-agent/VERSION"),
+        Path("/opt/dadude-agent/dadude-agent/VERSION"),
+    ]
+    for vpath in version_paths:
+        if vpath.exists():
+            try:
+                return vpath.read_text().strip()
+            except Exception:
+                pass
+    return "3.1.1"  # Default fallback
+
+AGENT_VERSION = _get_version()
 
 
 class DaDudeAgent:
