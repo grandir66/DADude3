@@ -4954,17 +4954,50 @@ async function viewInventoryDevice(deviceId) {
                 </div>
                 ` : ''}
                 
-                ${storageInfo.raid ? `
+                ${(storageInfo.raid_arrays && storageInfo.raid_arrays.length > 0) ? `
+                <div class="mb-3">
+                    <strong>RAID Arrays (${storageInfo.raid_arrays.length}):</strong>
+                    <div class="table-responsive mt-2">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Livello</th>
+                                    <th>Stato</th>
+                                    <th>Dispositivi</th>
+                                    <th>Dimensione</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${storageInfo.raid_arrays.map(r => {
+                                    const statusBadge = (r.status || '').toLowerCase().includes('active') || (r.status || '').toLowerCase().includes('clean') ? 'success' : 
+                                                       (r.status || '').toLowerCase().includes('degraded') ? 'danger' : 'warning';
+                                    const devices = r.devices && Array.isArray(r.devices) ? r.devices.join(', ') : (r.devices || '-');
+                                    return \`
+                                    <tr>
+                                        <td>\${r.name || '-'}</td>
+                                        <td><span class="badge bg-info">\${r.level || '-'}</span></td>
+                                        <td><span class="badge bg-\${statusBadge}">\${r.status || '-'}</span></td>
+                                        <td style="font-size: 0.85em;">\${devices}</td>
+                                        <td>\${r.size_gb ? r.size_gb.toFixed(0) + ' GB' : '-'}</td>
+                                    </tr>
+                                    \`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : (storageInfo.raid ? `
                 <div class="mb-3">
                     <strong>RAID:</strong>
                     <table class="table table-sm">
                         <tr><th width="30%">Livello:</th><td>${storageInfo.raid.level || '-'}</td></tr>
-                        <tr><th>Stato:</th><td><span class="badge bg-${storageInfo.raid.status === 'active' ? 'success' : 'warning'}">${storageInfo.raid.status || '-'}</span></td></tr>
-                        <tr><th>Dispositivi:</th><td>${storageInfo.raid.devices ? storageInfo.raid.devices.join(', ') : '-'}</td></tr>
+                        <tr><th>Stato:</th><td><span class="badge bg-${(storageInfo.raid.status || '').toLowerCase().includes('active') ? 'success' : 'warning'}">${storageInfo.raid.status || '-'}</span></td></tr>
+                        <tr><th>Dispositivi:</th><td>${storageInfo.raid.devices ? (Array.isArray(storageInfo.raid.devices) ? storageInfo.raid.devices.join(', ') : storageInfo.raid.devices) : '-'}</td></tr>
                         ${storageInfo.raid.degraded ? '<tr><th>Degradato:</th><td><span class="badge bg-danger">Sì</span></td></tr>' : ''}
                     </table>
                 </div>
-                ` : ''}
+                ` : '')}
                 
                 ${storageInfo.disks && storageInfo.disks.length > 0 ? `
                 <div class="mb-3">

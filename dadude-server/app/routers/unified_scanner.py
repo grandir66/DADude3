@@ -866,35 +866,34 @@ async def _save_unified_scan_to_inventory(
                         # Converti raid_arrays nel formato atteso dal frontend
                         raid_arrays = getattr(scan_result, 'raid_arrays', None) or []
                         if raid_arrays:
-                            # Prendi il primo RAID array come principale (o combina tutti)
-                            raid_info = {}
-                            if len(raid_arrays) == 1:
-                                raid = raid_arrays[0]
-                                raid_info = {
-                                    "name": raid.get("name", ""),
-                                    "level": raid.get("level", ""),
-                                    "status": raid.get("status", ""),
-                                    "devices": raid.get("disks", []),
-                                    "total_disks": raid.get("total_disks", 0),
-                                    "healthy_disks": raid.get("healthy_disks", 0),
-                                    "degraded": raid.get("status", "").lower() in ["degraded", "warning"],
+                            # Salva tutti i RAID arrays
+                            storage_info["raid_arrays"] = []
+                            for raid in raid_arrays:
+                                raid_dict = {
+                                    "name": raid.get("name") or raid.get("device", ""),
+                                    "level": raid.get("level") or raid.get("type", ""),
+                                    "status": raid.get("status") or raid.get("state", ""),
+                                    "devices": raid.get("devices") or raid.get("disks", []),
+                                    "size_gb": raid.get("size_gb", 0),
+                                    "degraded": raid.get("degraded", False) or (raid.get("status", "").lower() in ["degraded", "warning"]),
                                 }
-                            elif len(raid_arrays) > 1:
-                                # Se ci sono più RAID, usa il primo come principale
-                                raid = raid_arrays[0]
-                                raid_info = {
-                                    "name": raid.get("name", ""),
-                                    "level": raid.get("level", ""),
-                                    "status": raid.get("status", ""),
-                                    "devices": raid.get("disks", []),
-                                    "total_disks": raid.get("total_disks", 0),
-                                    "healthy_disks": raid.get("healthy_disks", 0),
-                                    "degraded": raid.get("status", "").lower() in ["degraded", "warning"],
-                                    "arrays_count": len(raid_arrays),
-                                }
+                                # Rimuovi valori None o vuoti
+                                raid_dict = {k: v for k, v in raid_dict.items() if v is not None and v != "" and v != []}
+                                storage_info["raid_arrays"].append(raid_dict)
                             
-                            if raid_info:
-                                storage_info["raid"] = {k: v for k, v in raid_info.items() if v is not None and v != ""}
+                            # Aggiungi anche un riepilogo RAID principale per retrocompatibilità
+                            if raid_arrays:
+                                raid = raid_arrays[0]
+                                raid_info = {
+                                    "name": raid.get("name") or raid.get("device", ""),
+                                    "level": raid.get("level") or raid.get("type", ""),
+                                    "status": raid.get("status") or raid.get("state", ""),
+                                    "devices": raid.get("devices") or raid.get("disks", []),
+                                    "total_disks": len(raid.get("devices", []) or raid.get("disks", [])),
+                                    "arrays_count": len(raid_arrays),
+                                    "degraded": raid.get("degraded", False) or (raid.get("status", "").lower() in ["degraded", "warning"]),
+                                }
+                                storage_info["raid"] = {k: v for k, v in raid_info.items() if v is not None and v != "" and v != []}
                         
                         # Salva storage_info in custom_fields solo se abbiamo almeno un dato
                         if storage_info and (storage_info.get("volumes") or storage_info.get("disks") or storage_info.get("raid")):

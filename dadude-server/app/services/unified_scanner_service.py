@@ -576,18 +576,39 @@ class UnifiedScannerService:
         # Protocollo usato
         result.protocol_used = agent_data.get("protocol_used", ",".join(protocols))
         
-        # System info
-        if agent_data.get("system_info"):
-            si = agent_data["system_info"]
-            result.hostname = si.get("hostname", "")
-            result.os_name = si.get("os_name", "")
-            result.os_version = si.get("os_version", "")
-            result.manufacturer = si.get("manufacturer", "")
-            result.model = si.get("model", "")
-            result.serial_number = si.get("serial_number", "")
-            result.firmware_version = si.get("firmware_version", "")
-            result.uptime = si.get("uptime", "")
-            result.device_type = si.get("device_type", "unknown")
+        # System info - cerca prima in system_info, poi fallback al livello top (per Synology/QNAP)
+        si = agent_data.get("system_info", {})
+        
+        # Hostname
+        result.hostname = si.get("hostname") or agent_data.get("hostname") or result.hostname
+        
+        # OS name - importante per Synology (DSM) e QNAP (QTS/QuTS Hero)
+        result.os_name = si.get("os_name") or agent_data.get("os_name") or result.os_name
+        
+        # OS version
+        result.os_version = si.get("os_version") or agent_data.get("os_version") or result.os_version
+        
+        # Manufacturer
+        result.manufacturer = si.get("manufacturer") or agent_data.get("manufacturer") or result.manufacturer
+        
+        # Model
+        result.model = si.get("model") or agent_data.get("model") or result.model
+        
+        # Serial number - critico per NAS
+        result.serial_number = si.get("serial_number") or agent_data.get("serial_number") or result.serial_number
+        
+        # Firmware version
+        result.firmware_version = si.get("firmware_version") or agent_data.get("firmware_version") or result.firmware_version
+        
+        # Uptime
+        result.uptime = si.get("uptime") or agent_data.get("uptime") or result.uptime
+        
+        # Device type
+        result.device_type = si.get("device_type") or agent_data.get("device_type") or result.device_type or "unknown"
+        
+        # Log per debug NAS
+        if result.manufacturer and result.manufacturer.lower() in ["synology", "qnap"]:
+            logger.info(f"[MERGE_AGENT] NAS data: os_name={result.os_name}, os_version={result.os_version}, serial={result.serial_number}, model={result.model}")
         
         # CPU
         if agent_data.get("cpu"):
