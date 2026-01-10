@@ -280,7 +280,11 @@ class DaDudeAgent:
                     udp_ports = result.get("udp_ports", {})
                     
                     # Salva configurazione locale
-                    config_dir = Path(__file__).parent.parent.parent / "config"
+                    # Usa path assoluto standard per evitare problemi con path relativi
+                    config_dir = Path("/opt/dadude-agent/config")
+                    if not config_dir.exists():
+                        # Fallback a path relativo se /opt/dadude-agent non esiste (dev environment)
+                        config_dir = Path(__file__).parent.parent / "config"
                     config_dir.mkdir(parents=True, exist_ok=True)
                     config_file = config_dir / "scan_ports.json"
                     

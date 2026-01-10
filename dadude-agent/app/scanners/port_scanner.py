@@ -60,10 +60,21 @@ def load_port_config() -> Dict[str, Any]:
     if _port_config_cache is not None:
         return _port_config_cache
     
-    config_path = Path(__file__).parent.parent.parent / "config" / "scan_ports.json"
+    # Prova path assoluto standard prima, poi fallback a path relativo
+    config_paths = [
+        Path("/opt/dadude-agent/config/scan_ports.json"),  # Path standard produzione
+        Path(__file__).parent.parent / "config" / "scan_ports.json",  # Path relativo (dev)
+        Path(__file__).parent.parent.parent / "config" / "scan_ports.json",  # Vecchio path
+    ]
     
-    try:
-        if config_path.exists():
+    config_path = None
+    for p in config_paths:
+        if p.exists():
+            config_path = p
+            break
+    
+    if config_path:
+        try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             
@@ -77,10 +88,10 @@ def load_port_config() -> Dict[str, Any]:
                 "port_services": {**tcp_ports, **udp_ports}
             }
             
-            logger.debug(f"Loaded port config: {len(tcp_ports)} TCP, {len(udp_ports)} UDP ports")
+            logger.debug(f"Loaded port config from {config_path}: {len(tcp_ports)} TCP, {len(udp_ports)} UDP ports")
             return _port_config_cache
-    except Exception as e:
-        logger.warning(f"Error loading port config from {config_path}: {e}, using defaults")
+        except Exception as e:
+            logger.warning(f"Error loading port config from {config_path}: {e}, using defaults")
     
     # Fallback ai valori hardcoded
     _port_config_cache = {
