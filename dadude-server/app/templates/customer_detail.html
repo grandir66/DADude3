@@ -8146,34 +8146,49 @@ async function showUnifiedScanResults(address, data, alreadySaved = false) {
     // Salva device_id per il salvataggio
     currentUnifiedScanDeviceId = data.device_id || null;
     
-    // Dati fondamentali
-    const hostname = data.hostname || data.system_info?.hostname || '-';
-    const os = data.os || data.system_info?.os || '-';
-    const vendor = data.vendor || '-';
-    const ip = address || data.ip || '-';
-    const scanTime = data.scan_timestamp ? new Date(data.scan_timestamp).toLocaleString() : new Date().toLocaleString();
+    // Usa UnifiedScannerDisplay per renderizzare i risultati (include Test Credenziali)
+    let html = '';
     
-    let html = `
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <table class="table table-sm table-borderless mb-0">
-                    <tr><th class="text-muted" style="width: 120px;">Hostname</th><td class="fw-bold">${hostname}</td></tr>
-                    <tr><th class="text-muted">Indirizzo IP</th><td><code>${ip}</code></td></tr>
-                </table>
+    // Verifica se UnifiedScannerDisplay è disponibile
+    if (typeof UnifiedScannerDisplay !== 'undefined' && UnifiedScannerDisplay.render) {
+        try {
+            html = UnifiedScannerDisplay.render(data);
+        } catch (e) {
+            console.error('Error rendering with UnifiedScannerDisplay:', e);
+            // Fallback a visualizzazione semplice
+            html = `<div class="alert alert-warning">Errore nel rendering: ${e.message}</div>`;
+        }
+    } else {
+        console.warn('UnifiedScannerDisplay not available, using fallback');
+        // Fallback a visualizzazione semplice
+        const hostname = data.hostname || data.system_info?.hostname || '-';
+        const os = data.os || data.system_info?.os || '-';
+        const vendor = data.vendor || '-';
+        const ip = address || data.ip || '-';
+        const scanTime = data.scan_timestamp ? new Date(data.scan_timestamp).toLocaleString() : new Date().toLocaleString();
+        
+        html = `
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr><th class="text-muted" style="width: 120px;">Hostname</th><td class="fw-bold">${hostname}</td></tr>
+                        <tr><th class="text-muted">Indirizzo IP</th><td><code>${ip}</code></td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr><th class="text-muted" style="width: 120px;">Sistema Op.</th><td>${os}</td></tr>
+                        <tr><th class="text-muted">Vendor</th><td>${vendor}</td></tr>
+                    </table>
+                </div>
             </div>
-            <div class="col-md-6">
-                <table class="table table-sm table-borderless mb-0">
-                    <tr><th class="text-muted" style="width: 120px;">Sistema Op.</th><td>${os}</td></tr>
-                    <tr><th class="text-muted">Vendor</th><td>${vendor}</td></tr>
-                </table>
-            </div>
-        </div>
-        <div class="text-muted small mb-3"><i class="bi bi-clock me-1"></i>Scansione: ${scanTime}</div>
-    `;
+            <div class="text-muted small mb-3"><i class="bi bi-clock me-1"></i>Scansione: ${scanTime}</div>
+        `;
+    }
     
-    // JSON Viewer (espandibile)
+    // JSON Viewer (espandibile) - sempre disponibile
     html += `
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm mt-4">
             <div class="card-header bg-light d-flex justify-content-between align-items-center" 
                  style="cursor: pointer;" 
                  onclick="toggleJsonViewer(this)">
@@ -8189,6 +8204,7 @@ async function showUnifiedScanResults(address, data, alreadySaved = false) {
     `;
     
     // Footer actions
+    const hostname = data.hostname || data.system_info?.hostname || 'device';
     html += `
         <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
             <div class="btn-group">
@@ -8209,7 +8225,7 @@ async function showUnifiedScanResults(address, data, alreadySaved = false) {
         </div>
     `;
     
-    showModal('Risultati Scansione', html, 'lg');
+    showModal('Risultati Scansione', html, 'xl');
 }
 
 // JSON Tree Renderer
