@@ -574,10 +574,26 @@ class UnifiedScannerService:
                         logger.debug(f"[UNIFIED_SCAN] Trying SNMP credential {idx+1}/{len(creds_to_try)}: "
                                    f"{snmp_community} ({cred_name})")
                         
+                        # Passa anche le credenziali SSH disponibili per permettere fallback SSH
+                        # se SNMP restituisce dati minimi (es. QNAP, Synology)
+                        ssh_user = None
+                        ssh_password = None
+                        ssh_port = 22
+                        if ssh_creds_list and len(ssh_creds_list) > 0:
+                            # Usa la prima credenziale SSH disponibile per il fallback
+                            first_ssh_cred = ssh_creds_list[0]
+                            ssh_user = first_ssh_cred.get("username")
+                            ssh_password = first_ssh_cred.get("password")
+                            ssh_port = first_ssh_cred.get("port", 22)
+                            logger.debug(f"[UNIFIED_SCAN] Including SSH credentials for fallback: user={ssh_user}, port={ssh_port}")
+                        
                         agent_result = await agent_service.probe_unified(
                             agent_info,
                             request.target_address,
                             ["snmp"],
+                            ssh_user=ssh_user,
+                            ssh_password=ssh_password,
+                            ssh_port=ssh_port,
                             snmp_community=snmp_community,
                             snmp_port=cred.get("port", 161),
                             snmp_version=int(str(cred.get("version", "2c")).replace("c", "")),
