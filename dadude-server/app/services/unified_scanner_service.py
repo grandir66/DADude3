@@ -520,9 +520,9 @@ class UnifiedScannerService:
             
             # Fallback SNMP public
             if not snmp_creds_list:
-                snmp_creds_list = [{"community": "public", "version": "2c", "port": 161}]
+                snmp_creds_list = [{"community": "public", "version": "2c", "port": 161, "credential_id": None, "credential_name": "public (fallback)"}]
             
-            logger.debug(f"[UNIFIED_SCAN] Credentials to try - SSH: {len(ssh_creds_list)}, "
+            logger.info(f"[UNIFIED_SCAN] Credentials to try - SSH: {len(ssh_creds_list)}, "
                        f"WMI: {len(wmi_creds_list)}, SNMP: {len(snmp_creds_list)}")
             
             # Prova le credenziali in sequenza rispettando l'ordine dei protocolli
@@ -533,6 +533,9 @@ class UnifiedScannerService:
             successful_proto = None
             all_errors = []
             tested_credentials = []
+            
+            # Log iniziale per debug
+            logger.info(f"[UNIFIED_SCAN] Starting credential tests for {request.target_address} with protocols: {protocols}")
             
             # Mappa protocolli alle liste di credenziali
             protocol_creds_map = {
@@ -693,12 +696,31 @@ class UnifiedScannerService:
             else:
                 logger.warning(f"[UNIFIED_SCAN] ❌ All credentials failed for {request.target_address}")
                 logger.warning(f"[UNIFIED_SCAN] Credentials tested: {len(tested_credentials)}")
-                for tested in tested_credentials:
-                    logger.warning(f"[UNIFIED_SCAN]   ❌ {tested['protocol'].upper()}: '{tested['credential_name']}' (ID: {tested['credential_id']}) - {tested['status']}")
-                    if tested.get("error"):
-                        logger.warning(f"[UNIFIED_SCAN]      Error: {tested['error']}")
-                for err in all_errors[-5:]:  # Log ultimi 5 errori
-                    logger.debug(f"[UNIFIED_SCAN] - {err}")
+                
+                # Se non ci sono credenziali testate, potrebbe essere un problema di connessione all'agent
+                if len(tested_credentials) == 0:
+                    logger.error(f"[UNIFIED_SCAN] ⚠️ No credentials were tested! This might indicate an agent connection issue.")
+                    logger.error(f"[UNIFIED_SCAN] Available credentials - SSH: {len(ssh_creds_list)}, SNMP: {len(snmp_creds_list)}, WMI: {len(wmi_creds_list)}")
+                    logger.error(f"[UNIFIED_SCAN] Protocols to try: {protocols}")
+                    # Aggiungi un entry di errore per indicare che non è stato possibile testare le credenziali
+                    if protocols:
+                        for proto in protocols:
+                            if proto == "auto":
+                                continue
+                            tested_credentials.append({
+                                "protocol": proto,
+                                "credential_id": None,
+                                "credential_name": "Agent connection failed",
+                                "status": "error",
+                                "error": "Could not connect to agent to test credentials"
+                            })
+                else:
+                    for tested in tested_credentials:
+                        logger.warning(f"[UNIFIED_SCAN]   ❌ {tested['protocol'].upper()}: '{tested['credential_name']}' (ID: {tested.get('credential_id', 'N/A')}) - {tested['status']}")
+                        if tested.get("error"):
+                            logger.warning(f"[UNIFIED_SCAN]      Error: {tested['error']}")
+                    for err in all_errors[-5:]:  # Log ultimi 5 errori
+                        logger.debug(f"[UNIFIED_SCAN] - {err}")
                 
                 # Salva comunque la lista dei test anche se tutti falliti
                 result.credential_tests = tested_credentials
