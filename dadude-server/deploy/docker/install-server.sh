@@ -108,8 +108,8 @@ cd dadude
 echo -e "${YELLOW}[3/5] Configuro ambiente...${NC}"
 
 cat > .env << EOF
-# DaDude Server Configuration
-DATABASE_URL=sqlite:///./data/dadude.db
+# DaDude Server Configuration - SOLO PostgreSQL
+DATABASE_URL=postgresql+psycopg2://dadude:dadude@localhost:5432/dadude
 SECRET_KEY=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 16)
 
@@ -145,7 +145,7 @@ services:
       - DADUDE_AGENT_PORT=8000
       - DADUDE_ADMIN_PORT=8001
       - LOG_LEVEL=INFO
-      - DATABASE_URL=sqlite+aiosqlite:///./data/dadude.db
+      - DATABASE_URL=postgresql+psycopg2://dadude:dadude@postgres:5432/dadude
       - TZ=Europe/Rome
     volumes:
       - dadude_data:/app/data

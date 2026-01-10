@@ -235,7 +235,7 @@ print(f"Device: {summary['summary']['devices']}")
                               │                          │
                               ▼                          ▼
                         ┌──────────┐            ┌──────────────┐
-                        │ SQLite   │            │  Tua App     │
+                        │PostgreSQL│            │  Tua App     │
                         │ Database │            │  (Client)    │
                         │          │            │              │
                         │ - Clienti│            │ Per-cliente: │
@@ -270,7 +270,7 @@ dadude/
 │       ├── alert_service.py       # Alert
 │       ├── webhook_service.py    # Webhook
 │       └── customer_service.py   # Gestione Clienti
-├── data/                         # Database SQLite/PostgreSQL
+├── data/                         # Dati persistenti (certs, .env)
 ├── logs/
 ├── docker-compose-dual.yml        # Configurazione Docker (dual-port)
 ├── docker-compose-postgres.yml   # Configurazione con PostgreSQL
@@ -294,8 +294,8 @@ DUDE_PASSWORD=secret
 DADUDE_PORT=8000
 DADUDE_API_KEY=my-secret-key
 
-# Database (default: SQLite locale)
-DATABASE_URL=sqlite:///./data/dadude.db
+# Database (SOLO PostgreSQL - SQLite NON supportato)
+DATABASE_URL=postgresql+psycopg2://dadude:dadude@localhost:5432/dadude
 
 # Polling
 POLL_INTERVAL=60

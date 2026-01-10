@@ -1,5 +1,67 @@
 # Cursor Rules per DaDude Project
 
+---
+
+## ⛔ REGOLE ASSOLUTE - VIOLAZIONE = DISTRUZIONE SISTEMA
+
+### 🚫 DATABASE: SOLO PostgreSQL - SQLite È VIETATO
+
+**SQLite NON È MAI SUPPORTATO nel server DaDude.**
+
+```
+❌ VIETATO - MAI USARE:
+- sqlite:///
+- sqlite+aiosqlite:///
+- aiosqlite
+- *.db (file database)
+- dadude.db
+- qualsiasi riferimento a SQLite
+
+✅ UNICO DATABASE CONSENTITO:
+DATABASE_URL=postgresql+psycopg2://dadude:dadude@localhost:5432/dadude
+```
+
+**Se trovi riferimenti a SQLite nel codice: RIMUOVILI IMMEDIATAMENTE.**
+**Se generi codice con SQLite: HAI SBAGLIATO, USA PostgreSQL.**
+
+### 🚫 STRUTTURA DIRECTORY: NO ANNIDAMENTI
+
+**Le directory in produzione sono PIATTE:**
+
+```
+✅ CORRETTO:
+/opt/dadude-server/app/          ← Codice server
+/opt/dadude-agent/app/           ← Codice agent
+/opt/dadude-updater/             ← Watchdog
+
+❌ VIETATO - MAI CREARE:
+/opt/dadude-server/dadude-server/
+/opt/dadude-agent/dadude-agent/
+/opt/*/repo/app/
+Qualsiasi struttura annidata
+```
+
+**Prima di ogni operazione su file in produzione:**
+1. Verifica il path con `ls -la /opt/dadude-server/` o `ls -la /opt/dadude-agent/`
+2. Il codice è DIRETTAMENTE in `/opt/dadude-*/app/`
+3. NON esiste mai una sottocartella con lo stesso nome della cartella padre
+
+### 🚫 CONFIGURAZIONE .env
+
+**Posizione corretta del file .env:**
+- Server: `/opt/dadude-server/.env` (o `/opt/dadude-server/data/.env`)
+- Agent: `/opt/dadude-agent/.env`
+
+**Contenuto .env SERVER (UNICO VALIDO):**
+```env
+DATABASE_URL=postgresql+psycopg2://dadude:dadude@localhost:5432/dadude
+SSL_ENABLED=true
+SSL_CERT_PATH=/opt/dadude-server/data/certs/server.crt
+SSL_KEY_PATH=/opt/dadude-server/data/certs/server.key
+```
+
+---
+
 ## 🎯 Principi Fondamentali
 
 ### Golden Rules
@@ -1317,8 +1379,11 @@ La struttura delle directory in produzione è **PIATTA**, senza annidamenti:
 │   ├── templates/
 │   └── utils/
 ├── data/
-│   ├── dadude.db                      ← Database SQLite
+│   ├── .env                           ← Configurazione (opzionale, backup)
 │   ├── .encryption_key                ← Chiave crittografia (chmod 600)
+│   ├── certs/                         ← Certificati SSL
+│   │   ├── server.crt
+│   │   └── server.key
 │   └── oui_database.json
 ├── logs/
 ├── venv/                              ← Virtual environment Python

@@ -11,10 +11,9 @@ jinja2>=3.1.0
 # RouterOS API
 routeros-api>=0.17.0
 
-# Database
+# Database - SOLO PostgreSQL (SQLite NON supportato)
 sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0  # PostgreSQL driver
-aiosqlite>=0.19.0  # Necessario per SQLite async
+psycopg2-binary>=2.9.0  # PostgreSQL driver (UNICO database supportato)
 
 # HTTP Client
 httpx>=0.25.0

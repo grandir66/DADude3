@@ -420,8 +420,8 @@ async def list_pending_agents():
     from ..config import get_settings
     
     settings = get_settings()
-    db_url = settings.database_url.replace("+aiosqlite", "")
-    engine = init_db(db_url)
+    # PostgreSQL è l'unico database supportato
+    engine = init_db(settings.database_url)
     session = get_session(engine)
     
     try:
@@ -1686,8 +1686,8 @@ async def list_outdated_agents():
         logger.warning(f"Could not fetch agent version from GitHub: {e}")
     
     settings = get_settings()
-    db_url = settings.database_url.replace("+aiosqlite", "")
-    engine = init_db(db_url)
+    # PostgreSQL è l'unico database supportato
+    engine = init_db(settings.database_url)
     session = get_session(engine)
     
     try:
