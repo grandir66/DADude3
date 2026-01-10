@@ -527,7 +527,7 @@ apt-get install -y -qq \
 # Clone repository - NUOVA STRUTTURA: direttamente in /opt/dadude-agent
 log "[5/8] Clone repository Git..."
 
-pct exec $CTID -- bash -c '
+pct exec $CTID -- bash -c "
 # Pulisci eventuali installazioni precedenti
 rm -rf /opt/dadude-agent /opt/dadude-updater
 mkdir -p /opt/dadude-agent
@@ -539,9 +539,9 @@ cd /tmp
 rm -rf DADude3-temp
 
 # Clone con sparse checkout per prendere solo dadude-agent
-git clone --depth 1 --filter=blob:none --sparse "$GIT_REPO" DADude3-temp 2>/dev/null || {
+git clone --depth 1 --filter=blob:none --sparse ${GIT_REPO} DADude3-temp 2>/dev/null || {
     # Fallback: clone completo
-    git clone --depth 1 "$GIT_REPO" DADude3-temp
+    git clone --depth 1 ${GIT_REPO} DADude3-temp
 }
 
 cd DADude3-temp
@@ -550,7 +550,7 @@ git sparse-checkout set dadude-agent 2>/dev/null || true
 # Copia SOLO i file necessari direttamente in /opt/dadude-agent
 cp -r dadude-agent/* /opt/dadude-agent/ 2>/dev/null || {
     # Se sparse checkout non funziona, copia manualmente
-    if [ -d "dadude-agent/app" ]; then
+    if [ -d \"dadude-agent/app\" ]; then
         cp -r dadude-agent/app /opt/dadude-agent/
         cp dadude-agent/requirements.txt /opt/dadude-agent/ 2>/dev/null || true
         cp dadude-agent/VERSION /opt/dadude-agent/ 2>/dev/null || true
@@ -563,14 +563,14 @@ cd /
 rm -rf /tmp/DADude3-temp
 
 # Verifica struttura
-if [ ! -d "/opt/dadude-agent/app" ]; then
-    echo "ERRORE: Struttura directory non corretta dopo clone"
+if [ ! -d \"/opt/dadude-agent/app\" ]; then
+    echo \"ERRORE: Struttura directory non corretta dopo clone\"
     exit 1
 fi
 
-echo "Struttura installata:"
+echo \"Struttura installata:\"
 ls -la /opt/dadude-agent/ | head -10
-'
+"
 
 # Crea virtualenv e installa dipendenze Python
 log "[6/8] Creo virtualenv e installo dipendenze Python..."
