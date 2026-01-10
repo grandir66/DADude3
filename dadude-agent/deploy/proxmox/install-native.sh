@@ -123,7 +123,9 @@ echo ""
 echo -e "${BLUE}--- Server DaDude ---${NC}"
 
 while [ -z "$SERVER_URL" ]; do
-    read -p "URL Server DaDude [$DEFAULT_SERVER_URL]: " SERVER_URL
+    if [ -t 0 ]; then
+        read -p "URL Server DaDude [$DEFAULT_SERVER_URL]: " SERVER_URL
+    fi
     SERVER_URL=${SERVER_URL:-$DEFAULT_SERVER_URL}
 done
 echo -e "${GREEN}Server: $SERVER_URL${NC}"
@@ -132,9 +134,14 @@ echo -e "${GREEN}Server: $SERVER_URL${NC}"
 echo -e "\n${BLUE}--- Identificazione Agent ---${NC}"
 
 while [ -z "$AGENT_NAME" ]; do
-    read -p "Nome Agent (es: agent-sede-milano): " AGENT_NAME
+    if [ -t 0 ]; then
+        read -p "Nome Agent (es: agent-sede-milano): " AGENT_NAME
+    fi
     if [ -z "$AGENT_NAME" ]; then
         echo -e "${YELLOW}⚠ Nome agent è obbligatorio${NC}"
+        if [ ! -t 0 ]; then
+            error "AGENT_NAME è obbligatorio. Usa --agent-name o esegui lo script interattivamente."
+        fi
     fi
 done
 
