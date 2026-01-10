@@ -139,7 +139,9 @@ while [ -z "$AGENT_NAME" ]; do
 done
 
 if [ -z "$AGENT_TOKEN" ]; then
-    read -p "Token Agent (lascia vuoto per generare automaticamente): " AGENT_TOKEN
+    if [ -t 0 ]; then
+        read -p "Token Agent (lascia vuoto per generare automaticamente): " AGENT_TOKEN
+    fi
     if [ -z "$AGENT_TOKEN" ]; then
         AGENT_TOKEN=$(openssl rand -hex 24)
         echo -e "${GREEN}Token generato: ${AGENT_TOKEN}${NC}"
