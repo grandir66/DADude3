@@ -225,6 +225,9 @@ class UnifiedScanResult:
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     
+    # Credential tests tracking
+    credential_tests: List[Dict[str, Any]] = field(default_factory=list)  # Lista test credenziali con risultati
+    
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -519,122 +522,183 @@ class UnifiedScannerService:
             logger.debug(f"[UNIFIED_SCAN] Credentials to try - SSH: {len(ssh_creds_list)}, "
                        f"WMI: {len(wmi_creds_list)}, SNMP: {len(snmp_creds_list)}")
             
-            # Prova le credenziali in sequenza
+            # Prova le credenziali in sequenza rispettando l'ordine dei protocolli
+            # L'ordine è già determinato da _determine_protocols in base al tipo di device
             agent_result = None
-            successful_cred = None
+            successful_cred_id = None
+            successful_cred_name = None
+            successful_proto = None
             all_errors = []
+            tested_credentials = []
             
-            # Determina quali protocolli provare
-            # PRIORITÀ: WMI > SNMP > SSH
-            # Se abbiamo credenziali WMI, proviamo prima quelle (più probabile Windows)
-            # SSH viene provato per ultimo perché Windows non risponde a SSH
-            protos_to_try = []
+            # Mappa protocolli alle liste di credenziali
+            protocol_creds_map = {
+                "ssh": ssh_creds_list,
+                "snmp": snmp_creds_list,
+                "wmi": wmi_creds_list,
+                "winrm": wmi_creds_list,  # WinRM usa credenziali WMI
+            }
             
-            # 1. WMI/WinRM ha priorità più alta (Windows)
-            if ("auto" in protocols or "wmi" in protocols or "winrm" in protocols) and wmi_creds_list:
-                protos_to_try.append(("wmi", wmi_creds_list))
-                logger.debug(f"[UNIFIED_SCAN] WMI credentials available ({len(wmi_creds_list)}) - will try WMI first")
-            
-            # 2. SNMP (funziona su molti dispositivi)
-            if "auto" in protocols or "snmp" in protocols:
-                protos_to_try.append(("snmp", snmp_creds_list))
-            
-            # 3. SSH per ultimo (Linux/Unix, non Windows)
-            if "auto" in protocols or "ssh" in protocols:
-                protos_to_try.append(("ssh", ssh_creds_list))
-            
-            for proto_type, creds_to_try in protos_to_try:
+            # Itera attraverso i protocolli nell'ordine determinato (già prioritizzato)
+            for proto_type in protocols:
+                if proto_type == "auto":
+                    continue  # Skip "auto", già espanso in lista protocolli
+                
                 if agent_result and agent_result.success:
                     break  # Già trovato credenziale funzionante
                 
+                # Ottieni lista credenziali per questo protocollo
+                creds_to_try = protocol_creds_map.get(proto_type, [])
+                if not creds_to_try:
+                    logger.info(f"[CRED_TEST] No credentials available for protocol {proto_type}, skipping")
+                    continue
+                
+                logger.info(f"[CRED_TEST] Testing {len(creds_to_try)} {proto_type.upper()} credential(s) for {request.target_address}")
+                
+                # Prova ogni credenziale per questo protocollo
                 for idx, cred in enumerate(creds_to_try):
+                    cred_id = cred.get("credential_id")
                     cred_name = cred.get("credential_name", f"{proto_type}-{idx+1}")
                     
+                    # Log dettagliato del tentativo
                     if proto_type == "ssh":
-                        logger.debug(f"[UNIFIED_SCAN] Trying SSH credential {idx+1}/{len(creds_to_try)}: "
-                                   f"{cred.get('username')} ({cred_name})")
-                        
-                        agent_result = await agent_service.probe_unified(
-                            agent_info,
-                            request.target_address,
-                            ["ssh"],
-                            ssh_user=cred.get("username"),
-                            ssh_password=cred.get("password"),
-                            ssh_port=cred.get("port", 22),
-                            timeout=min(request.timeout, 30),  # Timeout ridotto per singolo tentativo
-                        )
-                        
+                        logger.info(f"[CRED_TEST] Testing SSH credential '{cred_name}' (ID: {cred_id}) - user: {cred.get('username')}")
                     elif proto_type == "snmp":
-                        # Verifica che ci sia una community valida
-                        snmp_community = cred.get("community")
-                        if not snmp_community or not snmp_community.strip():
-                            logger.warning(f"[UNIFIED_SCAN] SNMP credential {idx+1} has no community, skipping")
-                            continue
-                        
-                        logger.debug(f"[UNIFIED_SCAN] Trying SNMP credential {idx+1}/{len(creds_to_try)}: "
-                                   f"{snmp_community} ({cred_name})")
-                        
-                        # Passa anche le credenziali SSH disponibili per permettere fallback SSH
-                        # se SNMP restituisce dati minimi (es. QNAP, Synology)
-                        ssh_user = None
-                        ssh_password = None
-                        ssh_port = 22
-                        logger.info(f"[UNIFIED_SCAN] Checking SSH credentials for fallback: ssh_creds_list length={len(ssh_creds_list) if ssh_creds_list else 0}")
-                        if ssh_creds_list and len(ssh_creds_list) > 0:
-                            # Usa la prima credenziale SSH disponibile per il fallback
-                            first_ssh_cred = ssh_creds_list[0]
-                            ssh_user = first_ssh_cred.get("username")
-                            ssh_password = first_ssh_cred.get("password")
-                            ssh_port = first_ssh_cred.get("port", 22)
-                            logger.info(f"[UNIFIED_SCAN] ✓ Including SSH credentials for fallback: user={ssh_user}, port={ssh_port}, has_password={'Yes' if ssh_password else 'No'}")
-                        else:
-                            logger.warning(f"[UNIFIED_SCAN] ✗ No SSH credentials available for fallback (ssh_creds_list is empty or None)")
-                        
-                        agent_result = await agent_service.probe_unified(
-                            agent_info,
-                            request.target_address,
-                            ["snmp"],
-                            ssh_user=ssh_user,
-                            ssh_password=ssh_password,
-                            ssh_port=ssh_port,
-                            snmp_community=snmp_community,
-                            snmp_port=cred.get("port", 161),
-                            snmp_version=int(str(cred.get("version", "2c")).replace("c", "")),
-                            timeout=min(request.timeout, 20),
-                        )
-                        
-                    elif proto_type == "wmi":
-                        logger.debug(f"[UNIFIED_SCAN] Trying WMI credential {idx+1}/{len(creds_to_try)}: "
-                                   f"{cred.get('username')} ({cred_name})")
-                        
-                        agent_result = await agent_service.probe_unified(
-                            agent_info,
-                            request.target_address,
-                            ["winrm"],
-                            winrm_user=cred.get("username"),
-                            winrm_password=cred.get("password"),
-                            winrm_domain=cred.get("domain", ""),
-                            winrm_port=cred.get("port", 5985),
-                            timeout=min(request.timeout, 30),
-                        )
+                        logger.info(f"[CRED_TEST] Testing SNMP credential '{cred_name}' (ID: {cred_id}) - community: {cred.get('community')}")
+                    elif proto_type in ("wmi", "winrm"):
+                        logger.info(f"[CRED_TEST] Testing WMI/WinRM credential '{cred_name}' (ID: {cred_id}) - user: {cred.get('username')}")
                     
-                    if agent_result and agent_result.success:
-                        successful_cred = {"type": proto_type, "name": cred_name, "username": cred.get("username") or cred.get("community")}
-                        logger.info(f"[UNIFIED_SCAN] ✓ Credential {cred_name} ({proto_type}) WORKED for {request.target_address}")
-                        break
-                    else:
-                        error_msg = agent_result.error if agent_result else "No response"
+                    # Crea entry test con tutti i dettagli necessari per la visualizzazione
+                    test_entry = {
+                        "protocol": proto_type,
+                        "credential_id": cred_id,
+                        "credential_name": cred_name,
+                        "status": "testing"
+                    }
+                    
+                    # Aggiungi dettagli specifici per protocollo
+                    if proto_type == "ssh":
+                        test_entry["username"] = cred.get("username")
+                    elif proto_type == "snmp":
+                        test_entry["community"] = cred.get("community")
+                    elif proto_type in ("wmi", "winrm"):
+                        test_entry["username"] = cred.get("username")
+                        test_entry["domain"] = cred.get("domain", "")
+                    
+                    tested_credentials.append(test_entry)
+                    
+                    try:
+                        if proto_type == "ssh":
+                            agent_result = await agent_service.probe_unified(
+                                agent_info,
+                                request.target_address,
+                                ["ssh"],
+                                ssh_user=cred.get("username"),
+                                ssh_password=cred.get("password"),
+                                ssh_port=cred.get("port", 22),
+                                timeout=min(request.timeout, 30),
+                            )
+                            
+                        elif proto_type == "snmp":
+                            # Verifica che ci sia una community valida
+                            snmp_community = cred.get("community")
+                            if not snmp_community or not snmp_community.strip():
+                                logger.warning(f"[CRED_RESULT] ❌ SNMP credential '{cred_name}' has no community, skipping")
+                                tested_credentials[-1]["status"] = "skipped"
+                                tested_credentials[-1]["error"] = "No community"
+                                continue
+                            
+                            # Passa anche le credenziali SSH disponibili per permettere fallback SSH
+                            # se SNMP restituisce dati minimi (es. QNAP, Synology)
+                            ssh_user = None
+                            ssh_password = None
+                            ssh_port = 22
+                            if ssh_creds_list and len(ssh_creds_list) > 0:
+                                first_ssh_cred = ssh_creds_list[0]
+                                ssh_user = first_ssh_cred.get("username")
+                                ssh_password = first_ssh_cred.get("password")
+                                ssh_port = first_ssh_cred.get("port", 22)
+                            
+                            agent_result = await agent_service.probe_unified(
+                                agent_info,
+                                request.target_address,
+                                ["snmp"],
+                                ssh_user=ssh_user,
+                                ssh_password=ssh_password,
+                                ssh_port=ssh_port,
+                                snmp_community=snmp_community,
+                                snmp_port=cred.get("port", 161),
+                                snmp_version=int(str(cred.get("version", "2c")).replace("c", "")),
+                                timeout=min(request.timeout, 20),
+                            )
+                            
+                        elif proto_type in ("wmi", "winrm"):
+                            agent_result = await agent_service.probe_unified(
+                                agent_info,
+                                request.target_address,
+                                ["winrm"],
+                                winrm_user=cred.get("username"),
+                                winrm_password=cred.get("password"),
+                                winrm_domain=cred.get("domain", ""),
+                                winrm_port=cred.get("port", 5985),
+                                timeout=min(request.timeout, 30),
+                            )
+                        
+                        # Verifica risultato
+                        if agent_result and agent_result.success:
+                            successful_cred_id = cred_id
+                            successful_cred_name = cred_name
+                            successful_proto = proto_type
+                            tested_credentials[-1]["status"] = "success"
+                            logger.info(f"[CRED_RESULT] ✅ SUCCESS - Credential '{cred_name}' (ID: {cred_id}, Protocol: {proto_type}) WORKED for {request.target_address}")
+                            break  # Esci dal loop credenziali
+                        else:
+                            error_msg = agent_result.error if agent_result else "No response"
+                            tested_credentials[-1]["status"] = "failed"
+                            tested_credentials[-1]["error"] = error_msg
+                            all_errors.append(f"{proto_type}/{cred_name}: {error_msg}")
+                            logger.info(f"[CRED_RESULT] ❌ FAILED - Credential '{cred_name}' (ID: {cred_id}, Protocol: {proto_type}): {error_msg}")
+                    
+                    except Exception as e:
+                        error_msg = str(e)
+                        tested_credentials[-1]["status"] = "error"
+                        tested_credentials[-1]["error"] = error_msg
                         all_errors.append(f"{proto_type}/{cred_name}: {error_msg}")
-                        logger.debug(f"[UNIFIED_SCAN] ✗ Credential {cred_name} ({proto_type}) failed: {error_msg}")
+                        logger.error(f"[CRED_RESULT] ❌ ERROR - Credential '{cred_name}' (ID: {cred_id}, Protocol: {proto_type}): {error_msg}")
+                
+                # Se abbiamo trovato una credenziale funzionante, esci dal loop protocolli
+                if agent_result and agent_result.success:
+                    break
             
-            # Log risultato
+            # Log risultato finale
             if agent_result and agent_result.success:
-                logger.info(f"[UNIFIED_SCAN] Agent result received: success=True, "
-                           f"credential_used={successful_cred}")
+                logger.info(f"[UNIFIED_SCAN] ✅ Scan SUCCESSFUL for {request.target_address}")
+                logger.info(f"[UNIFIED_SCAN] Working credential: '{successful_cred_name}' (ID: {successful_cred_id}, Protocol: {successful_proto})")
+                logger.info(f"[UNIFIED_SCAN] Credentials tested: {len(tested_credentials)}")
+                # Log riepilogo credenziali testate
+                for tested in tested_credentials:
+                    status_icon = "✅" if tested["status"] == "success" else "❌" if tested["status"] == "failed" else "⏭️"
+                    logger.info(f"[UNIFIED_SCAN]   {status_icon} {tested['protocol'].upper()}: '{tested['credential_name']}' (ID: {tested['credential_id']}) - {tested['status']}")
+                    if tested.get("error"):
+                        logger.debug(f"[UNIFIED_SCAN]      Error: {tested['error']}")
+                
+                # Salva ID credenziale nel risultato
+                result.credential_used = successful_cred_id or successful_cred_name
+                
+                # Salva lista completa dei test delle credenziali
+                result.credential_tests = tested_credentials
             else:
-                logger.warning(f"[UNIFIED_SCAN] All credentials failed for {request.target_address}")
+                logger.warning(f"[UNIFIED_SCAN] ❌ All credentials failed for {request.target_address}")
+                logger.warning(f"[UNIFIED_SCAN] Credentials tested: {len(tested_credentials)}")
+                for tested in tested_credentials:
+                    logger.warning(f"[UNIFIED_SCAN]   ❌ {tested['protocol'].upper()}: '{tested['credential_name']}' (ID: {tested['credential_id']}) - {tested['status']}")
+                    if tested.get("error"):
+                        logger.warning(f"[UNIFIED_SCAN]      Error: {tested['error']}")
                 for err in all_errors[-5:]:  # Log ultimi 5 errori
                     logger.debug(f"[UNIFIED_SCAN] - {err}")
+                
+                # Salva comunque la lista dei test anche se tutti falliti
+                result.credential_tests = tested_credentials
             
             if agent_result and agent_result.success:
                 # agent_result è un AgentProbeResult, estrai data
@@ -693,6 +757,9 @@ class UnifiedScannerService:
         # Log per debug
         logger.info(f"[MERGE_AGENT] agent_data keys: {sorted(list(agent_data.keys()))[:20]}")
         logger.info(f"[MERGE_AGENT] volumes={len(agent_data.get('volumes', []))}, disks={len(agent_data.get('disks', []))}, raid_arrays={len(agent_data.get('raid_arrays', []))}, shares={len(agent_data.get('shares', []))}")
+        
+        # Preserva credential_tests se già impostati (non sovrascrivere)
+        # I credential_tests vengono impostati prima del merge in _scan_via_agent
         
         # Protocollo usato
         result.protocol_used = agent_data.get("protocol_used", ",".join(protocols))

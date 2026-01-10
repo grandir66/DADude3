@@ -63,6 +63,7 @@ const UnifiedScannerDisplay = {
         return `
             <div class="unified-scan-result" style="--device-color: ${color}">
                 ${this.renderHeader(result, icon, color)}
+                ${this.renderCredentialTests(result)}
                 ${this.renderSystemInfo(result)}
                 ${this.renderHardwareSection(result)}
                 ${this.renderNetworkSection(result)}
@@ -104,6 +105,92 @@ const UnifiedScannerDisplay = {
                             <i class="bi bi-clock me-1"></i>${result.scan_duration_seconds?.toFixed(1) || '?'}s
                         </div>
                     </div>
+                </div>
+            </div>
+        `;
+    },
+
+    /**
+     * Sezione Test Credenziali
+     */
+    renderCredentialTests(result) {
+        const tests = result.credential_tests || [];
+        if (tests.length === 0) return '';
+
+        // Raggruppa per protocollo per visualizzazione più chiara
+        const byProtocol = {};
+        tests.forEach(test => {
+            const proto = test.protocol.toUpperCase();
+            if (!byProtocol[proto]) {
+                byProtocol[proto] = [];
+            }
+            byProtocol[proto].push(test);
+        });
+
+        return `
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-key me-2"></i>Test Credenziali
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 100px;">Protocollo</th>
+                                    <th>Credenziale</th>
+                                    <th style="width: 80px;">Risultato</th>
+                                    ${tests.some(t => t.error) ? '<th>Errore</th>' : ''}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.keys(byProtocol).sort().map(proto => {
+                                    return byProtocol[proto].map((test, idx) => {
+                                        const isSuccess = test.status === 'success';
+                                        const isFailed = test.status === 'failed';
+                                        const isError = test.status === 'error';
+                                        const isSkipped = test.status === 'skipped';
+                                        
+                                        // Determina nome credenziale da mostrare
+                                        let credDisplay = test.credential_name || 'N/A';
+                                        // Usa username/community se disponibili, altrimenti il nome credenziale
+                                        if (proto === 'SSH' && test.username) {
+                                            credDisplay = test.username;
+                                        } else if (proto === 'SNMP' && test.community) {
+                                            credDisplay = test.community;
+                                        } else if ((proto === 'WMI' || proto === 'WINRM') && test.username) {
+                                            credDisplay = test.domain ? `${test.domain}\\${test.username}` : test.username;
+                                        }
+                                        
+                                        return `
+                                            <tr class="${isSuccess ? 'table-success' : isFailed || isError ? 'table-danger' : isSkipped ? 'table-secondary' : ''}">
+                                                <td><strong>${proto}</strong></td>
+                                                <td><code>${credDisplay}</code></td>
+                                                <td>
+                                                    ${isSuccess ? '<span class="badge bg-success">OK</span>' : ''}
+                                                    ${isFailed ? '<span class="badge bg-danger">KO</span>' : ''}
+                                                    ${isError ? '<span class="badge bg-danger">ERR</span>' : ''}
+                                                    ${isSkipped ? '<span class="badge bg-secondary">SKIP</span>' : ''}
+                                                    ${!isSuccess && !isFailed && !isError && !isSkipped ? '<span class="badge bg-secondary">-</span>' : ''}
+                                                </td>
+                                                ${tests.some(t => t.error) ? `
+                                                    <td><small class="text-muted">${test.error || '-'}</small></td>
+                                                ` : ''}
+                                            </tr>
+                                        `;
+                                    }).join('');
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${result.credential_used ? `
+                        <div class="mt-3 p-2 bg-light rounded">
+                            <small class="text-muted">
+                                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                <strong>Credenziale funzionante:</strong> ${result.credential_used}
+                            </small>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;

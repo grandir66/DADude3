@@ -432,9 +432,40 @@ async def _save_unified_scan_to_inventory(
             if identified_by_value:
                 update_field(device, "identified_by", identified_by_value, summary)
         
-        # Credential used (nome credenziale usata)
+        # Credential used - salva sia nome che ID
         if hasattr(scan_result, 'credential_used') and scan_result.credential_used:
-            update_field(device, "credential_used", scan_result.credential_used, summary)
+            cred_used_value = scan_result.credential_used
+            
+            # Verifica se credential_used è un ID (8 caratteri alfanumerici) o un nome
+            import re
+            is_credential_id = False
+            if isinstance(cred_used_value, str) and len(cred_used_value) == 8:
+                # Verifica se sembra un ID (solo caratteri alfanumerici)
+                if re.match(r'^[a-zA-Z0-9]{8}$', cred_used_value):
+                    is_credential_id = True
+            
+            if is_credential_id:
+                # È un ID credenziale - aggiorna credential_id
+                logger.info(f"[SAVE_UNIFIED] Updating device credential_id to {cred_used_value} (from successful scan)")
+                update_field(device, "credential_id", cred_used_value, summary)
+                
+                # Recupera anche il nome della credenziale per credential_used
+                try:
+                    from ..services.customer_service import get_customer_service
+                    customer_service = get_customer_service()
+                    cred_obj = customer_service.get_credential(cred_used_value, include_secrets=False)
+                    if cred_obj:
+                        update_field(device, "credential_used", cred_obj.name, summary)
+                        logger.info(f"[SAVE_UNIFIED] Credential name: '{cred_obj.name}'")
+                    else:
+                        update_field(device, "credential_used", cred_used_value, summary)
+                except Exception as e:
+                    logger.warning(f"[SAVE_UNIFIED] Could not fetch credential name for ID {cred_used_value}: {e}")
+                    update_field(device, "credential_used", cred_used_value, summary)
+            else:
+                # È solo un nome - salva solo credential_used
+                update_field(device, "credential_used", cred_used_value, summary)
+                logger.info(f"[SAVE_UNIFIED] Credential used (name only): '{cred_used_value}'")
         
         # Timestamps
         device.last_seen = datetime.utcnow()
@@ -1614,7 +1645,7 @@ async def _get_all_credentials_for_scan(
         if credential_id:
             cred = customer_service.get_credential(credential_id, include_secrets=True)
             if cred:
-                cred_dict = _credential_to_dict(cred)
+                cred_dict = _credential_to_dict(cred, credential_id)
                 for cred_type, cred_data in cred_dict.items():
                     if cred_type in credentials_by_type:
                         credentials_by_type[cred_type].append(cred_data)
@@ -1630,7 +1661,7 @@ async def _get_all_credentials_for_scan(
             cred = customer_service.get_credential(device.credential_id, include_secrets=True)
             if cred:
                 logger.info(f"[CRED_FETCH] Got credential: type={cred.credential_type}, username={cred.username}, has_password={bool(cred.password)}")
-                cred_dict = _credential_to_dict(cred)
+                cred_dict = _credential_to_dict(cred, device.credential_id)
                 logger.info(f"[CRED_FETCH] Converted to dict: {list(cred_dict.keys())}")
                 for cred_type, cred_data in cred_dict.items():
                     if cred_type in credentials_by_type and device.credential_id not in seen_cred_ids:
@@ -1684,6 +1715,7 @@ async def _get_all_credentials_for_scan(
                 username = getattr(cred, 'username', None)
                 if username:
                     credentials_by_type["ssh"].append({
+                        "credential_id": cred_safe.id,  # ID per tracking
                         "username": username,
                         "password": getattr(cred, 'password', None),
                         "port": getattr(cred, 'ssh_port', None) or 22,
@@ -1695,6 +1727,7 @@ async def _get_all_credentials_for_scan(
                 community = getattr(cred, 'snmp_community', None)
                 if community:
                     credentials_by_type["snmp"].append({
+                        "credential_id": cred_safe.id,  # ID per tracking
                         "community": community,
                         "version": getattr(cred, 'snmp_version', None) or "2c",
                         "port": getattr(cred, 'snmp_port', None) or 161,
@@ -1706,6 +1739,7 @@ async def _get_all_credentials_for_scan(
                 username = getattr(cred, 'username', None)
                 if username:
                     credentials_by_type["wmi"].append({
+                        "credential_id": cred_safe.id,  # ID per tracking
                         "username": username,
                         "password": getattr(cred, 'password', None),
                         "domain": getattr(cred, 'wmi_domain', None) or "",
@@ -1716,6 +1750,7 @@ async def _get_all_credentials_for_scan(
         if not credentials_by_type["snmp"] and "snmp" in cred_types_to_fetch:
             logger.info(f"[CREDENTIALS] No SNMP credentials registered for customer {customer_id}, using 'public' as fallback")
             credentials_by_type["snmp"].append({
+                "credential_id": None,  # Fallback non ha ID
                 "community": "public",
                 "version": "2c",
                 "port": 161,
@@ -1760,46 +1795,61 @@ async def _get_credentials_for_scan(
     return result
 
 
-def _credential_to_dict(cred) -> Dict[str, Any]:
+def _credential_to_dict(cred, credential_id: str = None) -> Dict[str, Any]:
     """Converte credenziale in dict per scansione"""
     result = {}
     
+    # Usa ID passato o prova a recuperarlo dall'oggetto cred
+    cred_id = credential_id or getattr(cred, 'id', None)
+    
     if cred.credential_type == "snmp":
         result["snmp"] = {
+            "credential_id": cred_id,
             "community": cred.snmp_community or "public",
             "version": cred.snmp_version or "2c",
-            "port": cred.snmp_port or 161
+            "port": cred.snmp_port or 161,
+            "credential_name": getattr(cred, 'name', 'SNMP Credential')
         }
     elif cred.credential_type == "ssh":
         result["ssh"] = {
+            "credential_id": cred_id,
             "username": cred.username,
             "password": cred.password,
-            "port": cred.ssh_port or 22
+            "port": cred.ssh_port or 22,
+            "credential_name": getattr(cred, 'name', 'SSH Credential')
         }
     elif cred.credential_type in ("wmi", "winrm"):
         result["wmi"] = {
+            "credential_id": cred_id,
             "username": cred.username,
             "password": cred.password,
-            "domain": cred.wmi_domain or ""
+            "domain": cred.wmi_domain or "",
+            "credential_name": getattr(cred, 'name', 'WMI Credential')
         }
     else:
         # Tipo generico - include tutto
         if cred.snmp_community:
             result["snmp"] = {
+                "credential_id": cred_id,
                 "community": cred.snmp_community,
                 "version": cred.snmp_version or "2c",
-                "port": cred.snmp_port or 161
+                "port": cred.snmp_port or 161,
+                "credential_name": getattr(cred, 'name', 'SNMP Credential')
             }
         if cred.username:
             result["ssh"] = {
+                "credential_id": cred_id,
                 "username": cred.username,
                 "password": cred.password,
-                "port": cred.ssh_port or 22
+                "port": cred.ssh_port or 22,
+                "credential_name": getattr(cred, 'name', 'SSH Credential')
             }
             result["wmi"] = {
+                "credential_id": cred_id,
                 "username": cred.username,
                 "password": cred.password,
-                "domain": cred.wmi_domain or ""
+                "domain": cred.wmi_domain or "",
+                "credential_name": getattr(cred, 'name', 'WMI Credential')
             }
     
     return result
