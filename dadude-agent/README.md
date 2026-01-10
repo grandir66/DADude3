@@ -54,18 +54,18 @@ Agent nativo per scansioni di rete remote, progettato per essere deployato su Pr
 
 #### Installazione Automatica con installer nativo
 
-**Comando base** (wizard interattivo):
-
-**Comando base** (wizard interattivo):
+**Metodo consigliato** (scarica e esegui localmente - wizard interattivo):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-native.sh | bash
+curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-native.sh -o install-native.sh
+bash install-native.sh
 ```
 
 **Con parametri predefiniti** (non interattivo):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-native.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-native.sh -o install-native.sh
+bash install-native.sh \
   --server-url https://dadude.domarc.it:8000 \
   --agent-name "sede-milano" \
   --agent-token "your-secure-token-here" \
@@ -77,6 +77,8 @@ curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent
   --memory 512 \
   --disk 4
 ```
+
+**Nota**: L'esecuzione tramite pipe (`curl | bash`) può causare problemi con i comandi interattivi. Si consiglia di scaricare prima lo script e poi eseguirlo.
 
 ### Parametri Installazione
 
