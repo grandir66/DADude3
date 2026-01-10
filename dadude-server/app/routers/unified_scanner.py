@@ -1644,6 +1644,8 @@ async def _get_all_credentials_for_scan(
         
         # 3. TUTTE le credenziali del cliente per i protocolli richiesti
         # Mappa protocolli richiesti a tipi credenziali
+        # IMPORTANTE: Recupera sempre SSH quando viene richiesto SNMP per permettere fallback SSH
+        # (dispositivi come QNAP/Synology hanno SNMP limitato ma SSH completo)
         cred_types_to_fetch = set()
         for proto in protocols:
             if proto == "auto":
@@ -1653,6 +1655,7 @@ async def _get_all_credentials_for_scan(
                 cred_types_to_fetch.add("mikrotik")  # MikroTik usa SSH
             elif proto == "snmp":
                 cred_types_to_fetch.add("snmp")
+                cred_types_to_fetch.add("ssh")  # Aggiungi SSH per fallback quando SNMP restituisce dati minimi
             elif proto in ("wmi", "winrm"):
                 cred_types_to_fetch.add("wmi")
         
