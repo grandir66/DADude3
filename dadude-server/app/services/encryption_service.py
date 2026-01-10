@@ -119,8 +119,16 @@ class EncryptionService:
             decrypted = self._fernet.decrypt(ciphertext.encode())
             return decrypted.decode()
         except Exception as e:
-            logger.error(f"Decryption failed: {e}")
-            # Potrebbe essere un valore non criptato (migrazione)
+            # Log errore dettagliato
+            logger.error(f"Decryption failed for value starting with '{ciphertext[:20]}...': {type(e).__name__}: {e}")
+            # Se il valore sembra criptato ma non decripta, è un errore grave
+            # (probabilmente chiave cambiata)
+            if ciphertext.startswith('gAAAAA'):
+                logger.error(f"CRITICAL: Encrypted value cannot be decrypted! Key may have changed. "
+                           f"Please re-enter the password in the credentials panel.")
+                # Ritorna stringa vuota invece del ciphertext per evitare loop infiniti
+                return ""
+            # Se non sembra criptato, potrebbe essere plaintext (migrazione vecchia)
             return ciphertext
     
     def is_encrypted(self, value: str) -> bool:
