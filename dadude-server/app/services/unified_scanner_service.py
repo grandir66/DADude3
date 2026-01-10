@@ -481,6 +481,9 @@ class UnifiedScannerService:
             if not agent_obj:
                 logger.error(f"[UNIFIED_SCAN] Agent {request.agent_id} not found in customer_service")
                 result.errors.append(f"Agent {request.agent_id} not found")
+                # Assicura che credential_tests sia sempre inizializzato
+                if not hasattr(result, 'credential_tests') or result.credential_tests is None:
+                    result.credential_tests = []
                 return
             
             # Converti AgentAssignment in dict per agent_service
@@ -733,6 +736,9 @@ class UnifiedScannerService:
         except Exception as e:
             logger.error(f"[UNIFIED_SCAN] Agent scan error: {e}", exc_info=True)
             result.errors.append(f"Agent error: {str(e)}")
+            # Assicura che credential_tests sia sempre inizializzato anche in caso di errore
+            if not hasattr(result, 'credential_tests') or result.credential_tests is None:
+                result.credential_tests = []
     
     async def _scan_direct(
         self,
