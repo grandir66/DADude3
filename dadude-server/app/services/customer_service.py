@@ -414,6 +414,24 @@ class CustomerService:
     def _decrypt_credential(self, cred: CredentialDB) -> Credential:
         """Decripta una credenziale per uso interno"""
         encryption = get_encryption_service()
+        
+        # Decripta password con gestione errori
+        password = None
+        if cred.password:
+            try:
+                password = encryption.decrypt(cred.password)
+                logger.debug(f"Successfully decrypted password for credential '{cred.name}' (ID: {cred.id})")
+            except Exception as e:
+                logger.error(f"Failed to decrypt password for credential '{cred.name}' (ID: {cred.id}): {e}")
+                # Prova come plaintext se il decrypt fallisce (per compatibilità con credenziali legacy)
+                try:
+                    # Se la password non inizia con il prefisso di encryption, potrebbe essere già plaintext
+                    if not cred.password.startswith("encrypted:"):
+                        password = cred.password
+                        logger.warning(f"Using password as plaintext for credential '{cred.name}' (decrypt failed)")
+                except:
+                    password = None
+        
         return Credential(
             id=cred.id,
             customer_id=cred.customer_id,
@@ -421,7 +439,7 @@ class CustomerService:
             name=cred.name,
             credential_type=cred.credential_type,
             username=cred.username,
-            password=encryption.decrypt(cred.password) if cred.password else None,
+            password=password,
             # SSH
             ssh_port=cred.ssh_port,
             ssh_private_key=encryption.decrypt(cred.ssh_private_key) if cred.ssh_private_key else None,

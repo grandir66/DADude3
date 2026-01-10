@@ -228,6 +228,9 @@ class UnifiedScanResult:
     # Credential tests tracking
     credential_tests: List[Dict[str, Any]] = field(default_factory=list)  # Lista test credenziali con risultati
     
+    # Agent connection error
+    agent_error: Optional[str] = None  # Errore di connessione agent (es. "Agent non raggiungibile")
+    
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -501,6 +504,44 @@ class UnifiedScannerService:
             logger.info(f"[UNIFIED_SCAN] Agent info: id={agent_info['id']}, name={agent_info['name']}, "
                        f"type={agent_info['agent_type']}, address={agent_info['address']}")
             
+            # VERIFICA CONNESSIONE AGENT PRIMA DI TESTARE CREDENZIALI
+            # Se l'agent non è connesso, non ha senso testare le credenziali
+            from ..services.websocket_hub import get_websocket_hub
+            hub = get_websocket_hub()
+            
+            # Verifica se l'agent è connesso via WebSocket
+            dude_agent_id = agent_info.get("dude_agent_id")
+            agent_name = agent_info.get("name", "")
+            agent_connected = False
+            
+            if dude_agent_id:
+                # Prova con dude_agent_id (priorità massima)
+                agent_connected = await hub.is_connected(dude_agent_id)
+                if agent_connected:
+                    logger.info(f"[UNIFIED_SCAN] ✓ Agent '{agent_name}' (dude_id={dude_agent_id}) is connected via WebSocket")
+                else:
+                    logger.warning(f"[UNIFIED_SCAN] ✗ Agent '{agent_name}' (dude_id={dude_agent_id}) is NOT connected via WebSocket")
+            
+            # Se non connesso via WebSocket, verifica se c'è un fallback HTTP disponibile
+            if not agent_connected:
+                agent_address = agent_info.get("address")
+                agent_api_port = agent_info.get("agent_api_port", 8080)
+                agent_url = agent_info.get("agent_url") or (f"http://{agent_address}:{agent_api_port}" if agent_address else None)
+                
+                if agent_url:
+                    logger.info(f"[UNIFIED_SCAN] Agent not connected via WebSocket, will try HTTP fallback to {agent_url}")
+                    # HTTP fallback disponibile - procediamo con i test credenziali
+                    # L'errore verrà catturato durante i test se anche HTTP fallisce
+                else:
+                    # Nessun metodo di connessione disponibile
+                    error_msg = f"Agent '{agent_name}' non raggiungibile: connessione WebSocket chiusa e nessun endpoint HTTP configurato"
+                    logger.error(f"[UNIFIED_SCAN] {error_msg}")
+                    result.agent_error = error_msg
+                    result.status = "failed"
+                    result.errors.append(error_msg)
+                    result.credential_tests = []  # NON popolare credential_tests con errori di connessione
+                    return
+            
             # Usa credentials_list se disponibile, altrimenti fallback a credentials singolo
             creds_list = request.credentials_list or {}
             creds_single = request.credentials or {}
@@ -596,13 +637,23 @@ class UnifiedScannerService:
                     
                     try:
                         if proto_type == "ssh":
+                            ssh_password = cred.get("password")
+                            ssh_user = cred.get("username")
+                            ssh_port = cred.get("port", 22)
+                            
+                            # Log dettagliato per debug
+                            if not ssh_password:
+                                logger.warning(f"[CRED_TEST] ⚠️ SSH credential '{cred_name}' (ID: {cred_id}) has NO PASSWORD - username={ssh_user}, port={ssh_port}")
+                            else:
+                                logger.debug(f"[CRED_TEST] SSH credential '{cred_name}' (ID: {cred_id}) - username={ssh_user}, password_length={len(ssh_password)}, port={ssh_port}")
+                            
                             agent_result = await agent_service.probe_unified(
                                 agent_info,
                                 request.target_address,
                                 ["ssh"],
-                                ssh_user=cred.get("username"),
-                                ssh_password=cred.get("password"),
-                                ssh_port=cred.get("port", 22),
+                                ssh_user=ssh_user,
+                                ssh_password=ssh_password,
+                                ssh_port=ssh_port,
                                 timeout=min(request.timeout, 30),
                             )
                             
@@ -722,33 +773,52 @@ class UnifiedScannerService:
                 logger.warning(f"[UNIFIED_SCAN] ❌ All credentials failed for {request.target_address}")
                 logger.warning(f"[UNIFIED_SCAN] Credentials tested: {len(tested_credentials)}")
                 
-                # Se non ci sono credenziali testate, potrebbe essere un problema di connessione all'agent
-                if len(tested_credentials) == 0:
-                    logger.error(f"[UNIFIED_SCAN] ⚠️ No credentials were tested! This might indicate an agent connection issue.")
+                # Verifica se tutti gli errori sono di connessione agent (non di autenticazione)
+                # Se sì, impostiamo agent_error invece di popolare credential_tests
+                connection_error_keywords = [
+                    "connection failed", "all connection attempts failed", "connection error",
+                    "could not connect", "connection refused", "timeout", "unreachable",
+                    "agent not connected", "websocket", "http fallback"
+                ]
+                
+                all_connection_errors = True
+                for tested in tested_credentials:
+                    error_msg = (tested.get("error") or "").lower()
+                    if error_msg and not any(keyword in error_msg for keyword in connection_error_keywords):
+                        # Questo errore NON è di connessione (probabilmente autenticazione)
+                        all_connection_errors = False
+                        break
+                
+                if all_connection_errors and len(tested_credentials) > 0:
+                    # Tutti gli errori sono di connessione agent - NON sono problemi di credenziali
+                    error_msg = f"Agent '{agent_name}' non raggiungibile: connessione WebSocket chiusa e fallback HTTP fallito"
+                    logger.error(f"[UNIFIED_SCAN] {error_msg}")
+                    logger.error(f"[UNIFIED_SCAN] Tutti i test sono falliti per errore di connessione agent, non per credenziali errate")
+                    result.agent_error = error_msg
+                    result.status = "failed"
+                    result.errors.append(error_msg)
+                    result.credential_tests = []  # NON popolare credential_tests con errori di connessione
+                elif len(tested_credentials) == 0:
+                    # Nessuna credenziale testata - problema di connessione agent
+                    error_msg = f"Agent '{agent_name}' non raggiungibile: impossibile testare credenziali"
+                    logger.error(f"[UNIFIED_SCAN] ⚠️ No credentials were tested! This indicates an agent connection issue.")
                     logger.error(f"[UNIFIED_SCAN] Available credentials - SSH: {len(ssh_creds_list)}, SNMP: {len(snmp_creds_list)}, WMI: {len(wmi_creds_list)}")
                     logger.error(f"[UNIFIED_SCAN] Protocols to try: {protocols}")
-                    # Aggiungi un entry di errore per indicare che non è stato possibile testare le credenziali
-                    if protocols:
-                        for proto in protocols:
-                            if proto == "auto":
-                                continue
-                            tested_credentials.append({
-                                "protocol": proto,
-                                "credential_id": None,
-                                "credential_name": "Agent connection failed",
-                                "status": "error",
-                                "error": "Could not connect to agent to test credentials"
-                            })
+                    result.agent_error = error_msg
+                    result.status = "failed"
+                    result.errors.append(error_msg)
+                    result.credential_tests = []  # NON popolare credential_tests
                 else:
+                    # Alcuni errori potrebbero essere di autenticazione - mostra credential_tests normalmente
                     for tested in tested_credentials:
                         logger.warning(f"[UNIFIED_SCAN]   ❌ {tested['protocol'].upper()}: '{tested['credential_name']}' (ID: {tested.get('credential_id', 'N/A')}) - {tested['status']}")
                         if tested.get("error"):
                             logger.warning(f"[UNIFIED_SCAN]      Error: {tested['error']}")
                     for err in all_errors[-5:]:  # Log ultimi 5 errori
                         logger.debug(f"[UNIFIED_SCAN] - {err}")
-                
-                # Salva comunque la lista dei test anche se tutti falliti
-                result.credential_tests = tested_credentials
+                    
+                    # Salva la lista dei test (potrebbero esserci errori di autenticazione misti a errori di connessione)
+                    result.credential_tests = tested_credentials
             
             if agent_result and agent_result.success:
                 # agent_result è un AgentProbeResult, estrai data

@@ -1714,13 +1714,29 @@ async def _get_all_credentials_for_scan(
             if cred_type in ("ssh", "mikrotik") and "ssh" in cred_types_to_fetch:
                 username = getattr(cred, 'username', None)
                 if username:
-                    credentials_by_type["ssh"].append({
-                        "credential_id": cred_safe.id,  # ID per tracking
-                        "username": username,
-                        "password": getattr(cred, 'password', None),
-                        "port": getattr(cred, 'ssh_port', None) or 22,
-                        "credential_name": cred_safe.name,  # Per logging
-                    })
+                    password = getattr(cred, 'password', None)
+                    port = getattr(cred, 'ssh_port', None) or 22
+                    
+                    # Log per debug - verifica che la password sia stata decriptata
+                    if password:
+                        logger.debug(f"[CREDENTIALS] SSH/MikroTik credential '{cred_safe.name}' (ID: {cred_safe.id}): "
+                                   f"username={username}, password_length={len(password)}, port={port}")
+                    else:
+                        logger.warning(f"[CREDENTIALS] SSH/MikroTik credential '{cred_safe.name}' (ID: {cred_safe.id}): "
+                                     f"username={username}, password is None or empty - skipping")
+                    
+                    # Aggiungi solo se abbiamo username E password
+                    if username and password:
+                        credentials_by_type["ssh"].append({
+                            "credential_id": cred_safe.id,  # ID per tracking
+                            "username": username,
+                            "password": password,
+                            "port": port,
+                            "credential_name": cred_safe.name,  # Per logging
+                        })
+                    else:
+                        logger.warning(f"[CREDENTIALS] Skipping SSH/MikroTik credential '{cred_safe.name}': "
+                                     f"missing username or password")
             
             # SNMP
             if cred_type == "snmp" and "snmp" in cred_types_to_fetch:

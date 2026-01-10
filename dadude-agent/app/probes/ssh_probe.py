@@ -32,7 +32,8 @@ async def probe(
     def connect():
         import paramiko
         
-        logger.debug(f"SSH probe: connecting to {target}:{port} as {username}")
+        logger.info(f"SSH probe: connecting to {target}:{port} as {username} "
+                   f"(password={'Yes' if password else 'No'}, key={'Yes' if private_key else 'No'})")
         
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -49,12 +50,33 @@ async def probe(
         }
         
         if private_key:
-            key = paramiko.RSAKey.from_private_key(StringIO(private_key))
-            connect_args["pkey"] = key
-        else:
+            try:
+                key = paramiko.RSAKey.from_private_key(StringIO(private_key))
+                connect_args["pkey"] = key
+                logger.debug(f"SSH probe: Using private key authentication")
+            except Exception as e:
+                logger.error(f"SSH probe: Failed to load private key: {e}")
+                raise
+        elif password:
             connect_args["password"] = password
+            logger.debug(f"SSH probe: Using password authentication (length: {len(password)})")
+        else:
+            logger.error(f"SSH probe: No authentication method provided (no password, no key)")
+            raise ValueError("SSH credentials require either password or private key")
         
-        client.connect(**connect_args)
+        try:
+            logger.debug(f"SSH probe: Attempting connection to {target}:{port}...")
+            client.connect(**connect_args)
+            logger.info(f"SSH probe: Successfully connected to {target}:{port}")
+        except paramiko.AuthenticationException as e:
+            logger.error(f"SSH probe: Authentication failed for {target}:{port} as {username}: {e}")
+            raise
+        except paramiko.SSHException as e:
+            logger.error(f"SSH probe: SSH error connecting to {target}:{port}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"SSH probe: Unexpected error connecting to {target}:{port}: {e}")
+            raise
         
         info = {}
         use_sudo = False  # Flag per usare sudo quando necessario

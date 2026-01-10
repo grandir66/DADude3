@@ -561,7 +561,9 @@ class AgentService:
         
         logger.info(f"[PROBE_UNIFIED] Starting for {target}, agent_type={agent_type}, "
                    f"dude_agent_id={dude_agent_id}, protocols={protocols}")
-        logger.info(f"[PROBE_UNIFIED] Credentials: ssh_user={ssh_user}, snmp_community={snmp_community}")
+        logger.info(f"[PROBE_UNIFIED] Credentials: ssh_user={ssh_user}, "
+                   f"ssh_password={'***' if ssh_password else 'None'}, "
+                   f"ssh_port={ssh_port}, snmp_community={snmp_community}")
         
         if agent_type != "docker":
             logger.warning(f"[PROBE_UNIFIED] Agent type '{agent_type}' is not docker, rejecting")

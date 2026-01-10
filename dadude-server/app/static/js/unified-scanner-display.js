@@ -56,6 +56,15 @@ const UnifiedScannerDisplay = {
             return '<div class="alert alert-warning">Nessun dato disponibile</div>';
         }
 
+        // Se c'è un errore di connessione agent, mostralo in modo prominente
+        if (result.agent_error) {
+            return `
+                <div class="unified-scan-result">
+                    ${this.renderAgentError(result)}
+                </div>
+            `;
+        }
+
         const deviceType = result.device_type || 'unknown';
         const color = this.deviceColors[deviceType] || this.deviceColors['unknown'];
         const icon = this.deviceIcons[deviceType] || this.deviceIcons['unknown'];
@@ -72,6 +81,51 @@ const UnifiedScannerDisplay = {
                 ${this.renderStorageSection(result)}
                 ${this.renderVMsSection(result)}
                 ${this.renderErrorsSection(result)}
+            </div>
+        `;
+    },
+
+    /**
+     * Mostra errore di connessione agent in modo prominente
+     */
+    renderAgentError(result) {
+        const agentName = result.target || 'Agent';
+        const errorMsg = result.agent_error || 'Agent non raggiungibile';
+        
+        return `
+            <div class="alert alert-danger border-danger border-3 mb-4">
+                <div class="d-flex align-items-start">
+                    <div class="me-3">
+                        <i class="bi bi-exclamation-triangle-fill fs-1 text-danger"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h4 class="alert-heading mb-3">
+                            <i class="bi bi-router me-2"></i>Agent "${agentName}" non raggiungibile
+                        </h4>
+                        <p class="mb-3">${errorMsg}</p>
+                        <hr>
+                        <p class="mb-2"><strong>Possibili cause:</strong></p>
+                        <ul class="mb-3">
+                            <li>Il servizio agent non è attivo</li>
+                            <li>La connessione WebSocket è chiusa</li>
+                            <li>L'endpoint HTTP non è raggiungibile</li>
+                            <li>Problemi di rete tra server e agent</li>
+                        </ul>
+                        <p class="mb-0"><strong>Verifica:</strong></p>
+                        <code class="d-block bg-dark text-light p-2 rounded mb-2">
+                            ssh root@HOST "pct exec CONTAINER -- systemctl status dadude-agent"
+                        </code>
+                        <code class="d-block bg-dark text-light p-2 rounded">
+                            ssh root@HOST "pct exec CONTAINER -- journalctl -u dadude-agent -n 50 --no-pager"
+                        </code>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Nota:</strong> Questo errore indica un problema di connessione con l'agent, 
+                non un problema con le credenziali del dispositivo. Una volta risolto il problema 
+                di connessione, riprova la scansione.
             </div>
         `;
     },
@@ -114,6 +168,9 @@ const UnifiedScannerDisplay = {
      * Sezione Test Credenziali
      */
     renderCredentialTests(result) {
+        // Se c'è un errore agent, NON mostrare la tabella credenziali
+        if (result.agent_error) return '';
+        
         const tests = result.credential_tests || [];
         if (tests.length === 0) return '';
 
