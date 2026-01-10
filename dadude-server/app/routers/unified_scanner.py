@@ -120,10 +120,15 @@ async def unified_scan(request: UnifiedScanRequestModel):
             include_users=request.include_users,
         )
         
+        # Genera scan_id per tracciamento stato
+        import uuid
+        scan_id = str(uuid.uuid4())
+        
         # Esegui scansione
         result = await scanner.scan_device(
             scan_request,
-            agent_service=agent_service
+            agent_service=agent_service,
+            scan_id=scan_id
         )
         
         # Se auto_save è abilitato, salva automaticamente nel database
@@ -153,7 +158,8 @@ async def unified_scan(request: UnifiedScanRequestModel):
         
         response = {
             "success": result.status in ["success", "partial"],
-            "result": result.to_dict()
+            "result": result.to_dict(),
+            "scan_id": scan_id  # Restituisci scan_id per polling stato
         }
         
         if save_summary:
@@ -166,6 +172,32 @@ async def unified_scan(request: UnifiedScanRequestModel):
     except Exception as e:
         logger.error(f"Unified scan error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/status/{scan_id}")
+async def get_scan_status(scan_id: str):
+    """
+    Ottiene lo stato corrente di una scansione in corso.
+    
+    Args:
+        scan_id: ID scansione restituito da /scan
+    
+    Returns:
+        Stato scansione con protocollo corrente, credenziale, progresso
+    """
+    scanner = get_unified_scanner_service()
+    status = scanner.get_scan_status(scan_id)
+    
+    if status:
+        return {
+            "success": True,
+            "status": status
+        }
+    else:
+        return {
+            "success": False,
+            "error": "Scan not found or completed"
+        }
 
 
 @router.get("/results/{device_id}")

@@ -231,6 +231,9 @@ class UnifiedScanResult:
     # Agent connection error
     agent_error: Optional[str] = None  # Errore di connessione agent (es. "Agent non raggiungibile")
     
+    # Scan tracking
+    scan_id: Optional[str] = None  # ID scansione per tracciamento stato
+    
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -248,12 +251,24 @@ class UnifiedScannerService:
     
     def __init__(self):
         self._scan_cache: Dict[str, UnifiedScanResult] = {}
+        self._active_scans: Dict[str, Dict[str, Any]] = {}  # scan_id -> {status, protocol, credential, progress}
+    
+    def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        """Ottiene lo stato corrente di una scansione"""
+        return self._active_scans.get(scan_id)
+    
+    def _update_scan_status(self, scan_id: str, **kwargs):
+        """Aggiorna lo stato di una scansione"""
+        if scan_id in self._active_scans:
+            self._active_scans[scan_id].update(kwargs)
+            logger.debug(f"[SCAN_STATUS] {scan_id}: {kwargs}")
     
     async def scan_device(
         self,
         request: UnifiedScanRequest,
         ws_hub = None,
-        agent_service = None
+        agent_service = None,
+        scan_id: Optional[str] = None
     ) -> UnifiedScanResult:
         """
         Esegue scansione unificata su un dispositivo.
@@ -262,10 +277,16 @@ class UnifiedScannerService:
             request: Parametri scansione
             ws_hub: WebSocket Hub per comunicazione agent
             agent_service: Servizio agent per invio comandi
+            scan_id: ID scansione per tracciamento stato (generato se None)
         
         Returns:
             UnifiedScanResult con tutti i dati raccolti
         """
+        # Genera scan_id se non fornito
+        if not scan_id:
+            import uuid
+            scan_id = str(uuid.uuid4())
+        
         start_time = datetime.utcnow()
         result = UnifiedScanResult(
             device_id=request.device_id,
@@ -273,7 +294,19 @@ class UnifiedScannerService:
             scan_timestamp=start_time.isoformat()
         )
         
-        logger.info(f"Unified scan starting for {request.target_address}")
+        # Inizializza stato scansione
+        self._active_scans[scan_id] = {
+            "scan_id": scan_id,
+            "device_id": request.device_id,
+            "target": request.target_address,
+            "status": "starting",
+            "protocol": None,
+            "credential": None,
+            "progress": 0,
+            "message": "Inizializzazione scansione..."
+        }
+        
+        logger.info(f"Unified scan starting for {request.target_address} (scan_id: {scan_id})")
         
         try:
             # 0. Recupera device_type e manufacturer dal database per scegliere protocollo corretto
@@ -324,10 +357,12 @@ class UnifiedScannerService:
             
             logger.debug(f"Protocols to try: {protocols_to_try}")
             
+            self._update_scan_status(scan_id, status="running", message=f"Scansione in corso: {len(protocols_to_try)} protocollo(i) da testare")
+            
             # 2. Esegui scansione con agent se disponibile
             if agent_service and request.agent_id:
                 await self._scan_via_agent(
-                    result, request, agent_service, protocols_to_try
+                    result, request, agent_service, protocols_to_try, scan_id=scan_id
                 )
             else:
                 # Fallback: scansione diretta (se implementata)
@@ -345,10 +380,24 @@ class UnifiedScannerService:
             # 5. Imposta status
             if result.errors and not result.hostname:
                 result.status = "failed"
+                self._update_scan_status(scan_id, status="failed", message="Scansione fallita", progress=100)
             elif result.errors or result.warnings:
                 result.status = "partial"
+                self._update_scan_status(scan_id, status="completed", message="Scansione completata (parziale)", progress=100)
             else:
                 result.status = "success"
+                self._update_scan_status(scan_id, status="completed", message="Scansione completata", progress=100)
+            
+            # Salva scan_id nel risultato per riferimento frontend
+            result.scan_id = scan_id
+            
+            # Rimuovi stato dopo 5 minuti (cleanup automatico)
+            import asyncio
+            async def cleanup_scan_status():
+                await asyncio.sleep(300)  # 5 minuti
+                if scan_id in self._active_scans:
+                    del self._active_scans[scan_id]
+            asyncio.create_task(cleanup_scan_status())
             
             logger.info(f"Unified scan completed for {request.target_address}: {result.status}")
             
@@ -465,7 +514,8 @@ class UnifiedScannerService:
         result: UnifiedScanResult,
         request: UnifiedScanRequest,
         agent_service,
-        protocols: List[str]
+        protocols: List[str],
+        scan_id: Optional[str] = None
     ):
         """
         Esegue scansione tramite agent.
@@ -591,9 +641,14 @@ class UnifiedScannerService:
             successful_results = []  # Lista di (proto, cred_id, cred_name, result, data_count)
             
             # Itera attraverso i protocolli nell'ordine determinato
+            total_protocols = len([p for p in protocols if p != "auto"])
+            protocol_idx = 0
             for proto_type in protocols:
                 if proto_type == "auto":
                     continue  # Skip "auto", già espanso in lista protocolli
+                
+                protocol_idx += 1
+                protocol_progress = int((protocol_idx - 1) / total_protocols * 100) if total_protocols > 0 else 0
                 
                 # Ottieni lista credenziali per questo protocollo
                 creds_to_try = protocol_creds_map.get(proto_type, [])
@@ -603,10 +658,39 @@ class UnifiedScannerService:
                 
                 logger.info(f"[CRED_TEST] Testing {len(creds_to_try)} {proto_type.upper()} credential(s) for {request.target_address}")
                 
+                # Aggiorna stato: nuovo protocollo
+                if scan_id:
+                    self._update_scan_status(
+                        scan_id,
+                        protocol=proto_type.upper(),
+                        credential=None,
+                        progress=protocol_progress,
+                        message=f"Testando protocollo {proto_type.upper()} ({protocol_idx}/{total_protocols})..."
+                    )
+                
                 # Prova ogni credenziale per questo protocollo
+                total_creds = len(creds_to_try)
                 for idx, cred in enumerate(creds_to_try):
                     cred_id = cred.get("credential_id")
                     cred_name = cred.get("credential_name", f"{proto_type}-{idx+1}")
+                    
+                    # Aggiorna stato: nuova credenziale
+                    if scan_id:
+                        cred_display = cred_name
+                        if proto_type == "ssh":
+                            cred_display = f"{cred.get('username', 'N/A')} ({cred_name})"
+                        elif proto_type == "snmp":
+                            cred_display = f"{cred.get('community', 'N/A')} ({cred_name})"
+                        elif proto_type in ("wmi", "winrm"):
+                            cred_display = f"{cred.get('username', 'N/A')} ({cred_name})"
+                        
+                        cred_progress = protocol_progress + int((idx + 1) / total_creds * (100 - protocol_progress) / total_protocols) if total_protocols > 0 else protocol_progress
+                        self._update_scan_status(
+                            scan_id,
+                            credential=cred_display,
+                            progress=min(cred_progress, 95),  # Max 95% durante test
+                            message=f"Testando {proto_type.upper()}: {cred_display} ({idx+1}/{total_creds})"
+                        )
                     
                     # Log dettagliato del tentativo
                     if proto_type == "ssh":
