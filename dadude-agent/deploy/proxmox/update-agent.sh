@@ -70,7 +70,7 @@ if ! pct exec $CTID -- test -d "${AGENT_DIR}/.git" 2>/dev/null; then
     
     # Prova a inizializzare il repository
     warning "Tentativo di inizializzare il repository git..."
-    pct exec $CTID -- bash -c "cd ${AGENT_DIR} && git init && git remote add origin https://github.com/grandir66/Dadude.git || true"
+        pct exec $CTID -- bash -c "cd ${AGENT_DIR} && git init && git remote add origin https://github.com/grandir66/DADude3.git || true"
     
     if ! pct exec $CTID -- test -d "${AGENT_DIR}/.git" 2>/dev/null; then
         error "Impossibile inizializzare il repository git"

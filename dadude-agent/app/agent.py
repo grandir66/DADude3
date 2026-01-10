@@ -39,10 +39,8 @@ def _get_version() -> str:
     """Legge la versione dal file VERSION o usa default."""
     from pathlib import Path
     version_paths = [
-        Path(__file__).parent.parent / "VERSION",  # dadude-agent/VERSION
-        Path(__file__).parent.parent.parent / "VERSION",  # root/VERSION
-        Path("/opt/dadude-agent/VERSION"),
-        Path("/opt/dadude-agent/dadude-agent/VERSION"),
+        Path(__file__).parent.parent / "VERSION",  # app/../VERSION (relativo al codice)
+        Path("/opt/dadude-agent/VERSION"),  # Path standard installazione
     ]
     for vpath in version_paths:
         if vpath.exists():
@@ -50,7 +48,7 @@ def _get_version() -> str:
                 return vpath.read_text().strip()
             except Exception:
                 pass
-    return "3.1.1"  # Default fallback
+    return "3.1.2"  # Default fallback
 
 AGENT_VERSION = _get_version()
 

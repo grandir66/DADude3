@@ -89,7 +89,7 @@ class SelfUpdater:
         agent_dir: str = "/opt/dadude-agent",
         backup_dir: str = "/opt/dadude-agent/backups",
         is_docker: bool = True,
-        github_repo: str = "grandir66/dadude",
+        github_repo: str = "grandir66/DADude3",
     ):
         self.current_version = current_version
         self.agent_dir = Path(agent_dir)

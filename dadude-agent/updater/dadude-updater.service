@@ -1,11 +1,10 @@
 [Unit]
-Description=DaDude Git Update Watchdog
+Description=DaDude Agent Updater
 Documentation=https://github.com/grandir66/DADude3
 After=network-online.target
 Wants=network-online.target
 
 # NON dipende da dadude-agent - deve funzionare anche se l'agent è corrotto
-# After=dadude-agent.service
 
 [Service]
 Type=simple
@@ -13,21 +12,22 @@ User=root
 Group=root
 
 # Directory di lavoro
-WorkingDirectory=/opt/dadude-agent
+WorkingDirectory=/opt/dadude-updater
 
 # Variabili d'ambiente
 Environment="PYTHONUNBUFFERED=1"
 Environment="AGENT_DIR=/opt/dadude-agent"
+Environment="UPDATER_DIR=/opt/dadude-updater"
 Environment="UPDATE_CHECK_INTERVAL=3600"
 Environment="AGENT_HEALTH_TIMEOUT=120"
 Environment="GIT_REMOTE=origin"
 Environment="GIT_BRANCH=main"
 
 # File .env opzionale per override
-EnvironmentFile=-/opt/dadude-agent/.env.watchdog
+EnvironmentFile=-/opt/dadude-updater/config.env
 
 # Comando di avvio (usa Python di sistema, non venv dell'agent)
-ExecStart=/usr/bin/python3 /opt/dadude-agent/git-update-watchdog.py
+ExecStart=/usr/bin/python3 /opt/dadude-updater/updater.py
 
 # Restart policy - molto aggressiva per garantire che il watchdog sia sempre attivo
 Restart=always
@@ -44,7 +44,7 @@ CPUQuota=10%
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=dadude-git-watchdog
+SyslogIdentifier=dadude-updater
 
 # Security hardening
 NoNewPrivileges=false
@@ -54,6 +54,7 @@ PrivateTmp=true
 
 # Permessi di scrittura necessari
 ReadWritePaths=/opt/dadude-agent
+ReadWritePaths=/opt/dadude-updater
 ReadWritePaths=/var/log
 
 # Timeout

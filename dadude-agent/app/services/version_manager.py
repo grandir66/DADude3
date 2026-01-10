@@ -128,8 +128,8 @@ class VersionManager:
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"),
                 )
             
-            # Copia docker-compose.yml se esiste
-            compose_file = self.agent_dir / "dadude-agent" / "docker-compose.yml"
+            # Copia docker-compose.yml se esiste (nella nuova struttura è direttamente in agent_dir)
+            compose_file = self.agent_dir / "docker-compose.yml"
             if compose_file.exists():
                 backup_path.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(compose_file, backup_path / "docker-compose.yml")
@@ -170,10 +170,10 @@ class VersionManager:
                     shutil.rmtree(app_target)
                 shutil.copytree(app_backup, app_target)
             
-            # Ripristina docker-compose.yml se presente
+            # Ripristina docker-compose.yml se presente (nella nuova struttura è direttamente in agent_dir)
             compose_backup = backup_dir / "docker-compose.yml"
             if compose_backup.exists():
-                compose_target = self.agent_dir / "dadude-agent" / "docker-compose.yml"
+                compose_target = self.agent_dir / "docker-compose.yml"
                 compose_target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(compose_backup, compose_target)
             

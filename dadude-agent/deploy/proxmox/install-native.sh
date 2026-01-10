@@ -1,15 +1,17 @@
 #!/bin/bash
 #
-# DaDude Agent v3.1 - Installazione da Git (Minimo Indispensabile)
+# DaDude Agent v3.1+ - Installazione Nativa su Proxmox LXC
+# ==========================================================
 # Crea un container LXC nativo con Python virtualenv (NO Docker)
+# Struttura pulita: /opt/dadude-agent (agent) + /opt/dadude-updater (watchdog)
 #
 # Uso:
-#   curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-from-git.sh | bash
-#   oppure: bash install-from-git.sh [opzioni]
+#   curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-native.sh | bash
+#   oppure: bash install-native.sh [opzioni]
 #
 # Opzioni:
 #   --server-url URL      URL server DaDude (default: https://dadude.domarc.it:8000)
-#   --agent-name NAME     Nome descrittivo agent
+#   --agent-name NAME     Nome descrittivo agent (obbligatorio)
 #   --agent-token TOKEN   Token autenticazione (auto-generato se vuoto)
 #   --ctid ID             ID container Proxmox
 #   --hostname NAME       Hostname container
@@ -40,13 +42,14 @@ info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 # Banner
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║     DaDude Agent v3.1 - Installazione da Git             ║"
+echo "║     DaDude Agent v3.1+ - Installazione Nativa            ║"
 echo "║        Modalità: WebSocket mTLS (Nativo, no Docker)      ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
 # Valori default
 DEFAULT_SERVER_URL="https://dadude.domarc.it:8000"
+GIT_REPO="https://github.com/grandir66/DADude3.git"
 CTID=""
 HOSTNAME=""
 BRIDGE=""
@@ -142,6 +145,9 @@ if [ -z "$AGENT_TOKEN" ]; then
         echo -e "${GREEN}Token generato: ${AGENT_TOKEN}${NC}"
     fi
 fi
+
+# Genera agent ID univoco
+AGENT_ID="agent-${AGENT_NAME}-$(date +%s | tail -c 5)"
 
 # === CONFIGURAZIONE CONTAINER ===
 echo -e "\n${BLUE}--- Container LXC ---${NC}"
@@ -305,9 +311,6 @@ if [ -z "$DNS_SERVER" ]; then
     fi
 fi
 
-# Genera agent ID univoco
-AGENT_ID="agent-${AGENT_NAME}-$(date +%s | tail -c 5)"
-
 # Verifica se container esiste già
 while pct status $CTID &>/dev/null; do
     EXISTING_NAME=$(pct config $CTID 2>/dev/null | grep "^hostname:" | awk '{print $2}')
@@ -404,7 +407,7 @@ fi
 # =============================================================================
 
 # Trova template
-log "[1/7] Verifico template..."
+log "[1/8] Verifico template..."
 
 # Trova storage per template
 TEMPLATE_STORAGE_FOUND=""
@@ -458,7 +461,7 @@ else
 fi
 
 # Crea container
-log "[2/7] Creo container LXC..."
+log "[2/8] Creo container LXC..."
 
 CREATE_CMD="pct create $CTID $TEMPLATE \
     --hostname $HOSTNAME \
@@ -480,7 +483,7 @@ eval $CREATE_CMD
 echo -e "${GREEN}Container $CTID creato${NC}"
 
 # Avvia container
-log "[3/7] Avvio container..."
+log "[3/8] Avvio container..."
 pct start $CTID
 sleep 5
 
@@ -493,7 +496,7 @@ for i in {1..30}; do
 done
 
 # Installa dipendenze sistema
-log "[4/7] Installo dipendenze di sistema..."
+log "[4/8] Installo dipendenze di sistema..."
 
 pct exec $CTID -- bash -c '
 export DEBIAN_FRONTEND=noninteractive
@@ -512,62 +515,102 @@ apt-get install -y -qq \
     > /dev/null 2>&1
 '
 
-# Crea struttura directory
-log "[5/7] Scarico codice agent da Git (solo file essenziali)..."
+# Clone repository - NUOVA STRUTTURA: direttamente in /opt/dadude-agent
+log "[5/8] Clone repository Git..."
 
 pct exec $CTID -- bash -c '
 # Pulisci eventuali installazioni precedenti
-rm -rf /opt/dadude-agent
+rm -rf /opt/dadude-agent /opt/dadude-updater
 mkdir -p /opt/dadude-agent
 mkdir -p /var/log/dadude-agent
 mkdir -p /var/lib/dadude-agent
 
+# Clone repository - solo la cartella dadude-agent
 cd /tmp
-rm -rf dadude-temp
+rm -rf DADude3-temp
 
-# Clone con sparse checkout per prendere solo agent
-git clone --depth 1 --filter=blob:none --sparse https://github.com/grandir66/DADude3.git dadude-temp 2>/dev/null || {
+# Clone con sparse checkout per prendere solo dadude-agent
+git clone --depth 1 --filter=blob:none --sparse "$GIT_REPO" DADude3-temp 2>/dev/null || {
     # Fallback: clone completo
-    git clone --depth 1 https://github.com/grandir66/DADude3.git dadude-temp
+    git clone --depth 1 "$GIT_REPO" DADude3-temp
 }
 
-cd dadude-temp
-git sparse-checkout set dadude-agent/app dadude-agent/requirements.txt dadude-agent/VERSION dadude-agent/dadude-agent.service 2>/dev/null || true
+cd DADude3-temp
+git sparse-checkout set dadude-agent 2>/dev/null || true
 
-# Copia SOLO i file necessari
-mkdir -p /opt/dadude-agent/dadude-agent
-cp -r dadude-agent/app /opt/dadude-agent/dadude-agent/
-cp dadude-agent/requirements.txt /opt/dadude-agent/dadude-agent/
-cp dadude-agent/VERSION /opt/dadude-agent/dadude-agent/
-cp dadude-agent/dadude-agent.service /opt/dadude-agent/dadude-agent/
+# Copia SOLO i file necessari direttamente in /opt/dadude-agent
+cp -r dadude-agent/* /opt/dadude-agent/ 2>/dev/null || {
+    # Se sparse checkout non funziona, copia manualmente
+    if [ -d "dadude-agent/app" ]; then
+        cp -r dadude-agent/app /opt/dadude-agent/
+        cp dadude-agent/requirements.txt /opt/dadude-agent/ 2>/dev/null || true
+        cp dadude-agent/VERSION /opt/dadude-agent/ 2>/dev/null || true
+        cp dadude-agent/dadude-agent.service /opt/dadude-agent/ 2>/dev/null || true
+    fi
+}
 
 # Cleanup
 cd /
-rm -rf /tmp/dadude-temp
+rm -rf /tmp/DADude3-temp
 
-# Mostra struttura finale
+# Verifica struttura
+if [ ! -d "/opt/dadude-agent/app" ]; then
+    echo "ERRORE: Struttura directory non corretta dopo clone"
+    exit 1
+fi
+
 echo "Struttura installata:"
-find /opt/dadude-agent -maxdepth 3 -type d
+ls -la /opt/dadude-agent/ | head -10
 '
 
 # Crea virtualenv e installa dipendenze Python
-log "[6/7] Creo virtualenv e installo dipendenze Python..."
+log "[6/8] Creo virtualenv e installo dipendenze Python..."
 
 pct exec $CTID -- bash -c '
 cd /opt/dadude-agent
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip -q
-pip install -r dadude-agent/requirements.txt -q
+pip install -r requirements.txt -q
+'
+
+# Setup Updater (watchdog)
+log "[7/8] Setup Agent Updater..."
+
+pct exec $CTID -- bash -c '
+# Crea directory updater
+mkdir -p /opt/dadude-updater/logs
+
+# Copia file updater dal repository (se disponibili)
+if [ -d "/opt/dadude-agent/updater" ]; then
+    cp /opt/dadude-agent/updater/updater.py /opt/dadude-updater/
+    cp /opt/dadude-agent/updater/dadude-updater.service /etc/systemd/system/
+    chmod +x /opt/dadude-updater/updater.py
+else
+    # Se non disponibili, scarica direttamente da GitHub
+    curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/updater/updater.py -o /opt/dadude-updater/updater.py
+    curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/updater/dadude-updater.service -o /etc/systemd/system/dadude-updater.service
+    chmod +x /opt/dadude-updater/updater.py
+fi
+
+# Crea config.env per updater
+cat > /opt/dadude-updater/config.env << EOF
+AGENT_DIR=/opt/dadude-agent
+UPDATER_DIR=/opt/dadude-updater
+UPDATE_CHECK_INTERVAL=3600
+AGENT_HEALTH_TIMEOUT=120
+GIT_REMOTE=origin
+GIT_BRANCH=main
+EOF
 '
 
 # Configura agent
-log "[7/7] Configuro agent..."
+log "[8/8] Configuro agent..."
 
-# Crea .env
-pct exec $CTID -- bash -c "cat > /opt/dadude-agent/dadude-agent/.env << 'EOF'
+# Crea .env per agent
+pct exec $CTID -- bash -c "cat > /opt/dadude-agent/.env << 'EOF'
 # DaDude Agent Configuration
-# Generato da install-from-git.sh il $(date)
+# Generato da install-native.sh il $(date)
 
 DADUDE_SERVER_URL=${SERVER_URL}
 DADUDE_AGENT_ID=${AGENT_ID}
@@ -578,15 +621,19 @@ DADUDE_LOG_LEVEL=INFO
 DADUDE_DATA_DIR=/var/lib/dadude-agent
 EOF"
 
-# Installa systemd service
+# Installa servizi systemd
 pct exec $CTID -- bash -c '
-cp /opt/dadude-agent/dadude-agent/dadude-agent.service /etc/systemd/system/
+# Agent service
+cp /opt/dadude-agent/dadude-agent.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable dadude-agent.service
+
+# Updater service
+systemctl enable dadude-updater.service
 '
 
 # Verifica versione
-AGENT_VERSION=$(pct exec $CTID -- cat /opt/dadude-agent/dadude-agent/VERSION 2>/dev/null || echo "unknown")
+AGENT_VERSION=$(pct exec $CTID -- cat /opt/dadude-agent/VERSION 2>/dev/null || echo "unknown")
 
 # Ottieni IP
 if [ "$IP_CONFIG" == "dhcp" ]; then
@@ -617,6 +664,10 @@ echo ""
 echo -e "${YELLOW}Token per registrazione sul server:${NC}"
 echo -e "  ${CYAN}${AGENT_TOKEN}${NC}"
 echo ""
+echo -e "${YELLOW}Struttura Directory:${NC}"
+echo "  Agent:    /opt/dadude-agent"
+echo "  Updater:  /opt/dadude-updater"
+echo ""
 echo -e "${YELLOW}NOTA: L'agent opera in modalità WebSocket${NC}"
 echo "  - Nessuna porta in ascolto"
 echo "  - L'agent si connette al server (non viceversa)"
@@ -624,9 +675,10 @@ echo "  - Funziona anche dietro NAT/firewall"
 echo ""
 echo -e "${BLUE}Prossimi passi:${NC}"
 echo "  1. Avvia l'agent:    pct exec $CTID -- systemctl start dadude-agent"
-echo "  2. Verifica status:  pct exec $CTID -- systemctl status dadude-agent"
-echo "  3. Verifica logs:    pct exec $CTID -- journalctl -u dadude-agent -f"
-echo "  4. Approva agent:    $SERVER_URL (pannello admin)"
+echo "  2. Avvia l'updater:  pct exec $CTID -- systemctl start dadude-updater"
+echo "  3. Verifica status:  pct exec $CTID -- systemctl status dadude-agent"
+echo "  4. Verifica logs:    pct exec $CTID -- journalctl -u dadude-agent -f"
+echo "  5. Approva agent:    $SERVER_URL (pannello admin)"
 echo ""
 echo -e "${BLUE}Comandi utili:${NC}"
 echo "  pct enter $CTID                                    # Shell nel container"
@@ -635,10 +687,15 @@ echo "  pct exec $CTID -- journalctl -u dadude-agent -f    # Log in tempo reale"
 echo ""
 
 # Chiedi se avviare subito
-read -p "Avviare l'agent adesso? [Y/n] " -n 1 -r
+read -p "Avviare agent e updater adesso? [Y/n] " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     pct exec $CTID -- systemctl start dadude-agent
-    sleep 2
-    pct exec $CTID -- systemctl status dadude-agent --no-pager
+    pct exec $CTID -- systemctl start dadude-updater
+    sleep 3
+    echo ""
+    echo -e "${BLUE}Stato servizi:${NC}"
+    pct exec $CTID -- systemctl status dadude-agent --no-pager -l | head -10
+    echo ""
+    pct exec $CTID -- systemctl status dadude-updater --no-pager -l | head -10
 fi

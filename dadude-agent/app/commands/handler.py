@@ -1164,7 +1164,7 @@ class CommandHandler:
                 )
                 if init_result.returncode == 0:
                     subprocess.run(
-                        ["git", "remote", "add", "origin", "https://github.com/grandir66/Dadude.git"],
+                        ["git", "remote", "add", "origin", "https://github.com/grandir66/DADude3.git"],
                         cwd=agent_dir,
                         capture_output=True,
                         text=True,

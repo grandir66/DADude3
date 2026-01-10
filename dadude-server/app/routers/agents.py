@@ -1411,7 +1411,7 @@ async def trigger_agent_update(agent_db_id: str):
                     
                     # Esegui lo script di update esterno (usa update-agent-remote.sh che è più robusto)
                     # Lo script viene scaricato direttamente da GitHub per assicurarsi di avere l'ultima versione
-                    update_cmd = f"ssh -o StrictHostKeyChecking=no root@{proxmox_host} 'curl -fsSL https://raw.githubusercontent.com/grandir66/Dadude/main/dadude-agent/deploy/proxmox/update-agent-remote.sh | bash -s -- {proxmox_host} {container_id}'"
+                    update_cmd = f"ssh -o StrictHostKeyChecking=no root@{proxmox_host} 'curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/update-agent-remote.sh | bash -s -- {proxmox_host} {container_id}'"
                     
                     logger.info(f"Executing external update script for agent {agent.name}")
                     update_result = subprocess.run(
@@ -1444,7 +1444,7 @@ async def trigger_agent_update(agent_db_id: str):
                 CommandType.UPDATE_AGENT,
                 params={
                     "version": AGENT_VERSION,
-                    "download_url": f"https://github.com/grandir66/dadude.git",
+                    "download_url": f"https://github.com/grandir66/DADude3.git",
                 },
                 timeout=60.0
             )
@@ -1490,7 +1490,7 @@ async def trigger_agent_update(agent_db_id: str):
                 f"{agent.agent_url}/admin/update",
                 json={
                     "version": AGENT_VERSION,
-                    "download_url": f"https://raw.githubusercontent.com/grandir66/dadude/main/dadude-agent/",
+                    "download_url": f"https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/",
                 },
                 headers={"Authorization": f"Bearer {agent_token}"} if agent_token else {}
             )

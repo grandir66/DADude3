@@ -211,7 +211,7 @@ fi
 echo \"[3/8] Verifica repository git...\"
 if ! pct exec $CONTAINER_ID -- test -d \"\${AGENT_DIR}/.git\" 2>/dev/null; then
     echo \"WARNING: Directory non è un repository git, inizializzazione...\"
-    pct exec $CONTAINER_ID -- bash -c \"cd \${AGENT_DIR} && git init && git remote add origin https://github.com/grandir66/Dadude.git || true\"
+    pct exec $CONTAINER_ID -- bash -c \"cd \${AGENT_DIR} && git init && git remote add origin https://github.com/grandir66/DADude3.git || true\"
 fi
 
 echo \"[4/8] Fetch aggiornamenti da GitHub...\"

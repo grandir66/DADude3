@@ -850,7 +850,7 @@ async def trigger_update(
                 subprocess.run(["rm", "-rf", temp_dir], check=False)
                 
                 result = subprocess.run(
-                    ["git", "clone", "--depth", "1", "https://github.com/grandir66/dadude.git", temp_dir],
+                    ["git", "clone", "--depth", "1", "https://github.com/grandir66/DADude3.git", temp_dir],
                     capture_output=True, text=True, timeout=60
                 )
                 
