@@ -44,6 +44,7 @@ class UnifiedScanRequestModel(BaseModel):
     include_services: bool = Field(True, description="Includi lista servizi")
     include_users: bool = Field(False, description="Includi lista utenti")
     auto_save: bool = Field(False, description="Salva automaticamente i risultati nel database dopo la scansione")
+    scan_id: Optional[str] = Field(None, description="ID scansione per tracciamento stato (generato se non fornito)")
 
 
 class SaveToInventoryRequest(BaseModel):
@@ -120,9 +121,11 @@ async def unified_scan(request: UnifiedScanRequestModel):
             include_users=request.include_users,
         )
         
-        # Genera scan_id per tracciamento stato
-        import uuid
-        scan_id = str(uuid.uuid4())
+        # Usa scan_id dalla richiesta o genera uno nuovo
+        scan_id = request.scan_id
+        if not scan_id:
+            import uuid
+            scan_id = str(uuid.uuid4())
         
         # Esegui scansione
         result = await scanner.scan_device(

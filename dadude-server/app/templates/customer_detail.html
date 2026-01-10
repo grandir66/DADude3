@@ -8109,6 +8109,17 @@ async function executeUnifiedScan(deviceId) {
     
     let scanId = null;
     
+    // Genera scan_id temporaneo per iniziare il polling immediatamente
+    // Il backend lo userà se fornito, altrimenti ne genererà uno nuovo
+    const tempScanId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    scanId = tempScanId;
+    
+    // Avvia polling IMMEDIATAMENTE prima della scansione con scan_id temporaneo
+    // Il polling verrà aggiornato con il scan_id reale quando arriva la risposta
+    if (statusDiv) {
+        startScanStatusPolling(tempScanId, statusDiv);
+    }
+    
     try {
         const response = await fetch('/api/v1/unified-scanner/scan', {
             method: 'POST',
@@ -8122,23 +8133,31 @@ async function executeUnifiedScan(deviceId) {
                 include_services: includeServices,
                 include_users: includeUsers,
                 auto_save: autoSave,
-                timeout: 120
+                timeout: 120,
+                scan_id: tempScanId  // Passa scan_id temporaneo al backend
             })
         });
         
         const result = await response.json();
-        scanId = result.scan_id;
         
-        // Avvia polling stato se scan_id disponibile
-        if (scanId && statusDiv) {
-            startScanStatusPolling(scanId, statusDiv);
+        // Usa scan_id dal risultato se disponibile, altrimenti quello temporaneo
+        const actualScanId = result.scan_id || tempScanId;
+        
+        // Se il scan_id è diverso, riavvia il polling con il nuovo scan_id
+        if (actualScanId !== tempScanId && statusDiv) {
+            // Ferma polling vecchio
+            if (scanStatusPollInterval) {
+                clearInterval(scanStatusPollInterval);
+                scanStatusPollInterval = null;
+            }
+            // Avvia polling nuovo con scan_id reale
+            startScanStatusPolling(actualScanId, statusDiv);
         }
         
-        // Ferma polling stato
-        if (scanStatusPollInterval) {
-            clearInterval(scanStatusPollInterval);
-            scanStatusPollInterval = null;
-        }
+        scanId = actualScanId;
+        
+        // NON fermare il polling qui - lascialo continuare fino al completamento
+        // Il polling si fermerà automaticamente quando status === 'completed' o 'failed'
         
         // Chiudi modal configurazione
         const configModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
@@ -8185,8 +8204,28 @@ async function executeUnifiedScan(deviceId) {
 }
 
 function startScanStatusPolling(scanId, statusDiv) {
-    // Polling ogni 1 secondo
+    // Ferma polling esistente se presente
+    if (scanStatusPollInterval) {
+        clearInterval(scanStatusPollInterval);
+        scanStatusPollInterval = null;
+    }
+    
+    let pollCount = 0;
+    const maxPolls = 300; // Max 5 minuti di polling (300 * 1 secondo)
+    
+    // Polling ogni 500ms per maggiore responsività
     scanStatusPollInterval = setInterval(async () => {
+        pollCount++;
+        
+        // Timeout di sicurezza dopo maxPolls
+        if (pollCount > maxPolls) {
+            if (scanStatusPollInterval) {
+                clearInterval(scanStatusPollInterval);
+                scanStatusPollInterval = null;
+            }
+            return;
+        }
+        
         try {
             const response = await fetch(`/api/v1/unified-scanner/status/${scanId}`);
             const data = await response.json();
@@ -8214,29 +8253,40 @@ function startScanStatusPolling(scanId, statusDiv) {
                 }
                 statusHtml += `<br><small class="text-muted">${status.message || 'Scansione in corso...'}</small>`;
                 
-                statusDiv.innerHTML = statusHtml;
+                if (statusDiv) {
+                    statusDiv.innerHTML = statusHtml;
+                }
                 
-                // Se completato o fallito, ferma polling dopo 2 secondi
+                // Se completato o fallito, ferma polling dopo 1 secondo
                 if (status.status === 'completed' || status.status === 'failed') {
                     setTimeout(() => {
                         if (scanStatusPollInterval) {
                             clearInterval(scanStatusPollInterval);
                             scanStatusPollInterval = null;
                         }
-                    }, 2000);
+                    }, 1000);
                 }
             } else {
-                // Scan non trovato o completato - ferma polling
+                // Scan non trovato - potrebbe essere completato e rimosso
+                // Continua a fare polling per altri 5 secondi per sicurezza
+                if (pollCount > 10) { // Dopo 5 secondi (10 * 500ms)
+                    if (scanStatusPollInterval) {
+                        clearInterval(scanStatusPollInterval);
+                        scanStatusPollInterval = null;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error polling scan status:', error);
+            // Continua polling anche in caso di errore per un po'
+            if (pollCount > 20) { // Dopo 10 secondi di errori
                 if (scanStatusPollInterval) {
                     clearInterval(scanStatusPollInterval);
                     scanStatusPollInterval = null;
                 }
             }
-        } catch (error) {
-            console.error('Error polling scan status:', error);
-            // Continua polling anche in caso di errore
         }
-    }, 1000); // Poll ogni 1 secondo
+    }, 500); // Poll ogni 500ms per maggiore responsività
 }
 
 let currentUnifiedScanDeviceId = null;

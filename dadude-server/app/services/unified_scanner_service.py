@@ -287,14 +287,8 @@ class UnifiedScannerService:
             import uuid
             scan_id = str(uuid.uuid4())
         
-        start_time = datetime.utcnow()
-        result = UnifiedScanResult(
-            device_id=request.device_id,
-            target=request.target_address,
-            scan_timestamp=start_time.isoformat()
-        )
-        
-        # Inizializza stato scansione
+        # INIZIALIZZA STATO IMMEDIATAMENTE - prima di qualsiasi operazione
+        # Questo permette al polling di vedere lo stato anche se la scansione è già iniziata
         self._active_scans[scan_id] = {
             "scan_id": scan_id,
             "device_id": request.device_id,
@@ -305,6 +299,13 @@ class UnifiedScannerService:
             "progress": 0,
             "message": "Inizializzazione scansione..."
         }
+        
+        start_time = datetime.utcnow()
+        result = UnifiedScanResult(
+            device_id=request.device_id,
+            target=request.target_address,
+            scan_timestamp=start_time.isoformat()
+        )
         
         logger.info(f"Unified scan starting for {request.target_address} (scan_id: {scan_id})")
         
