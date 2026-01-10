@@ -1295,4 +1295,123 @@ groups:
 
 ---
 
+## 📁 Struttura Directory Produzione
+
+### IMPORTANTE: Path Corretti per Deploy
+
+La struttura delle directory in produzione è **PIATTA**, senza annidamenti:
+
+#### Server DaDude (PCT 1600 su 192.168.40.4)
+```
+/opt/dadude-server/                    ← Working Directory
+├── app/                               ← Codice Python applicativo
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── config.py
+│   ├── main_dual.py
+│   ├── run_dual.py
+│   ├── models/
+│   ├── routers/
+│   ├── services/
+│   ├── static/
+│   ├── templates/
+│   └── utils/
+├── data/
+│   ├── dadude.db                      ← Database SQLite
+│   ├── .encryption_key                ← Chiave crittografia (chmod 600)
+│   └── oui_database.json
+├── logs/
+├── venv/                              ← Virtual environment Python
+├── .env                               ← Configurazione ambiente
+├── requirements.txt
+└── update.sh                          ← Script aggiornamento
+```
+
+**Servizio systemd:**
+```ini
+WorkingDirectory=/opt/dadude-server
+Environment="PYTHONPATH=/opt/dadude-server"
+ExecStart=/opt/dadude-server/venv/bin/python -m app.run_dual
+```
+
+#### Agent DaDude (PCT 901/1601 o altri)
+```
+/opt/dadude-agent/                     ← Working Directory + Git repo
+├── app/                               ← Codice Python applicativo
+│   ├── __init__.py
+│   ├── agent.py
+│   ├── commands/
+│   ├── config.py
+│   ├── connection/
+│   ├── probes/
+│   ├── scanners/
+│   ├── scheduler/
+│   ├── services/
+│   ├── storage/
+│   └── workers/
+├── config/
+│   └── config.json                    ← Configurazione agent
+├── venv/                              ← Virtual environment Python
+├── VERSION                            ← Versione corrente
+└── requirements.txt
+
+/opt/dadude-updater/                   ← Watchdog separato
+├── updater.py                         ← Script watchdog
+├── config.env                         ← Configurazione watchdog
+├── logs/
+└── state.json                         ← Stato aggiornamenti
+```
+
+**Servizio systemd agent:**
+```ini
+WorkingDirectory=/opt/dadude-agent
+Environment="PYTHONPATH=/opt/dadude-agent"
+ExecStart=/opt/dadude-agent/venv/bin/python -m app.agent
+```
+
+### ❌ EVITARE Strutture Annidate
+
+**MAI creare strutture come:**
+```
+/opt/dadude-server/dadude-server/      ← SBAGLIATO!
+/opt/dadude-server/dadude-server/app/  ← Annidamento inutile
+/opt/dadude-agent/dadude-agent/        ← SBAGLIATO!
+```
+
+### Comandi Deploy/Update
+
+#### Aggiornare Server (PCT 1600)
+```bash
+# Metodo 1: Script update
+ssh root@192.168.40.4 "pct exec 1600 -- /opt/dadude-server/update.sh"
+
+# Metodo 2: Copia file singolo
+scp file.py root@192.168.40.4:/tmp/
+ssh root@192.168.40.4 "pct push 1600 /tmp/file.py /opt/dadude-server/app/path/file.py"
+ssh root@192.168.40.4 "pct exec 1600 -- systemctl restart dadude-server"
+```
+
+#### Aggiornare Agent (PCT 901)
+```bash
+# Git pull (l'agent ha git integrato)
+ssh root@192.168.99.10 "pct exec 901 -- bash -c 'cd /opt/dadude-agent && git pull origin main'"
+ssh root@192.168.99.10 "pct exec 901 -- systemctl restart dadude-agent"
+
+# Oppure copia file singolo
+scp file.py root@192.168.99.10:/tmp/
+ssh root@192.168.99.10 "pct push 901 /tmp/file.py /opt/dadude-agent/app/path/file.py"
+ssh root@192.168.99.10 "pct exec 901 -- systemctl restart dadude-agent"
+```
+
+### Mapping Repository → Produzione
+
+| Repository (locale)          | Server Produzione                |
+|------------------------------|----------------------------------|
+| `dadude-server/app/`         | `/opt/dadude-server/app/`        |
+| `dadude-server/data/`        | `/opt/dadude-server/data/`       |
+| `dadude-agent/app/`          | `/opt/dadude-agent/app/`         |
+| `dadude-agent/updater/`      | `/opt/dadude-updater/`           |
+
+---
+
 Vuoi che approfondisca qualche sezione specifica o aggiunga altri pattern/best practices?
