@@ -48,9 +48,13 @@ Agent nativo per scansioni di rete remote, progettato per essere deployato su Pr
 └── state.json              # Stato persistente
 ```
 
-## Installazione su Proxmox LXC
+## Installazione
 
-### Installazione Automatica (Consigliata)
+### Proxmox LXC (Consigliata)
+
+#### Installazione Automatica con installer nativo
+
+**Comando base** (wizard interattivo):
 
 **Comando base** (wizard interattivo):
 
@@ -103,6 +107,123 @@ curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent
 7. ✅ Configura file `.env`
 8. ✅ Installa servizi systemd (agent + updater)
 9. ✅ Avvia e verifica connessione
+
+#### Installazione con install-from-git.sh (metodo alternativo)
+
+Metodo alternativo che usa `install-from-git.sh`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/install-from-git.sh | bash
+```
+
+**Opzioni disponibili**:
+
+```bash
+bash install-from-git.sh \
+  --server-url https://dadude.domarc.it:8000 \
+  --agent-name "sede-milano" \
+  --ctid 1601 \
+  --bridge vmbr0 \
+  --ip 192.168.1.100/24 \
+  --gateway 192.168.1.1
+```
+
+| Opzione | Default | Descrizione |
+|---------|---------|-------------|
+| `--server-url` | `https://dadude.domarc.it:8000` | URL server DaDude |
+| `--agent-name` | (interattivo) | Nome descrittivo agent |
+| `--agent-token` | auto-generato | Token autenticazione |
+| `--ctid` | prossimo disponibile | ID container Proxmox |
+| `--hostname` | `dadude-agent-{name}` | Hostname container |
+| `--bridge` | (interattivo) | Bridge Proxmox |
+| `--vlan` | (opzionale) | VLAN tag |
+| `--ip` | `dhcp` | IP statico o DHCP |
+| `--gateway` | suggerito | Gateway rete |
+| `--dns` | da DHCP/gateway | Server DNS |
+| `--storage` | (interattivo) | Storage Proxmox |
+| `--memory` | `512` | RAM in MB |
+| `--disk` | `4` | Disco in GB |
+
+#### Pulizia installazione esistente
+
+Se hai un agent con file superflui:
+
+```bash
+# Dry-run (mostra cosa verrebbe eliminato)
+curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/cleanup-agent.sh | bash -s -- --dry-run
+
+# Esegui pulizia
+curl -fsSL https://raw.githubusercontent.com/grandir66/DADude3/main/dadude-agent/deploy/proxmox/cleanup-agent.sh | bash
+```
+
+### MikroTik RouterOS 7
+
+**⚠️ IMPORTANTE**: L'agent ora usa **WebSocket mTLS** invece di API REST. La configurazione è cambiata.
+
+#### Requisiti MikroTik
+
+- RouterOS 7.x con supporto Container
+- Almeno 256MB RAM libera
+- Storage per immagine Docker (~100MB)
+
+#### Quick Start
+
+1. **Abilita Container Support**:
+   ```routeros
+   /system/device-mode/update container=yes
+   ```
+   Riavvia il router.
+
+2. **Configura Variabili d'Ambiente**:
+   ```routeros
+   /container/envs/add list=dadude-env key=DADUDE_SERVER_URL value=https://dadude.domarc.it:8000
+   /container/envs/add list=dadude-env key=DADUDE_AGENT_ID value=agent-NOME-ROUTER
+   /container/envs/add list=dadude-env key=DADUDE_AGENT_NAME value=NOME-ROUTER
+   /container/envs/add list=dadude-env key=DADUDE_AGENT_TOKEN value=TOKEN-SICURO
+   /container/envs/add list=dadude-env key=DADUDE_CONNECTION_MODE value=websocket
+   ```
+
+3. **Esegui Script Installazione**:
+   Usa lo script `mikrotik-install.rsc` incluso nel repository.
+
+Per dettagli completi, vedi la [guida completa MikroTik](../docs/deployment/MIKROTIK_CONTAINER_SETUP.md).
+
+### Docker Standalone
+
+Installazione su qualsiasi host Docker:
+
+```bash
+docker run -d \
+  --name dadude-agent \
+  --network host \
+  -e DADUDE_SERVER_URL=https://dadude.domarc.it:8000 \
+  -e DADUDE_AGENT_TOKEN=your-token \
+  -e DADUDE_AGENT_ID=agent-001 \
+  -e DADUDE_AGENT_NAME="My Agent" \
+  -e DADUDE_CONNECTION_MODE=websocket \
+  ghcr.io/dadude/agent:latest
+```
+
+**Con docker-compose**:
+
+```yaml
+version: '3.8'
+services:
+  agent:
+    image: ghcr.io/dadude/agent:latest
+    container_name: dadude-agent
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - DADUDE_SERVER_URL=https://dadude.domarc.it:8000
+      - DADUDE_AGENT_TOKEN=your-token
+      - DADUDE_AGENT_ID=agent-001
+      - DADUDE_AGENT_NAME=My Agent
+      - DADUDE_CONNECTION_MODE=websocket
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+```
 
 ## Architettura WebSocket
 
