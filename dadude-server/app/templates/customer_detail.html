@@ -8149,25 +8149,48 @@ async function showUnifiedScanResults(address, data, alreadySaved = false) {
     // Usa UnifiedScannerDisplay per renderizzare i risultati (include Test Credenziali)
     let html = '';
     
-    // Verifica se UnifiedScannerDisplay è disponibile
-    if (typeof UnifiedScannerDisplay !== 'undefined' && UnifiedScannerDisplay.render) {
-        try {
-            html = UnifiedScannerDisplay.render(data);
-        } catch (e) {
-            console.error('Error rendering with UnifiedScannerDisplay:', e);
-            // Fallback a visualizzazione semplice
-            html = `<div class="alert alert-warning">Errore nel rendering: ${e.message}</div>`;
-        }
+    // Verifica se i dati sono validi
+    if (!data) {
+        html = '<div class="alert alert-danger">Nessun dato disponibile dalla scansione</div>';
     } else {
-        console.warn('UnifiedScannerDisplay not available, using fallback');
-        // Fallback a visualizzazione semplice
+        // Verifica se UnifiedScannerDisplay è disponibile
+        if (typeof UnifiedScannerDisplay !== 'undefined' && UnifiedScannerDisplay.render) {
+            try {
+                html = UnifiedScannerDisplay.render(data);
+                
+                // Se il rendering è vuoto, mostra almeno le info base
+                if (!html || html.trim() === '') {
+                    console.warn('UnifiedScannerDisplay.render returned empty result');
+                    html = renderFallbackView(data, address);
+                }
+            } catch (e) {
+                console.error('Error rendering with UnifiedScannerDisplay:', e);
+                console.error('Data:', data);
+                // Fallback a visualizzazione semplice
+                html = renderFallbackView(data, address);
+                html += `<div class="alert alert-warning mt-3">Errore nel rendering: ${e.message}</div>`;
+            }
+        } else {
+            console.warn('UnifiedScannerDisplay not available, using fallback');
+            html = renderFallbackView(data, address);
+        }
+    }
+    
+    // Funzione helper per fallback view
+    function renderFallbackView(data, address) {
         const hostname = data.hostname || data.system_info?.hostname || '-';
         const os = data.os || data.system_info?.os || '-';
-        const vendor = data.vendor || '-';
-        const ip = address || data.ip || '-';
+        const vendor = data.vendor || data.manufacturer || '-';
+        const ip = address || data.target || data.ip || '-';
         const scanTime = data.scan_timestamp ? new Date(data.scan_timestamp).toLocaleString() : new Date().toLocaleString();
+        const status = data.status || 'unknown';
+        const statusClass = status === 'success' ? 'success' : status === 'partial' ? 'warning' : 'danger';
+        const statusText = status === 'success' ? 'Completato' : status === 'partial' ? 'Parziale' : status === 'failed' ? 'Fallito' : 'Sconosciuto';
         
-        html = `
+        return `
+            <div class="alert alert-${statusClass}">
+                <h5><i class="bi bi-info-circle me-2"></i>Stato Scansione: ${statusText}</h5>
+            </div>
             <div class="row mb-4">
                 <div class="col-md-6">
                     <table class="table table-sm table-borderless mb-0">
@@ -8183,6 +8206,64 @@ async function showUnifiedScanResults(address, data, alreadySaved = false) {
                 </div>
             </div>
             <div class="text-muted small mb-3"><i class="bi bi-clock me-1"></i>Scansione: ${scanTime}</div>
+            ${data.errors && data.errors.length > 0 ? `
+                <div class="alert alert-danger">
+                    <h6>Errori:</h6>
+                    <ul class="mb-0">
+                        ${data.errors.map(e => `<li>${e}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            ${data.warnings && data.warnings.length > 0 ? `
+                <div class="alert alert-warning">
+                    <h6>Avvisi:</h6>
+                    <ul class="mb-0">
+                        ${data.warnings.map(w => `<li>${w}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+            ${data.credential_tests && data.credential_tests.length > 0 ? `
+                <div class="card mb-4 border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-key me-2"></i>Test Credenziali
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Protocollo</th>
+                                        <th>Credenziale</th>
+                                        <th>Risultato</th>
+                                        <th>Errore</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.credential_tests.map(test => {
+                                        const isSuccess = test.status === 'success';
+                                        const isFailed = test.status === 'failed';
+                                        const isError = test.status === 'error';
+                                        const proto = (test.protocol || '').toUpperCase();
+                                        const credName = test.credential_name || test.username || test.community || 'N/A';
+                                        return `
+                                            <tr class="${isSuccess ? 'table-success' : isFailed || isError ? 'table-danger' : ''}">
+                                                <td><strong>${proto}</strong></td>
+                                                <td><code>${credName}</code></td>
+                                                <td>
+                                                    ${isSuccess ? '<span class="badge bg-success">OK</span>' : ''}
+                                                    ${isFailed ? '<span class="badge bg-danger">KO</span>' : ''}
+                                                    ${isError ? '<span class="badge bg-danger">ERR</span>' : ''}
+                                                </td>
+                                                <td><small class="text-muted">${test.error || '-'}</small></td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
         `;
     }
     
