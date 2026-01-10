@@ -96,6 +96,11 @@ class EncryptionService:
         if not self._fernet:
             raise RuntimeError("Encryption service not initialized")
         
+        # PROTEZIONE: Non criptare valori già criptati (previene doppia crittografia)
+        if plaintext.startswith('gAAAAA'):
+            logger.warning(f"Attempted to encrypt already-encrypted value! Returning as-is.")
+            return plaintext
+        
         encrypted = self._fernet.encrypt(plaintext.encode())
         return encrypted.decode()
     
