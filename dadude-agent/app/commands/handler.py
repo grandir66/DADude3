@@ -708,9 +708,11 @@ class CommandHandler:
             }
             
             # Log credenziali per debug (senza password)
-            logger.debug(f"[UNIFIED] SSH credentials: username={credentials['ssh'].get('username')}, "
+            logger.info(f"[UNIFIED] SSH credentials: username={credentials['ssh'].get('username')}, "
                        f"password={'***' if credentials['ssh'].get('password') else 'None'}, "
                        f"port={credentials['ssh'].get('port')}")
+            logger.info(f"[UNIFIED] SNMP credentials: community={credentials['snmp'].get('community')}, "
+                       f"port={credentials['snmp'].get('port')}, version={credentials['snmp'].get('version')}")
             logger.debug(f"[UNIFIED] WMI credentials: username={credentials['wmi'].get('username')}, "
                        f"password={'***' if credentials['wmi'].get('password') else 'None'}, "
                        f"domain={credentials['wmi'].get('domain')}")

@@ -313,11 +313,24 @@ async def probe(
                 # Se WinRM non ha funzionato o non era disponibile, prova SSH
                 if not fallback_tried:
                     try:
+                        ssh_creds = credentials.get("ssh", {})
+                        logger.info(f"[UNIFIED] SSH fallback for {target}: checking credentials - username={ssh_creds.get('username')}, "
+                                   f"password={'***' if ssh_creds.get('password') else 'None'}, "
+                                   f"port={ssh_creds.get('port', 22)}")
+                        
+                        # Se non abbiamo credenziali SSH nel dict, prova a recuperarle dai parametri originali
+                        # Questo può succedere se le credenziali vengono passate ma non mappate correttamente
+                        if not ssh_creds.get("username"):
+                            logger.warning(f"[UNIFIED] SSH credentials not found in credentials dict, checking if SSH port is open for {target}")
+                            # Se la porta SSH è aperta, prova comunque SSH con credenziali di default se disponibili
+                            if 22 in ports_set:
+                                logger.info(f"[UNIFIED] SSH port 22 is open for {target}, but no credentials provided - skipping SSH fallback")
+                        
                         ssh_timeout = max(timeout * 7 // 10, 90)
                         logger.debug(f"SSH fallback probe for {target} with timeout {ssh_timeout}s")
                         ssh_result = await _probe_ssh(
                             target,
-                            credentials.get("ssh", {}),
+                            ssh_creds,
                             ssh_timeout,
                             include_software,
                             include_services
