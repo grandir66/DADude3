@@ -13,10 +13,11 @@ from loguru import logger
 
 
 # Porte di default hardcoded (fallback se config non disponibile)
+# v3.2.1: Aggiunto 8006 (Proxmox), 8007 (PBS), 2049 (NFS), 6443 (K8s), 9090 (Prometheus)
 _DEFAULT_PORTS_HARDCODED = [
     22, 23, 25, 53, 80, 110, 135, 139, 143, 161, 389, 443, 445,
-    636, 993, 995, 1433, 3306, 3389, 5432, 5900, 5985, 5986,
-    8080, 8443, 8728, 8729, 8291,
+    636, 993, 995, 1433, 2049, 3306, 3389, 5432, 5900, 5985, 5986,
+    6443, 8000, 8006, 8007, 8080, 8443, 8728, 8729, 8291, 9090,
 ]
 
 _DEFAULT_UDP_PORTS_HARDCODED = [
@@ -28,15 +29,17 @@ _DEFAULT_UDP_PORTS_HARDCODED = [
 ]
 
 # Mappa porte -> servizi (fallback)
+# v3.2.1: Aggiunto Proxmox, NFS, Kubernetes, Prometheus
 _PORT_SERVICES_HARDCODED = {
     22: "ssh", 23: "telnet", 25: "smtp", 53: "dns", 80: "http",
     110: "pop3", 135: "wmi", 139: "netbios", 143: "imap", 161: "snmp",
     162: "snmp-trap", 123: "ntp", 500: "ike",
     389: "ldap", 443: "https", 445: "smb", 636: "ldaps", 993: "imaps",
-    995: "pop3s", 1433: "mssql", 3306: "mysql", 3389: "rdp",
+    995: "pop3s", 1433: "mssql", 2049: "nfs", 3306: "mysql", 3389: "rdp",
     5432: "postgresql", 5900: "vnc", 5985: "winrm", 5986: "winrm-ssl",
-    8080: "http-alt", 8443: "https-alt", 8728: "mikrotik-api",
-    8729: "mikrotik-api-ssl", 8291: "winbox",
+    6443: "kubernetes-api", 8000: "http-alt", 8006: "proxmox-ve", 8007: "proxmox-backup",
+    8080: "http-proxy", 8443: "https-alt", 8728: "mikrotik-api",
+    8729: "mikrotik-api-ssl", 8291: "winbox", 9090: "prometheus",
 }
 
 # Cache per configurazione porte

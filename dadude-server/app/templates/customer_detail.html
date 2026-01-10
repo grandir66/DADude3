@@ -8112,12 +8112,14 @@ async function executeUnifiedScan(deviceId) {
         const configModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
         if (configModal) configModal.hide();
         
-        if (result.success && result.result) {
+        // SEMPRE mostra il modal dei risultati se c'è result.result (anche quando success=false)
+        // Questo permette di visualizzare credential_tests anche quando tutti i test falliscono
+        if (result.result) {
             // Salva per copia
             unifiedScanResultJson = JSON.stringify(result.result, null, 2);
             
-            // Se auto_save è abilitato e c'è un summary, mostra messaggio
-            if (autoSave && result.save_summary) {
+            // Se success e auto_save è abilitato e c'è un summary, mostra messaggio
+            if (result.success && autoSave && result.save_summary) {
                 const summary = result.save_summary;
                 let saveMsg = '✓ Dati salvati nel database:\n';
                 if (summary.lldp_neighbors_saved > 0) saveMsg += `  • ${summary.lldp_neighbors_saved} LLDP neighbors\n`;
@@ -8125,11 +8127,15 @@ async function executeUnifiedScan(deviceId) {
                 if (summary.interfaces_saved > 0) saveMsg += `  • ${summary.interfaces_saved} interfacce\n`;
                 if (summary.custom_fields_updated) saveMsg += `  • Dati vendor-specific aggiornati\n`;
                 showToast(saveMsg, 'success');
+            } else if (!result.success) {
+                // Mostra messaggio di warning se la scansione è fallita ma abbiamo comunque risultati da mostrare
+                showToast('Scansione completata con errori - vedi dettagli', 'warning');
             }
             
             // Mostra risultati in modal dedicato
             showUnifiedScanResults(address, result.result, autoSave);
         } else {
+            // Solo se non c'è nemmeno result.result, mostra errore senza modal
             showToast('Errore scansione: ' + (result.detail || result.error || 'Errore sconosciuto'), 'danger');
         }
         

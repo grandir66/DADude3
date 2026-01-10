@@ -545,13 +545,14 @@ class UnifiedScannerService:
                 "winrm": wmi_creds_list,  # WinRM usa credenziali WMI
             }
             
-            # Itera attraverso i protocolli nell'ordine determinato (già prioritizzato)
+            # Risultati per ogni protocollo testato
+            # Testa TUTTI i protocolli per trovare quello con più dati
+            successful_results = []  # Lista di (proto, cred_id, cred_name, result, data_count)
+            
+            # Itera attraverso i protocolli nell'ordine determinato
             for proto_type in protocols:
                 if proto_type == "auto":
                     continue  # Skip "auto", già espanso in lista protocolli
-                
-                if agent_result and agent_result.success:
-                    break  # Già trovato credenziale funzionante
                 
                 # Ottieni lista credenziali per questo protocollo
                 creds_to_try = protocol_creds_map.get(proto_type, [])
@@ -652,12 +653,24 @@ class UnifiedScannerService:
                         
                         # Verifica risultato
                         if agent_result and agent_result.success:
-                            successful_cred_id = cred_id
-                            successful_cred_name = cred_name
-                            successful_proto = proto_type
                             tested_credentials[-1]["status"] = "success"
-                            logger.info(f"[CRED_RESULT] ✅ SUCCESS - Credential '{cred_name}' (ID: {cred_id}, Protocol: {proto_type}) WORKED for {request.target_address}")
-                            break  # Esci dal loop credenziali
+                            # Conta quanti campi sono stati restituiti
+                            data_count = len(agent_result.data.keys()) if isinstance(agent_result.data, dict) else 0
+                            tested_credentials[-1]["data_fields"] = data_count
+                            logger.info(f"[CRED_RESULT] ✅ SUCCESS - Credential '{cred_name}' (ID: {cred_id}, Protocol: {proto_type}) WORKED for {request.target_address} - {data_count} fields")
+                            
+                            # Salva risultato per confronto successivo
+                            successful_results.append({
+                                "protocol": proto_type,
+                                "cred_id": cred_id,
+                                "cred_name": cred_name,
+                                "result": agent_result,
+                                "data_count": data_count
+                            })
+                            
+                            # Per questo protocollo, usa la prima credenziale che funziona
+                            # Non serve testare altre credenziali dello stesso tipo
+                            break  # Esci dal loop credenziali (ma continua con altri protocolli)
                         else:
                             error_msg = agent_result.error if agent_result else "No response"
                             tested_credentials[-1]["status"] = "failed"
@@ -672,12 +685,24 @@ class UnifiedScannerService:
                         all_errors.append(f"{proto_type}/{cred_name}: {error_msg}")
                         logger.error(f"[CRED_RESULT] ❌ ERROR - Credential '{cred_name}' (ID: {cred_id}, Protocol: {proto_type}): {error_msg}")
                 
-                # Se abbiamo trovato una credenziale funzionante, esci dal loop protocolli
-                if agent_result and agent_result.success:
-                    break
+                # NON uscire dal loop protocolli - continua a testare altri protocolli
+                # per trovare quello che restituisce più dati
+            
+            # Scegli il risultato migliore (quello con più campi)
+            if successful_results:
+                # Ordina per numero di campi (discendente) e prendi il migliore
+                successful_results.sort(key=lambda x: x["data_count"], reverse=True)
+                best = successful_results[0]
+                
+                agent_result = best["result"]
+                successful_cred_id = best["cred_id"]
+                successful_cred_name = best["cred_name"]
+                successful_proto = best["protocol"]
+                
+                logger.info(f"[UNIFIED_SCAN] Best result: {successful_proto} with {best['data_count']} fields (tested {len(successful_results)} successful protocols)")
             
             # Log risultato finale
-            if agent_result and agent_result.success:
+            if successful_results:
                 logger.info(f"[UNIFIED_SCAN] ✅ Scan SUCCESSFUL for {request.target_address}")
                 logger.info(f"[UNIFIED_SCAN] Working credential: '{successful_cred_name}' (ID: {successful_cred_id}, Protocol: {successful_proto})")
                 logger.info(f"[UNIFIED_SCAN] Credentials tested: {len(tested_credentials)}")
