@@ -1966,14 +1966,10 @@ if (newAgentForm) {
     });
 }
 
-// Helper per costruire URL API corretto (usa porta 8000 se pagina è su 8001)
+// Helper per costruire URL API corretto
+// Usa sempre URL relativi - il reverse proxy gestisce il routing
 function getApiUrl(path) {
-    // Se la pagina è servita sulla porta 8001, forza l'uso della porta 8000 per le API
-    if (window.location.port === '8001') {
-        const baseUrl = `${window.location.protocol}//${window.location.hostname}:8000`;
-        return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
-    }
-    // Altrimenti usa URL relativo
+    // Assicurati che il path inizi con /
     return path.startsWith('/') ? path : '/' + path;
 }
 
