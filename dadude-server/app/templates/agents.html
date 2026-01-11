@@ -606,7 +606,7 @@ async function loadAgents() {
 
 async function loadCustomers() {
     try {
-        const response = await fetch('/api/v1/customers');
+        const response = await fetch(getApiUrl('/api/v1/customers'));
         if (response.ok) {
             const data = await response.json();
             customers = data.customers || data;
@@ -691,7 +691,7 @@ async function loadActiveAgents() {
 
     try {
         // Carica tutti gli agent assegnati dai clienti
-        const response = await fetch('/api/v1/customers');
+        const response = await fetch(getApiUrl('/api/v1/customers'));
         if (!response.ok) throw new Error('Failed to load customers');
 
         const data = await response.json();
@@ -1480,7 +1480,7 @@ async function updateAllAgents() {
     if (!confirm('Aggiornare tutti gli agent?')) return;
     
     try {
-        const response = await fetch('/api/v1/agents/update-all', {
+        const response = await fetch(getApiUrl('/api/v1/agents/update-all'), {
             method: 'POST'
         });
         
@@ -1534,7 +1534,7 @@ async function verifyAgentVersion(agentId, agentName) {
 async function loadServerVersion() {
     try {
         // Carica versione corrente
-        const versionResponse = await fetch('/api/v1/agents/server/version');
+        const versionResponse = await fetch(getApiUrl('/api/v1/agents/server/version'));
         if (!versionResponse.ok) {
             throw new Error(`HTTP ${versionResponse.status}`);
         }
@@ -1557,7 +1557,7 @@ async function loadServerVersion() {
         }
         
         // Controlla aggiornamenti
-        const updateResponse = await fetch('/api/v1/agents/server/check-update');
+        const updateResponse = await fetch(getApiUrl('/api/v1/agents/server/check-update'));
         if (!updateResponse.ok) {
             throw new Error(`HTTP ${updateResponse.status}`);
         }
@@ -1666,7 +1666,7 @@ async function updateServer() {
     }
     
     try {
-        const response = await fetch('/api/v1/agents/server/update', {
+        const response = await fetch(getApiUrl('/api/v1/agents/server/update'), {
             method: 'POST'
         });
         const data = await response.json();
@@ -1738,7 +1738,7 @@ async function restartServer() {
     }
     
     try {
-        const response = await fetch('/api/v1/agents/server/restart', {
+        const response = await fetch(getApiUrl('/api/v1/agents/server/restart'), {
             method: 'POST'
         });
         const data = await response.json();
@@ -1769,7 +1769,7 @@ async function restartServer() {
 
 async function viewRecentCommits() {
     try {
-        const response = await fetch('/api/v1/agents/server/commits');
+        const response = await fetch(getApiUrl('/api/v1/agents/server/commits'));
         const data = await response.json();
         
         if (data.success) {
@@ -1851,7 +1851,7 @@ function resetNewAgentForm() {
 // Carica clienti nel dropdown
 async function loadCustomersForNewAgent() {
     try {
-        const response = await fetch('/api/v1/customers?active_only=true&limit=500');
+        const response = await fetch(getApiUrl('/api/v1/customers?active_only=true&limit=500'));
         const data = await response.json();
         const customers = Array.isArray(data) ? data : (data.customers || []);
         
