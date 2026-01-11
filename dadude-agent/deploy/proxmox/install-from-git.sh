@@ -538,7 +538,9 @@ git sparse-checkout set dadude-agent/app dadude-agent/requirements.txt dadude-ag
 mkdir -p /opt/dadude-agent/dadude-agent
 cp -r dadude-agent/app /opt/dadude-agent/dadude-agent/
 cp dadude-agent/requirements.txt /opt/dadude-agent/dadude-agent/
-cp dadude-agent/VERSION /opt/dadude-agent/dadude-agent/
+# Copia VERSION sia nella root che nella subdirectory
+cp dadude-agent/VERSION /opt/dadude-agent/VERSION
+cp dadude-agent/VERSION /opt/dadude-agent/dadude-agent/VERSION
 cp dadude-agent/dadude-agent.service /opt/dadude-agent/dadude-agent/
 
 # Cleanup

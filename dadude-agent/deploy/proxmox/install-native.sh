@@ -553,7 +553,11 @@ cp -r dadude-agent/* /opt/dadude-agent/ 2>/dev/null || {
     if [ -d \"dadude-agent/app\" ]; then
         cp -r dadude-agent/app /opt/dadude-agent/
         cp dadude-agent/requirements.txt /opt/dadude-agent/ 2>/dev/null || true
-        cp dadude-agent/VERSION /opt/dadude-agent/ 2>/dev/null || true
+        # Copia VERSION nella root e nella subdirectory
+        if [ -f "dadude-agent/VERSION" ]; then
+            cp dadude-agent/VERSION /opt/dadude-agent/VERSION 2>/dev/null || true
+            cp dadude-agent/VERSION /opt/dadude-agent/dadude-agent/VERSION 2>/dev/null || true
+        fi
         cp dadude-agent/dadude-agent.service /opt/dadude-agent/ 2>/dev/null || true
     fi
 }
