@@ -16,56 +16,61 @@
         </div>
     </div>
 
-    <!-- Server Update Status -->
-    <div class="card mb-4 border-primary">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">
-                <i class="bi bi-server"></i> Stato Server DaDude
-            </h5>
-            <div class="btn-group">
-                <button class="btn btn-sm btn-light" onclick="checkServerUpdate()">
-                    <i class="bi bi-cloud-arrow-down"></i> Verifica Aggiornamenti
-                </button>
-            </div>
-        </div>
-        <div class="card-body">
-            <div id="server-status">
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-box-seam fs-2 me-3 text-primary"></i>
-                            <div>
-                                <small class="text-muted">Versione Server</small>
-                                <h5 class="mb-0" id="server-version">Caricamento...</h5>
-                            </div>
-                        </div>
+    <!-- Server Update Status e Agent in Attesa - Affiancati -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <!-- Server Update Status -->
+            <div class="card border-primary h-100">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-server"></i> Stato Server DaDude
+                    </h5>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-light" onclick="checkServerUpdate()">
+                            <i class="bi bi-cloud-arrow-down"></i> Verifica Aggiornamenti
+                        </button>
                     </div>
-                    <div class="col-md-4">
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-robot fs-2 me-3 text-info"></i>
-                            <div>
-                                <small class="text-muted">Versione Agent</small>
-                                <h5 class="mb-0" id="agent-version">Caricamento...</h5>
+                </div>
+                <div class="card-body">
+                    <div id="server-status">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-box-seam fs-2 me-3 text-primary"></i>
+                                    <div>
+                                        <small class="text-muted">Versione Server</small>
+                                        <h5 class="mb-0" id="server-version">Caricamento...</h5>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="d-flex align-items-center" id="update-status-container" style="display: none;">
-                            <i class="bi bi-arrow-up-circle-fill fs-2 me-3 text-success"></i>
-                            <div>
-                                <small class="text-muted">Aggiornamento Disponibile</small>
-                                <h5 class="mb-0" id="latest-version">-</h5>
-                                <button class="btn btn-sm btn-success mt-1" onclick="updateServer()">
-                                    <i class="bi bi-download"></i> Aggiorna Server
-                                </button>
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-robot fs-2 me-3 text-info"></i>
+                                    <div>
+                                        <small class="text-muted">Versione Agent</small>
+                                        <h5 class="mb-0" id="agent-version">Caricamento...</h5>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div id="up-to-date-container" style="display: none;">
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-check-circle-fill fs-2 me-3 text-success"></i>
-                                <div>
-                                    <small class="text-muted">Stato</small>
-                                    <h5 class="mb-0 text-success">Aggiornato</h5>
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center" id="update-status-container" style="display: none;">
+                                    <i class="bi bi-arrow-up-circle-fill fs-2 me-3 text-success"></i>
+                                    <div>
+                                        <small class="text-muted">Aggiornamento Disponibile</small>
+                                        <h5 class="mb-0" id="latest-version">-</h5>
+                                        <button class="btn btn-sm btn-success mt-1" onclick="updateServer()">
+                                            <i class="bi bi-download"></i> Aggiorna Server
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="up-to-date-container" style="display: none;">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-check-circle-fill fs-2 me-3 text-success"></i>
+                                        <div>
+                                            <small class="text-muted">Stato</small>
+                                            <h5 class="mb-0 text-success">Aggiornato</h5>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -73,21 +78,22 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Agent in attesa di approvazione -->
-    <div class="card mb-4">
-        <div class="card-header bg-warning text-dark">
-            <h5 class="mb-0">
-                <i class="bi bi-hourglass-split"></i> Agent in Attesa di Approvazione
-                <span id="pending-count" class="badge bg-dark ms-2">0</span>
-            </h5>
-        </div>
-        <div class="card-body">
-            <div id="pending-agents">
-                <div class="text-center text-muted py-4">
-                    <i class="bi bi-search fs-1"></i>
-                    <p class="mt-2">Caricamento...</p>
+        <div class="col-md-4">
+            <!-- Agent in attesa di approvazione -->
+            <div class="card h-100">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="bi bi-hourglass-split"></i> Agent in Attesa
+                        <span id="pending-count" class="badge bg-dark ms-2">0</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="pending-agents">
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-search fs-1"></i>
+                            <p class="mt-2">Caricamento...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -106,27 +112,6 @@
                 <div class="text-center text-muted py-4">
                     <i class="bi bi-search fs-1"></i>
                     <p class="mt-2">Caricamento...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Agent Outdated -->
-    <div class="card">
-        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">
-                <i class="bi bi-arrow-up-circle"></i> Aggiornamenti Disponibili
-                <span id="outdated-count" class="badge bg-light text-dark ms-2">0</span>
-            </h5>
-            <button class="btn btn-sm btn-light" onclick="updateAllAgents()" id="update-all-btn" style="display: none;">
-                <i class="bi bi-download"></i> Aggiorna Tutti
-            </button>
-        </div>
-        <div class="card-body">
-            <div id="outdated-agents">
-                <div class="text-center text-muted py-4">
-                    <i class="bi bi-check-lg fs-1"></i>
-                    <p class="mt-2">Tutti gli agent sono aggiornati</p>
                 </div>
             </div>
         </div>
@@ -615,7 +600,6 @@ async function loadAgents() {
     await Promise.all([
         loadPendingAgents(),
         loadActiveAgents(),
-        loadOutdatedAgents(),
         loadCustomers()
     ]);
 }
@@ -768,6 +752,75 @@ async function loadActiveAgents() {
             }
         });
 
+        // Recupera versione disponibile dal server
+        let latestVersion = null;
+        try {
+            const versionResp = await fetch('/api/v1/agents/server/version');
+            if (versionResp.ok) {
+                const versionData = await versionResp.json();
+                latestVersion = versionData.agent_version || versionData.version;
+            }
+        } catch (e) {
+            console.warn('Could not fetch latest version:', e);
+        }
+
+        // Aggiorna versione per agent connessi (refresh automatico)
+        const versionUpdatePromises = [];
+        allAgents.forEach(a => {
+            // Aggiorna versione per tutti gli agent Docker (connessi o meno)
+            if (a.agent_type === 'docker' && a.id) {
+                versionUpdatePromises.push(
+                    fetch(`/api/v1/admin/agents/${a.id}/verify-version`)
+                        .then(res => res.ok ? res.json() : null)
+                        .then(data => {
+                            if (data && data.success) {
+                                // Aggiorna versione reale
+                                if (data.real_version) {
+                                    a.version = data.real_version;
+                                }
+                                // Aggiungi versione disponibile e flag aggiornamento
+                                a.latest_version = data.latest_version || latestVersion;
+                                a.needs_update = data.needs_update || false;
+                            } else {
+                                // Se non riesce a verificare, usa versione disponibile dal server
+                                a.latest_version = latestVersion;
+                                if (latestVersion && a.version) {
+                                    // Confronta versioni manualmente (solo se entrambe disponibili)
+                                    if (a.version && latestVersion) {
+                                        try {
+                                            const current = a.version.replace('v', '').split('.').map(Number);
+                                            const latest = latestVersion.replace('v', '').split('.').map(Number);
+                                            // Confronta major.minor.patch
+                                            a.needs_update = current[0] < latest[0] || 
+                                                            (current[0] === latest[0] && current[1] < latest[1]) ||
+                                                            (current[0] === latest[0] && current[1] === latest[1] && (current[2] || 0) < (latest[2] || 0));
+                                        } catch (e) {
+                                            console.warn(`Error comparing versions for ${a.name}:`, e);
+                                            a.needs_update = false;
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .catch(() => {
+                            // Fallback: usa versione disponibile dal server
+                            a.latest_version = latestVersion;
+                        })
+                );
+            } else {
+                // Per agent MikroTik, usa solo versione disponibile dal server
+                a.latest_version = latestVersion;
+            }
+        });
+        
+        // Attendi aggiornamenti versione (max 3 secondi) prima di renderizzare
+        if (versionUpdatePromises.length > 0) {
+            await Promise.race([
+                Promise.all(versionUpdatePromises),
+                new Promise(resolve => setTimeout(resolve, 3000)) // Timeout 3 secondi
+            ]);
+        }
+
         document.getElementById('active-count').textContent = allAgents.length;
         
         if (allAgents.length === 0) {
@@ -790,6 +843,7 @@ async function loadActiveAgents() {
                         <th>Tipo</th>
                         <th>Stato</th>
                         <th>Versione</th>
+                        <th>Versione Disponibile</th>
                         <th>Azioni</th>
                     </tr>
                 </thead>
@@ -811,9 +865,22 @@ async function loadActiveAgents() {
                                         : `<span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Non raggiungibile</span>`)
                                 }
                             </td>
-                            <td>${a.version || 'N/A'}</td>
+                            <td>
+                                ${a.version ? `<span class="badge ${a.needs_update ? 'bg-warning text-dark' : 'bg-secondary'}">${a.version}</span>` : 'N/A'}
+                            </td>
+                            <td>
+                                ${a.latest_version 
+                                    ? `<span class="badge bg-success">v${a.latest_version.replace('v', '')}</span>`
+                                    : '<span class="text-muted">-</span>'}
+                            </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
+                                    ${a.needs_update && a.agent_type === 'docker'
+                                        ? `<button class="btn btn-success" onclick="updateAgent('${a.id}')" title="Aggiorna agent">
+                                            <i class="bi bi-download"></i>
+                                           </button>`
+                                        : ''
+                                    }
                                     ${a.agent_type === 'mikrotik' || !a.agent_type
                                         ? `<a href="/customers/${a.customer_id}/agents/${a.id}/mikrotik" class="btn btn-outline-info" title="Gestione MikroTik">
                                             <i class="bi bi-router"></i>
@@ -860,71 +927,6 @@ async function loadActiveAgents() {
     }
 }
 
-async function loadOutdatedAgents() {
-    const container = document.getElementById('outdated-agents');
-    
-    try {
-        const response = await fetch('/api/v1/agents/outdated');
-        if (!response.ok) throw new Error('Failed to load outdated agents');
-        
-        const data = await response.json();
-        document.getElementById('outdated-count').textContent = data.outdated_count;
-        
-        if (data.outdated_count === 0) {
-            container.innerHTML = `
-                <div class="text-center text-muted py-4">
-                    <i class="bi bi-check-lg fs-1"></i>
-                    <p class="mt-2">Tutti gli agent sono aggiornati (v${data.latest_version})</p>
-                </div>
-            `;
-            document.getElementById('update-all-btn').style.display = 'none';
-            return;
-        }
-        
-        document.getElementById('update-all-btn').style.display = 'block';
-        
-        container.innerHTML = `
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Nome</th>
-                        <th>Indirizzo</th>
-                        <th>Versione Attuale</th>
-                        <th>Versione Disponibile</th>
-                        <th>Azioni</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.outdated_agents.map(a => `
-                        <tr>
-                            <td><strong>${a.name}</strong></td>
-                            <td><code>${a.address}</code></td>
-                            <td><span class="badge bg-warning text-dark">${a.current_version}</span></td>
-                            <td><span class="badge bg-success">${a.latest_version}</span></td>
-                            <td>
-                                <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-primary" onclick="updateAgent('${a.id}')">
-                                        <i class="bi bi-download"></i> Aggiorna
-                                    </button>
-                                    <button class="btn btn-info" onclick="verifyAgentVersion('${a.id}', '${a.name}')" title="Verifica versione dopo update">
-                                        <i class="bi bi-search"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
-        
-    } catch (e) {
-        container.innerHTML = `
-            <div class="alert alert-danger">
-                Errore nel caricamento: ${e.message}
-            </div>
-        `;
-    }
-}
 
 function showApproveModal(agentId, agentName, agentIp) {
     document.getElementById('approve-agent-id').value = agentId;

@@ -227,6 +227,9 @@ class DaDudeAgent:
                 logger.info(f"Flushing {pending} pending items")
                 await self._ws_client.flush_pending_queue()
             
+            # Verifica versione del server e confronta con quella locale
+            asyncio.create_task(self._check_server_version())
+            
             # Se siamo in fase di health check dopo update, conferma versione stabile
             if self._version_manager:
                 current_version = self._version_manager.get_current_commit()
@@ -239,6 +242,44 @@ class DaDudeAgent:
                             logger.info(f"Cleaned up {len(cleanup_stats['deleted_backups'])} old backups, keeping only the last working version")
                     except Exception as e:
                         logger.warning(f"Error cleaning up old backups: {e}")
+    
+    async def _check_server_version(self):
+        """
+        Verifica la versione del server e confronta con quella locale.
+        Se la versione del server è più nuova, potrebbe essere necessario un aggiornamento.
+        """
+        try:
+            import httpx
+            
+            # Costruisci URL API versione
+            base_url = self.server_url.rstrip('/')
+            if ':8000' in base_url:
+                api_url = base_url.replace(':8000', ':8001') + '/api/v1/agents/server/version'
+            else:
+                api_url = base_url + ':8001/api/v1/agents/server/version'
+            
+            # SSL context per certificati self-signed
+            ssl_context = None
+            if api_url.startswith('https'):
+                import ssl
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
+            async with httpx.AsyncClient(verify=False if ssl_context else True, timeout=10.0) as client:
+                response = await client.get(api_url)
+                response.raise_for_status()
+                data = response.json()
+                
+                server_agent_version = data.get('agent_version') or data.get('version')
+                local_version = AGENT_VERSION
+                
+                if server_agent_version and local_version:
+                    logger.info(f"Versione locale: v{local_version}, Versione server: v{server_agent_version}")
+                    # Il confronto delle versioni viene fatto dal watchdog, qui solo log
+                    # Il watchdog controllerà e aggiornerà se necessario
+        except Exception as e:
+            logger.debug(f"Impossibile verificare versione server: {e}")
     
     async def _sync_scan_ports_config(self):
         """

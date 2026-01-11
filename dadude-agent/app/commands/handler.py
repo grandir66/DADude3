@@ -1047,25 +1047,147 @@ class CommandHandler:
         try:
             # Verifica se siamo in un container Docker
             if os.path.exists("/.dockerenv"):
-                logger.info("Running inside Docker container, executing update script via host")
+                logger.info("Running inside Docker container, trying to execute update script via host LXC")
                 
-                # Prova a identificare il container ID o CTID
-                # Metodo 1: Leggi hostname che potrebbe contenere il CTID
-                import socket
-                hostname = socket.gethostname()
+                # Prova a identificare il CTID dell'LXC host
+                container_id = None
                 
-                # Metodo 2: Cerca script di update nel filesystem montato
-                # Lo script deve essere eseguito FUORI dal container
+                # Metodo 1: Leggi da /etc/hostname dell'host (se montato)
+                try:
+                    with open("/etc/hostname", "r") as f:
+                        hostname = f.read().strip()
+                        if hostname.isdigit():
+                            container_id = hostname
+                        elif "-" in hostname:
+                            parts = hostname.split("-")
+                            for part in reversed(parts):
+                                if part.isdigit():
+                                    container_id = part
+                                    break
+                except Exception:
+                    pass
                 
-                # Per ora, fallback al metodo vecchio ma migliorato
-                logger.warning("Cannot execute external script from inside container, using internal method")
+                # Metodo 2: Leggi da variabile d'ambiente
+                if not container_id:
+                    container_id = os.environ.get("CTID") or os.environ.get("LXC_CTID")
+                
+                # Se abbiamo il CTID e lo script esiste nel filesystem montato, proviamo a eseguirlo via pct exec
+                if container_id and os.path.exists(update_script):
+                    logger.info(f"Attempting to execute update script via pct exec {container_id}")
+                    try:
+                        # Esegui lo script nell'host LXC usando pct exec
+                        result = subprocess.run(
+                            ["pct", "exec", container_id, "--", "bash", update_script, container_id],
+                            capture_output=True,
+                            text=True,
+                            timeout=600,
+                        )
+                        if result.returncode == 0:
+                            return CommandResult(
+                                success=True,
+                                status="success",
+                                data={
+                                    "message": "Update completed successfully",
+                                    "output": result.stdout,
+                                },
+                            )
+                        else:
+                            logger.warning(f"pct exec failed: {result.stderr[:500]}")
+                    except FileNotFoundError:
+                        logger.warning("pct command not found, cannot execute script externally")
+                    except Exception as e:
+                        logger.warning(f"Failed to execute via pct exec: {e}")
+                
+                # Fallback al metodo interno
+                logger.info("Using internal update method (more reliable from inside Docker)")
                 return await self._update_agent_internal(params)
             else:
                 # Siamo fuori dal container, possiamo eseguire direttamente
                 if os.path.exists(update_script):
-                    logger.info(f"Executing external update script: {update_script}")
+                    # Identifica il container ID (CTID per Proxmox LXC)
+                    container_id = None
+                    
+                    # Metodo 1: Leggi da /proc/self/cgroup (più affidabile per Proxmox LXC)
+                    # In Proxmox LXC, cgroup contiene: 0::/lxc/<ctid>/...
+                    try:
+                        with open("/proc/self/cgroup", "r") as f:
+                            for line in f:
+                                # Cerca pattern "lxc/<ctid>" (Proxmox LXC)
+                                if "/lxc/" in line:
+                                    parts = line.split("/lxc/")
+                                    if len(parts) > 1:
+                                        # Estrai CTID (può essere seguito da / o \n)
+                                        ctid_part = parts[1].strip().split("/")[0].split("\n")[0]
+                                        if ctid_part.isdigit():
+                                            container_id = ctid_part
+                                            logger.info(f"Found CTID from cgroup: {container_id}")
+                                            break
+                                # Cerca anche pattern "0::/lxc/<ctid>"
+                                elif "::/lxc/" in line:
+                                    parts = line.split("::/lxc/")
+                                    if len(parts) > 1:
+                                        ctid_part = parts[1].strip().split("/")[0].split("\n")[0]
+                                        if ctid_part.isdigit():
+                                            container_id = ctid_part
+                                            logger.info(f"Found CTID from cgroup (v2): {container_id}")
+                                            break
+                    except Exception as e:
+                        logger.warning(f"Could not read cgroup: {e}")
+                    
+                    # Metodo 2: Leggi da /etc/hostname (spesso contiene il CTID)
+                    if not container_id:
+                        try:
+                            with open("/etc/hostname", "r") as f:
+                                hostname = f.read().strip()
+                                # Se hostname è solo un numero, è probabilmente il CTID
+                                if hostname.isdigit():
+                                    container_id = hostname
+                                    logger.info(f"Found CTID from hostname: {container_id}")
+                                # Altrimenti prova a estrarre numero da hostname (es: "agent-901")
+                                elif "-" in hostname:
+                                    parts = hostname.split("-")
+                                    for part in reversed(parts):
+                                        if part.isdigit():
+                                            container_id = part
+                                            logger.info(f"Found CTID from hostname parts: {container_id}")
+                                            break
+                        except Exception as e:
+                            logger.warning(f"Could not read hostname: {e}")
+                    
+                    # Metodo 3: Leggi da variabile d'ambiente (se impostata)
+                    if not container_id:
+                        container_id = os.environ.get("CTID") or os.environ.get("LXC_CTID") or os.environ.get("CONTAINER_ID")
+                        if container_id:
+                            logger.info(f"Found CTID from environment: {container_id}")
+                    
+                    # Metodo 4: Prova a leggere da /proc/1/environ (processo init)
+                    if not container_id:
+                        try:
+                            with open("/proc/1/environ", "rb") as f:
+                                env_data = f.read().decode('utf-8', errors='ignore')
+                                # Cerca CTID nelle variabili d'ambiente
+                                for env_var in env_data.split('\x00'):
+                                    if '=' in env_var:
+                                        key, value = env_var.split('=', 1)
+                                        if key in ['CTID', 'LXC_CTID'] and value.isdigit():
+                                            container_id = value
+                                            logger.info(f"Found CTID from init environ: {container_id}")
+                                            break
+                        except Exception as e:
+                            logger.warning(f"Could not read init environ: {e}")
+                    
+                    if not container_id:
+                        logger.error("Could not identify container ID. Cannot execute update script.")
+                        return CommandResult(
+                            success=False,
+                            status="error",
+                            error="Container ID not found. Please specify CTID manually or use internal update method.",
+                        )
+                    
+                    logger.info(f"Identified container ID: {container_id}")
+                    logger.info(f"Executing external update script: {update_script} with CTID={container_id}")
                     result = subprocess.run(
-                        ["bash", update_script],
+                        ["bash", update_script, container_id],
                         cwd=agent_dir,
                         capture_output=True,
                         text=True,

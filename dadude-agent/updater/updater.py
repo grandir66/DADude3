@@ -402,12 +402,110 @@ class GitUpdateWatchdog:
         logger.warning(f"Timeout raggiunto ({timeout}s) senza conferma di salute")
         return False
     
+    def _get_server_agent_version(self) -> Optional[str]:
+        """Ottiene la versione dell'agent disponibile sul server."""
+        try:
+            import urllib.request
+            import json
+            
+            # Leggi URL server dal file .env dell'agent
+            env_file = self.agent_dir / ".env"
+            server_url = None
+            if env_file.exists():
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        if line.startswith('SERVER_URL='):
+                            server_url = line.split('=', 1)[1].strip().strip('"').strip("'")
+                            break
+            
+            if not server_url:
+                logger.debug("SERVER_URL non trovato nel .env, skip check versione agent server")
+                return None
+            
+            # Costruisci URL API versione agent (non server!)
+            base_url = server_url.rstrip('/')
+            if ':8000' in base_url:
+                api_url = base_url.replace(':8000', ':8001') + '/api/v1/agents/version'
+            else:
+                api_url = base_url + ':8001/api/v1/agents/version'
+            
+            # Disabilita verifica SSL per certificati self-signed
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            logger.debug(f"Richiesta versione agent disponibile da: {api_url}")
+            req = urllib.request.Request(api_url)
+            with urllib.request.urlopen(req, context=ssl_context, timeout=10) as response:
+                data = json.loads(response.read())
+                agent_version = data.get('version')
+                logger.info(f"Versione agent disponibile sul server: {agent_version}")
+                return agent_version
+                
+        except Exception as e:
+            logger.debug(f"Impossibile ottenere versione agent dal server: {e}")
+            return None
+    
+    def _compare_versions(self, v1: str, v2: str) -> int:
+        """
+        Confronta due versioni semantiche.
+        Ritorna: -1 se v1 < v2, 0 se v1 == v2, 1 se v1 > v2
+        """
+        def parse_version(v: str) -> list:
+            # Rimuovi 'v' prefix se presente
+            v = v.lstrip('v')
+            parts = v.split('.')
+            return [int(p) if p.isdigit() else 0 for p in parts[:3]]
+        
+        try:
+            v1_parts = parse_version(v1)
+            v2_parts = parse_version(v2)
+            
+            for i in range(max(len(v1_parts), len(v2_parts))):
+                v1_val = v1_parts[i] if i < len(v1_parts) else 0
+                v2_val = v2_parts[i] if i < len(v2_parts) else 0
+                
+                if v1_val < v2_val:
+                    return -1
+                elif v1_val > v2_val:
+                    return 1
+            
+            return 0
+        except Exception as e:
+            logger.warning(f"Errore confronto versioni '{v1}' vs '{v2}': {e}")
+            return 0
+    
+    def _get_remote_version(self) -> Optional[str]:
+        """Ottiene la versione dal file VERSION nel repository remoto."""
+        try:
+            # Leggi VERSION da origin/main senza fare checkout
+            success, stdout, stderr = self._run_command(
+                ["git", "show", f"{GIT_REMOTE}/{GIT_BRANCH}:dadude-agent/VERSION"],
+                timeout=10
+            )
+            if success and stdout.strip():
+                return stdout.strip()
+            
+            # Fallback: prova path alternativo
+            success, stdout, stderr = self._run_command(
+                ["git", "show", f"{GIT_REMOTE}/{GIT_BRANCH}:VERSION"],
+                timeout=10
+            )
+            if success and stdout.strip():
+                return stdout.strip()
+            
+            return None
+        except Exception as e:
+            logger.debug(f"Impossibile leggere versione remota: {e}")
+            return None
+    
     def check_for_updates(self) -> Optional[str]:
         """
-        Verifica se ci sono aggiornamenti disponibili.
+        Verifica se ci sono aggiornamenti disponibili confrontando il repository Git locale con quello remoto.
         Ritorna il nuovo commit hash se disponibile, altrimenti None.
         """
-        logger.info("Controllo aggiornamenti...")
+        logger.info("Controllo aggiornamenti dal repository Git...")
         
         # Verifica che sia un repository git
         if not (self.agent_dir / ".git").exists():
@@ -428,8 +526,26 @@ class GitUpdateWatchdog:
         logger.info(f"Commit corrente: {current_commit[:8]}")
         logger.info(f"Commit remoto:   {remote_commit[:8]}")
         
+        # Confronta anche le versioni dal file VERSION nel repository
+        local_version = self._get_version_from_file()
+        remote_version = self._get_remote_version()
+        
+        if local_version and remote_version:
+            logger.info(f"Versione locale (da VERSION): {local_version}")
+            logger.info(f"Versione remota (da VERSION): {remote_version}")
+            
+            version_diff = self._compare_versions(local_version, remote_version)
+            if version_diff < 0:
+                logger.warning(f"Versione locale ({local_version}) è più vecchia di quella nel repository remoto ({remote_version})")
+                # Se la versione locale è più vecchia, c'è sicuramente un aggiornamento disponibile
+                # anche se i commit hash potrebbero essere uguali (caso raro ma possibile)
+                if current_commit == remote_commit:
+                    logger.warning("Commit hash uguali ma versione diversa - possibile problema di sincronizzazione")
+                    # Forza un reset per sincronizzare
+                    self.force = True
+        
         if current_commit == remote_commit and not self.force:
-            logger.info("Nessun aggiornamento disponibile")
+            logger.info("Nessun aggiornamento disponibile (commit e versione corrispondono)")
             return None
         
         # Verifica se il nuovo commit è marcato come bad
@@ -438,6 +554,8 @@ class GitUpdateWatchdog:
             return None
         
         logger.info(f"Aggiornamento disponibile: {current_commit[:8]} -> {remote_commit[:8]}")
+        if remote_version:
+            logger.info(f"Nuova versione: {local_version} -> {remote_version}")
         return remote_commit
     
     def perform_update(self, new_commit: str) -> bool:
@@ -461,6 +579,25 @@ class GitUpdateWatchdog:
             
             # Ripristina .env files
             self._restore_env_files(env_backups)
+            
+            # Aggiorna file VERSION nella root se esiste in dadude-agent/
+            version_in_subdir = self.agent_dir / "dadude-agent" / "VERSION"
+            version_in_root = self.agent_dir / "VERSION"
+            if version_in_subdir.exists() and not version_in_root.exists():
+                try:
+                    import shutil
+                    shutil.copy2(version_in_subdir, version_in_root)
+                    logger.info(f"Copiato VERSION da {version_in_subdir} a {version_in_root}")
+                except Exception as e:
+                    logger.warning(f"Impossibile copiare VERSION: {e}")
+            elif version_in_subdir.exists() and version_in_root.exists():
+                # Aggiorna VERSION nella root con quello dal subdirectory
+                try:
+                    import shutil
+                    shutil.copy2(version_in_subdir, version_in_root)
+                    logger.info(f"Aggiornato VERSION nella root da {version_in_subdir}")
+                except Exception as e:
+                    logger.warning(f"Impossibile aggiornare VERSION: {e}")
             
             # Verifica versione
             new_version = self._get_version_from_file()

@@ -1185,10 +1185,18 @@ async def verify_agent_version(agent_db_id: str):
     
     if ws_agent_id and ws_agent_id in hub._connections:
         # Agent connesso via WebSocket - è online
-        real_version = agent.version or "2.0.0"
+        # Prova a recuperare versione dalla connessione WebSocket se disponibile
+        connection = hub._connections[ws_agent_id]
+        real_version = connection.version if connection.version else (agent.version or "2.0.0")
         
-        # Aggiorna status nel database
-        service.update_agent_status(agent_db_id, status="online", version=real_version)
+        # Se la versione dalla connessione è diversa da quella nel DB, aggiorna il DB
+        if connection.version and connection.version != agent.version:
+            logger.info(f"Updating agent {agent_db_id} version from WebSocket: {agent.version} -> {connection.version}")
+            service.update_agent_status(agent_db_id, status="online", version=connection.version)
+            real_version = connection.version
+        else:
+            # Aggiorna status nel database (mantiene versione esistente se non c'è nuova)
+            service.update_agent_status(agent_db_id, status="online", version=real_version)
         
         needs_update = _compare_versions(real_version, AGENT_VERSION) < 0
         
