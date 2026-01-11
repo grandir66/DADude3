@@ -1284,19 +1284,21 @@ class CustomerService:
                     # Continua con eliminazione anche se WebSocket close fallisce
             
             # Elimina dal database
-            agent_name = agent.name
+            # Salva nome e ID prima di eliminare l'oggetto
+            agent_name = agent.name if agent else "Unknown"
+            agent_db_id = agent.id if agent else agent_id
             session.delete(agent)
             try:
                 session.commit()
-                logger.info(f"Deleted agent: {agent_name} (id: {agent_id})")
+                logger.info(f"Deleted agent: {agent_name} (id: {agent_db_id})")
                 return True
             except Exception as commit_error:
                 session.rollback()
-                logger.error(f"Error committing agent deletion: {commit_error}", exc_info=True)
+                logger.error(f"Error committing agent deletion for agent_id='{agent_id}': {commit_error}", exc_info=True)
                 # Se è un errore di foreign key, fornisci un messaggio più chiaro
                 error_str = str(commit_error)
                 if "foreign key" in error_str.lower() or "violates" in error_str.lower():
-                    logger.error(f"Foreign key constraint violation. Agent is still referenced somewhere.")
+                    logger.error(f"Foreign key constraint violation for agent_id='{agent_id}': {commit_error}")
                     raise ValueError(f"Impossibile eliminare l'agent '{agent_name}': è ancora referenziato da altre entità. Verifica reti o altri agent che lo utilizzano.")
                 raise
             
