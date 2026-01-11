@@ -1213,9 +1213,9 @@ class CustomerService:
                 return False
             
             # Verifica se l'agent è usato come gateway in reti o come riferimento in altri agent
-            from ..models.database import NetworkDB
-            networks_using_agent = session.query(NetworkDB).filter(
-                NetworkDB.gateway_agent_id == agent_id
+            from ..models.database import Network
+            networks_using_agent = session.query(Network).filter(
+                Network.gateway_agent_id == agent_id
             ).all()
             
             # Verifica se altri agent usano questo agent come docker_agent_id o arp_gateway_agent_id
