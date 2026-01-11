@@ -2898,7 +2898,7 @@ async def identify_discovered_devices(
                     device.device_type = probe_result.device_type
                 elif probe_result.os_family:
                     # Determina device_type da os_family
-                    os_family_lower = probe_result.os_family.lower()
+                    os_family_lower = (probe_result.os_family or "").lower()
                     if "windows" in os_family_lower:
                         device.device_type = "windows"
                     elif any(x in os_family_lower for x in ["linux", "ubuntu", "debian", "centos", "rhel", "alpine"]):
