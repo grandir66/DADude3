@@ -2535,8 +2535,13 @@ async def resolve_discovered_devices(
             total_processed += 1
             updated = False
             
-            # Risolvi vendor dal MAC address se presente
-            if device.mac_address and not device.vendor:
+            # Risolvi vendor dal MAC address se presente e non già risolto
+            # Considera anche "Unknown" come vendor da risolvere
+            needs_vendor_resolve = device.mac_address and (
+                not device.vendor or 
+                device.vendor.lower() in ('unknown', '', 'n/a', '-')
+            )
+            if needs_vendor_resolve:
                 try:
                     vendor_info = vendor_service.lookup_vendor_with_type(device.mac_address)
                     if vendor_info and vendor_info.get("vendor"):
@@ -2545,7 +2550,7 @@ async def resolve_discovered_devices(
                             device.category = vendor_info["device_type"]
                         vendor_resolved += 1
                         updated = True
-                        logger.debug(f"Resolved vendor for {device.mac_address}: {device.vendor}")
+                        logger.info(f"Resolved vendor for {device.mac_address}: {device.vendor}")
                 except Exception as e:
                     logger.debug(f"Vendor lookup failed for {device.mac_address}: {e}")
             
