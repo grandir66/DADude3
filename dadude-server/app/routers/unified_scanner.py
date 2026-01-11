@@ -143,7 +143,9 @@ async def unified_scan(request: UnifiedScanRequestModel):
             "save_summary": None,
             "error": None
         }
+        logger.info(f"[UNIFIED_SCAN] Initializing scan status for {scan_id}")
         scanner.set_scan_status(scan_id, initial_status)
+        logger.info(f"[UNIFIED_SCAN] Scan status initialized, async_mode={request.async_mode}")
         
         # Se async_mode, esegui in background e ritorna immediatamente
         if request.async_mode:

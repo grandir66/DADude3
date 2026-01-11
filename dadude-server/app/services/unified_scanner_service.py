@@ -6,6 +6,7 @@ Questo servizio integra le funzionalità del unified_infrastructure_scanner
 per acquisire dati dettagliati dai dispositivi tramite agent.
 """
 import asyncio
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field, asdict
@@ -262,9 +263,13 @@ class UnifiedScannerService:
         try:
             if os.path.exists(self.SCAN_STATUS_FILE):
                 with open(self.SCAN_STATUS_FILE, 'r') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    logger.info(f"[SCAN_FILE] Loaded {len(data)} scans from {self.SCAN_STATUS_FILE}")
+                    return data
+            else:
+                logger.warning(f"[SCAN_FILE] File not found: {self.SCAN_STATUS_FILE}")
         except Exception as e:
-            logger.debug(f"Error loading scan status file: {e}")
+            logger.error(f"[SCAN_FILE] Error loading: {e}")
         return {}
     
     def _save_shared_status(self, all_status: Dict[str, Any]):
@@ -279,7 +284,9 @@ class UnifiedScannerService:
     def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
         """Ottiene lo stato corrente di una scansione (da file condiviso)"""
         all_status = self._load_shared_status()
-        return all_status.get(scan_id)
+        result = all_status.get(scan_id)
+        logger.debug(f"[SCAN_STATUS] get_scan_status({scan_id}): found={result is not None}, keys={list(all_status.keys())[:3]}")
+        return result
     
     def set_scan_status(self, scan_id: str, status: Dict[str, Any]):
         """Imposta lo stato di una scansione (su file condiviso)"""
@@ -295,7 +302,12 @@ class UnifiedScannerService:
         if scan_id in all_status:
             all_status[scan_id].update(kwargs)
             self._save_shared_status(all_status)
-            logger.debug(f"[SCAN_STATUS] {scan_id}: {kwargs}")
+            logger.info(f"[SCAN_STATUS] Updated {scan_id}: {kwargs}")
+        else:
+            # Se non esiste nel file, crealo
+            all_status[scan_id] = kwargs
+            self._save_shared_status(all_status)
+            logger.info(f"[SCAN_STATUS] Created {scan_id}: {kwargs}")
         # Anche in memoria
         if scan_id in self._active_scans:
             self._active_scans[scan_id].update(kwargs)
@@ -324,19 +336,24 @@ class UnifiedScannerService:
             import uuid
             scan_id = str(uuid.uuid4())
         
-        # INIZIALIZZA STATO IMMEDIATAMENTE - prima di qualsiasi operazione
-        # Questo permette al polling di vedere lo stato anche se la scansione è già iniziata
-        # Usa file condiviso per comunicazione tra processi
-        self.set_scan_status(scan_id, {
-            "scan_id": scan_id,
-            "device_id": request.device_id,
-            "target": request.target_address,
-            "status": "starting",
-            "protocol": None,
-            "credential": None,
-            "progress": 0,
-            "message": "Inizializzazione scansione..."
-        })
+        # Verifica se lo stato esiste già (creato dal router in modalità async)
+        # Se non esiste, inizializzalo
+        existing_status = self.get_scan_status(scan_id)
+        if not existing_status:
+            # INIZIALIZZA STATO solo se non esiste
+            self.set_scan_status(scan_id, {
+                "scan_id": scan_id,
+                "device_id": request.device_id,
+                "target": request.target_address,
+                "status": "starting",
+                "protocol": None,
+                "credential": None,
+                "progress": 0,
+                "message": "Inizializzazione scansione..."
+            })
+        else:
+            # Aggiorna solo il messaggio se già esiste
+            self._update_scan_status(scan_id, status="running", message="Avvio scansione...")
         
         start_time = datetime.utcnow()
         result = UnifiedScanResult(

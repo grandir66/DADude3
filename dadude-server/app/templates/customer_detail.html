@@ -8213,6 +8213,8 @@ function showScanProgressModal(address, scanId) {
     /**
      * Mostra un modal di progresso dedicato per la scansione in corso.
      */
+    console.log('[SCAN_PROGRESS] Showing progress modal for', address, scanId);
+    
     const modalContent = `
         <div class="text-center">
             <h5 class="mb-3">
@@ -8241,6 +8243,13 @@ function showScanProgressModal(address, scanId) {
     `;
     
     showModal('Scansione Dispositivo', modalContent, 'md');
+    
+    // Verifica che gli elementi esistano dopo aver mostrato il modal
+    setTimeout(() => {
+        const progressBar = document.getElementById('scanProgressBar');
+        const statusInfo = document.getElementById('scanStatusInfo');
+        console.log('[SCAN_PROGRESS] Elements exist:', { progressBar: !!progressBar, statusInfo: !!statusInfo });
+    }, 100);
 }
 
 async function waitForScanCompletion(scanId, address, autoSave) {
@@ -8257,8 +8266,12 @@ async function waitForScanCompletion(scanId, address, autoSave) {
             const response = await fetch(`/api/v1/unified-scanner/status/${scanId}`);
             const data = await response.json();
             
+            console.log('[SCAN_POLL] Response:', data);
+            
             if (data.success && data.status) {
                 const status = data.status;
+                
+                console.log('[SCAN_POLL] Status update:', status.progress, status.protocol, status.credential, status.message);
                 
                 // Aggiorna UI nel modal di progresso
                 const progressBar = document.getElementById('scanProgressBar');
@@ -8266,11 +8279,19 @@ async function waitForScanCompletion(scanId, address, autoSave) {
                 const statusInfo = document.getElementById('scanStatusInfo');
                 const protocolInfo = document.getElementById('scanProtocolInfo');
                 
+                console.log('[SCAN_POLL] Elements:', { 
+                    progressBar: !!progressBar, 
+                    progressText: !!progressText, 
+                    statusInfo: !!statusInfo, 
+                    protocolInfo: !!protocolInfo 
+                });
+                
                 if (progressBar && progressText) {
                     const progress = Math.max(5, status.progress || 5); // Minimo 5%
                     progressBar.style.width = `${progress}%`;
                     progressBar.setAttribute('aria-valuenow', progress);
                     progressText.textContent = `${progress}%`;
+                    console.log('[SCAN_POLL] Updated progress bar to', progress);
                 }
                 
                 // Aggiorna info protocollo e credenziale
