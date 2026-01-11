@@ -7,13 +7,14 @@ Questo router gestisce le scansioni avanzate che combinano:
 - SSH per Linux/NAS/Proxmox
 - WinRM per Windows
 """
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, BackgroundTasks
 from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from loguru import logger
 from datetime import datetime
 import uuid
+import asyncio
 
 from ..services.unified_scanner_service import (
     get_unified_scanner_service,
@@ -45,6 +46,7 @@ class UnifiedScanRequestModel(BaseModel):
     include_users: bool = Field(False, description="Includi lista utenti")
     auto_save: bool = Field(False, description="Salva automaticamente i risultati nel database dopo la scansione")
     scan_id: Optional[str] = Field(None, description="ID scansione per tracciamento stato (generato se non fornito)")
+    async_mode: bool = Field(True, description="Se True, ritorna immediatamente con scan_id e esegue in background")
 
 
 class SaveToInventoryRequest(BaseModel):
@@ -124,10 +126,46 @@ async def unified_scan(request: UnifiedScanRequestModel):
         # Usa scan_id dalla richiesta o genera uno nuovo
         scan_id = request.scan_id
         if not scan_id:
-            import uuid
             scan_id = str(uuid.uuid4())
         
-        # Esegui scansione
+        # Inizializza stato scansione IMMEDIATAMENTE prima di qualsiasi operazione
+        scanner._active_scans[scan_id] = {
+            "scan_id": scan_id,
+            "device_id": request.device_id,
+            "target": request.target_address,
+            "status": "starting",
+            "protocol": None,
+            "credential": None,
+            "progress": 0,
+            "message": "Inizializzazione scansione...",
+            "result": None,
+            "save_summary": None,
+            "error": None
+        }
+        
+        # Se async_mode, esegui in background e ritorna immediatamente
+        if request.async_mode:
+            # Crea task in background
+            asyncio.create_task(
+                _execute_scan_background(
+                    scanner=scanner,
+                    scan_request=scan_request,
+                    agent_service=agent_service,
+                    scan_id=scan_id,
+                    auto_save=request.auto_save,
+                    device_id=request.device_id
+                )
+            )
+            
+            # Ritorna immediatamente con scan_id
+            return {
+                "success": True,
+                "status": "running",
+                "scan_id": scan_id,
+                "message": "Scansione avviata in background. Usa /status/{scan_id} per lo stato."
+            }
+        
+        # Modalità sincrona (legacy)
         result = await scanner.scan_device(
             scan_request,
             agent_service=agent_service,
@@ -175,6 +213,71 @@ async def unified_scan(request: UnifiedScanRequestModel):
     except Exception as e:
         logger.error(f"Unified scan error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _execute_scan_background(
+    scanner,
+    scan_request: UnifiedScanRequest,
+    agent_service,
+    scan_id: str,
+    auto_save: bool,
+    device_id: str
+):
+    """
+    Esegue la scansione in background e aggiorna lo stato.
+    """
+    try:
+        # Esegui scansione
+        result = await scanner.scan_device(
+            scan_request,
+            agent_service=agent_service,
+            scan_id=scan_id
+        )
+        
+        # Se auto_save è abilitato, salva automaticamente nel database
+        save_summary = None
+        if auto_save:
+            try:
+                from ..models.database import init_db, get_session
+                settings = get_settings()
+                engine = init_db(settings.database_url)
+                session = get_session(engine)
+                try:
+                    save_summary = await _save_unified_scan_to_inventory(
+                        device_id,
+                        result,
+                        session
+                    )
+                    session.commit()
+                    logger.info(f"Auto-saved unified scan result for device {device_id}: {save_summary}")
+                except Exception as e:
+                    session.rollback()
+                    logger.error(f"Error auto-saving unified scan result: {e}", exc_info=True)
+                finally:
+                    session.close()
+            except Exception as e:
+                logger.error(f"Error setting up auto-save: {e}", exc_info=True)
+        
+        # Aggiorna stato con risultato finale
+        if scan_id in scanner._active_scans:
+            scanner._active_scans[scan_id].update({
+                "status": "completed" if result.status in ["success", "partial"] else "failed",
+                "progress": 100,
+                "message": f"Scansione completata: {result.status}",
+                "result": result.to_dict(),
+                "save_summary": save_summary
+            })
+            logger.info(f"[BACKGROUND_SCAN] Scan {scan_id} completed: {result.status}")
+        
+    except Exception as e:
+        logger.error(f"[BACKGROUND_SCAN] Error in background scan {scan_id}: {e}", exc_info=True)
+        if scan_id in scanner._active_scans:
+            scanner._active_scans[scan_id].update({
+                "status": "failed",
+                "progress": 100,
+                "message": f"Errore: {str(e)}",
+                "error": str(e)
+            })
 
 
 @router.get("/status/{scan_id}")

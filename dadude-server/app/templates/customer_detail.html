@@ -8140,24 +8140,28 @@ async function executeUnifiedScan(deviceId) {
         
         const result = await response.json();
         
-        // Usa scan_id dal risultato se disponibile, altrimenti quello temporaneo
+        // Usa scan_id dal risultato
         const actualScanId = result.scan_id || tempScanId;
-        
-        // Se il scan_id è diverso, riavvia il polling con il nuovo scan_id
-        if (actualScanId !== tempScanId && statusDiv) {
-            // Ferma polling vecchio
-            if (scanStatusPollInterval) {
-                clearInterval(scanStatusPollInterval);
-                scanStatusPollInterval = null;
-            }
-            // Avvia polling nuovo con scan_id reale
-            startScanStatusPolling(actualScanId, statusDiv);
-        }
-        
         scanId = actualScanId;
         
-        // NON fermare il polling qui - lascialo continuare fino al completamento
-        // Il polling si fermerà automaticamente quando status === 'completed' o 'failed'
+        // Se la risposta indica "running" (modalità asincrona), attendi il completamento
+        if (result.status === 'running') {
+            // Il polling è già attivo, aspetta che la scansione finisca
+            // Chiudi modal configurazione ma lascia visibile il progresso
+            const configModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
+            if (configModal) configModal.hide();
+            
+            // Avvia polling per attendere il risultato finale
+            await waitForScanCompletion(actualScanId, statusDiv, address, autoSave);
+            return;
+        }
+        
+        // Modalità sincrona (legacy) - risposta immediata con risultati
+        // Ferma polling se attivo
+        if (scanStatusPollInterval) {
+            clearInterval(scanStatusPollInterval);
+            scanStatusPollInterval = null;
+        }
         
         // Chiudi modal configurazione
         const configModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
@@ -8201,6 +8205,100 @@ async function executeUnifiedScan(deviceId) {
             scanStatusPollInterval = null;
         }
     }
+}
+
+async function waitForScanCompletion(scanId, statusDiv, address, autoSave) {
+    /**
+     * Attende il completamento della scansione facendo polling sullo stato.
+     * Quando la scansione è completata, mostra i risultati.
+     */
+    const maxWaitMs = 300000; // Max 5 minuti
+    const pollIntervalMs = 500;
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < maxWaitMs) {
+        try {
+            const response = await fetch(`/api/v1/unified-scanner/status/${scanId}`);
+            const data = await response.json();
+            
+            if (data.success && data.status) {
+                const status = data.status;
+                
+                // Aggiorna UI con stato corrente
+                const progressBar = document.getElementById('unifiedScanProgressBar');
+                const progressText = document.getElementById('unifiedScanProgressText');
+                
+                if (progressBar && progressText) {
+                    const progress = status.progress || 0;
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+                    progressText.textContent = `${progress}%`;
+                }
+                
+                // Aggiorna stato testuale
+                if (statusDiv) {
+                    let statusHtml = '';
+                    if (status.protocol) {
+                        statusHtml += `<strong>Protocollo:</strong> <span class="badge bg-primary">${status.protocol}</span> `;
+                    }
+                    if (status.credential) {
+                        statusHtml += `<strong>Credenziale:</strong> <code>${status.credential}</code> `;
+                    }
+                    statusHtml += `<br><small class="text-muted">${status.message || 'Scansione in corso...'}</small>`;
+                    statusDiv.innerHTML = statusHtml;
+                }
+                
+                // Se completato o fallito, mostra risultati
+                if (status.status === 'completed' || status.status === 'failed') {
+                    // Ferma polling
+                    if (scanStatusPollInterval) {
+                        clearInterval(scanStatusPollInterval);
+                        scanStatusPollInterval = null;
+                    }
+                    
+                    // Nascondi progress
+                    const progressDiv = document.getElementById('unifiedScanProgress');
+                    if (progressDiv) progressDiv.classList.add('d-none');
+                    
+                    // Se abbiamo il risultato nello stato, mostralo
+                    if (status.result) {
+                        unifiedScanResultJson = JSON.stringify(status.result, null, 2);
+                        
+                        // Se success e auto_save è abilitato e c'è un summary, mostra messaggio
+                        if (status.status === 'completed' && autoSave && status.save_summary) {
+                            const summary = status.save_summary;
+                            let saveMsg = '✓ Dati salvati nel database:\n';
+                            if (summary.lldp_neighbors_saved > 0) saveMsg += `  • ${summary.lldp_neighbors_saved} LLDP neighbors\n`;
+                            if (summary.cdp_neighbors_saved > 0) saveMsg += `  • ${summary.cdp_neighbors_saved} CDP neighbors\n`;
+                            if (summary.interfaces_saved > 0) saveMsg += `  • ${summary.interfaces_saved} interfacce\n`;
+                            if (summary.custom_fields_updated) saveMsg += `  • Dati vendor-specific aggiornati\n`;
+                            showToast(saveMsg, 'success');
+                        } else if (status.status === 'failed') {
+                            showToast('Scansione completata con errori - vedi dettagli', 'warning');
+                        }
+                        
+                        // Mostra risultati in modal dedicato
+                        showUnifiedScanResults(address, status.result, autoSave);
+                    } else if (status.error) {
+                        showToast('Errore scansione: ' + status.error, 'danger');
+                    } else {
+                        showToast('Scansione completata senza risultati', 'warning');
+                    }
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('Error polling scan status:', error);
+        }
+        
+        // Attendi prima del prossimo polling
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+    
+    // Timeout raggiunto
+    showToast('Timeout: la scansione ha impiegato troppo tempo', 'danger');
+    const progressDiv = document.getElementById('unifiedScanProgress');
+    if (progressDiv) progressDiv.classList.add('d-none');
 }
 
 function startScanStatusPolling(scanId, statusDiv) {
