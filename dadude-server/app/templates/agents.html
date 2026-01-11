@@ -1151,7 +1151,17 @@ async function deleteAgent(agentId, agentName) {
         const encodedAgentId = encodeURIComponent(agentId);
         console.log(`Deleting agent: id='${agentId}' (encoded: '${encodedAgentId}')`);
         
-        const response = await fetch(`/api/v1/customers/agents/${encodedAgentId}`, {
+        // Usa URL relativo per evitare problemi con porta 8001
+        // Se window.location.port è 8001, usa porta 8000
+        let apiUrl = `/api/v1/customers/agents/${encodedAgentId}`;
+        if (window.location.port === '8001') {
+            // Costruisci URL con porta 8000 esplicitamente
+            const baseUrl = `${window.location.protocol}//${window.location.hostname}:8000`;
+            apiUrl = `${baseUrl}/api/v1/customers/agents/${encodedAgentId}`;
+            console.log(`Using explicit port 8000: ${apiUrl}`);
+        }
+        
+        const response = await fetch(apiUrl, {
             method: 'DELETE'
         });
         
