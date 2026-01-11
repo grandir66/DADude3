@@ -8146,13 +8146,15 @@ async function executeUnifiedScan(deviceId) {
         
         // Se la risposta indica "running" (modalità asincrona), attendi il completamento
         if (result.status === 'running') {
-            // Il polling è già attivo, aspetta che la scansione finisca
-            // Chiudi modal configurazione ma lascia visibile il progresso
+            // Chiudi modal configurazione
             const configModal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
             if (configModal) configModal.hide();
             
+            // Mostra modal di progresso dedicato
+            showScanProgressModal(address, actualScanId);
+            
             // Avvia polling per attendere il risultato finale
-            await waitForScanCompletion(actualScanId, statusDiv, address, autoSave);
+            await waitForScanCompletion(actualScanId, address, autoSave);
             return;
         }
         
@@ -8207,7 +8209,41 @@ async function executeUnifiedScan(deviceId) {
     }
 }
 
-async function waitForScanCompletion(scanId, statusDiv, address, autoSave) {
+function showScanProgressModal(address, scanId) {
+    /**
+     * Mostra un modal di progresso dedicato per la scansione in corso.
+     */
+    const modalContent = `
+        <div class="text-center">
+            <h5 class="mb-3">
+                <i class="fas fa-search fa-spin me-2"></i>
+                Scansione in corso: <strong>${address}</strong>
+            </h5>
+            
+            <div class="progress mb-3" style="height: 30px;">
+                <div id="scanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                     role="progressbar" style="width: 5%" aria-valuenow="5" aria-valuemin="0" aria-valuemax="100">
+                    <span id="scanProgressText">5%</span>
+                </div>
+            </div>
+            
+            <div id="scanStatusInfo" class="alert alert-info mb-3">
+                <div class="d-flex align-items-center justify-content-center">
+                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                    <span>Inizializzazione scansione...</span>
+                </div>
+            </div>
+            
+            <div id="scanProtocolInfo" class="mb-2" style="font-size: 0.9rem;"></div>
+            
+            <small class="text-muted">ID Scansione: <code>${scanId}</code></small>
+        </div>
+    `;
+    
+    showModal('Scansione Dispositivo', modalContent, 'md');
+}
+
+async function waitForScanCompletion(scanId, address, autoSave) {
     /**
      * Attende il completamento della scansione facendo polling sullo stato.
      * Quando la scansione è completata, mostra i risultati.
@@ -8224,28 +8260,45 @@ async function waitForScanCompletion(scanId, statusDiv, address, autoSave) {
             if (data.success && data.status) {
                 const status = data.status;
                 
-                // Aggiorna UI con stato corrente
-                const progressBar = document.getElementById('unifiedScanProgressBar');
-                const progressText = document.getElementById('unifiedScanProgressText');
+                // Aggiorna UI nel modal di progresso
+                const progressBar = document.getElementById('scanProgressBar');
+                const progressText = document.getElementById('scanProgressText');
+                const statusInfo = document.getElementById('scanStatusInfo');
+                const protocolInfo = document.getElementById('scanProtocolInfo');
                 
                 if (progressBar && progressText) {
-                    const progress = status.progress || 0;
+                    const progress = Math.max(5, status.progress || 5); // Minimo 5%
                     progressBar.style.width = `${progress}%`;
                     progressBar.setAttribute('aria-valuenow', progress);
                     progressText.textContent = `${progress}%`;
                 }
                 
-                // Aggiorna stato testuale
-                if (statusDiv) {
-                    let statusHtml = '';
+                // Aggiorna info protocollo e credenziale
+                if (protocolInfo) {
+                    let html = '';
                     if (status.protocol) {
-                        statusHtml += `<strong>Protocollo:</strong> <span class="badge bg-primary">${status.protocol}</span> `;
+                        html += `<span class="badge bg-primary me-2">${status.protocol}</span>`;
                     }
                     if (status.credential) {
-                        statusHtml += `<strong>Credenziale:</strong> <code>${status.credential}</code> `;
+                        html += `<span class="badge bg-secondary">Credenziale: ${status.credential}</span>`;
                     }
-                    statusHtml += `<br><small class="text-muted">${status.message || 'Scansione in corso...'}</small>`;
-                    statusDiv.innerHTML = statusHtml;
+                    protocolInfo.innerHTML = html;
+                }
+                
+                // Aggiorna messaggio di stato
+                if (statusInfo) {
+                    const message = status.message || 'Scansione in corso...';
+                    if (status.status === 'completed' || status.status === 'failed') {
+                        statusInfo.className = status.status === 'completed' ? 'alert alert-success mb-3' : 'alert alert-warning mb-3';
+                        statusInfo.innerHTML = `<i class="fas fa-${status.status === 'completed' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>${message}`;
+                    } else {
+                        statusInfo.innerHTML = `
+                            <div class="d-flex align-items-center justify-content-center">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                <span>${message}</span>
+                            </div>
+                        `;
+                    }
                 }
                 
                 // Se completato o fallito, mostra risultati
@@ -8256,9 +8309,8 @@ async function waitForScanCompletion(scanId, statusDiv, address, autoSave) {
                         scanStatusPollInterval = null;
                     }
                     
-                    // Nascondi progress
-                    const progressDiv = document.getElementById('unifiedScanProgress');
-                    if (progressDiv) progressDiv.classList.add('d-none');
+                    // Attendi un attimo per mostrare lo stato finale
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     // Se abbiamo il risultato nello stato, mostralo
                     if (status.result) {
@@ -8277,12 +8329,18 @@ async function waitForScanCompletion(scanId, statusDiv, address, autoSave) {
                             showToast('Scansione completata con errori - vedi dettagli', 'warning');
                         }
                         
-                        // Mostra risultati in modal dedicato
+                        // Mostra risultati in modal dedicato (sostituisce il modal di progresso)
                         showUnifiedScanResults(address, status.result, autoSave);
                     } else if (status.error) {
                         showToast('Errore scansione: ' + status.error, 'danger');
+                        // Chiudi modal di progresso
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
+                        if (modal) modal.hide();
                     } else {
                         showToast('Scansione completata senza risultati', 'warning');
+                        // Chiudi modal di progresso
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
+                        if (modal) modal.hide();
                     }
                     return;
                 }
@@ -8297,8 +8355,8 @@ async function waitForScanCompletion(scanId, statusDiv, address, autoSave) {
     
     // Timeout raggiunto
     showToast('Timeout: la scansione ha impiegato troppo tempo', 'danger');
-    const progressDiv = document.getElementById('unifiedScanProgress');
-    if (progressDiv) progressDiv.classList.add('d-none');
+    const modal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
+    if (modal) modal.hide();
 }
 
 function startScanStatusPolling(scanId, statusDiv) {
