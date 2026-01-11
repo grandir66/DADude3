@@ -1212,54 +1212,65 @@ class CustomerService:
                 logger.debug(f"Available agents: {[(a.id, a.name) for a in all_agents]}")
                 return False
             
-            # Verifica se l'agent è usato come gateway in reti o come riferimento in altri agent
-            from ..models.database import Network
+            # Verifica e rimuovi riferimenti a questo agent prima di eliminarlo
+            from ..models.database import Network, ScanResult
+            
+            agent_name_for_log = agent.name if agent else "Unknown"
+            
+            # 1. Rimuovi riferimenti da networks (gateway_agent_id)
             try:
                 networks_using_agent = session.query(Network).filter(
                     Network.gateway_agent_id == agent_id
                 ).all()
-                
-                # Verifica se altri agent usano questo agent come docker_agent_id o arp_gateway_agent_id
+                if networks_using_agent:
+                    logger.info(f"Removing gateway_agent_id from {len(networks_using_agent)} network(s)")
+                    for network in networks_using_agent:
+                        network.gateway_agent_id = None
+            except Exception as e:
+                logger.warning(f"Error removing network references: {e}")
+            
+            # 2. Rimuovi riferimenti da altri agent (docker_agent_id, arp_gateway_agent_id)
+            try:
                 agents_using_as_docker = session.query(AgentAssignmentDB).filter(
                     AgentAssignmentDB.docker_agent_id == agent_id
                 ).all()
+                if agents_using_as_docker:
+                    logger.info(f"Removing docker_agent_id from {len(agents_using_as_docker)} agent(s)")
+                    for other_agent in agents_using_as_docker:
+                        other_agent.docker_agent_id = None
+            except Exception as e:
+                logger.warning(f"Error removing docker_agent_id references: {e}")
+            
+            try:
                 agents_using_as_arp = session.query(AgentAssignmentDB).filter(
                     AgentAssignmentDB.arp_gateway_agent_id == agent_id
                 ).all()
-                
-                if networks_using_agent or agents_using_as_docker or agents_using_as_arp:
-                    agent_name = agent.name if agent else "Unknown"
-                    logger.warning(f"Agent {agent_name} (id: {agent_id}) is referenced by:")
-                    if networks_using_agent:
-                        logger.warning(f"  - {len(networks_using_agent)} network(s): {[n.name for n in networks_using_agent]}")
-                    if agents_using_as_docker:
-                        logger.warning(f"  - {len(agents_using_as_docker)} agent(s) as docker_agent: {[a.name for a in agents_using_as_docker]}")
-                    if agents_using_as_arp:
-                        logger.warning(f"  - {len(agents_using_as_arp)} agent(s) as arp_gateway: {[a.name for a in agents_using_as_arp]}")
-            except Exception as ref_error:
-                logger.error(f"Error checking references for agent_id='{agent_id}': {ref_error}", exc_info=True)
-                # Continua comunque con l'eliminazione
-                networks_using_agent = []
-                agents_using_as_docker = []
-                agents_using_as_arp = []
-                
-                # Rimuovi i riferimenti prima di eliminare
-                for network in networks_using_agent:
-                    logger.info(f"Removing gateway_agent_id from network {network.name}")
-                    network.gateway_agent_id = None
-                
-                for other_agent in agents_using_as_docker:
-                    logger.info(f"Removing docker_agent_id from agent {other_agent.name}")
-                    other_agent.docker_agent_id = None
-                
-                for other_agent in agents_using_as_arp:
-                    logger.info(f"Removing arp_gateway_agent_id from agent {other_agent.name}")
-                    other_agent.arp_gateway_agent_id = None
-                
-                # Salva le modifiche
-                if networks_using_agent or agents_using_as_docker or agents_using_as_arp:
-                    session.commit()
-                    logger.info("References removed successfully")
+                if agents_using_as_arp:
+                    logger.info(f"Removing arp_gateway_agent_id from {len(agents_using_as_arp)} agent(s)")
+                    for other_agent in agents_using_as_arp:
+                        other_agent.arp_gateway_agent_id = None
+            except Exception as e:
+                logger.warning(f"Error removing arp_gateway_agent_id references: {e}")
+            
+            # 3. Rimuovi scan_results associati (foreign key constraint)
+            try:
+                scan_results = session.query(ScanResult).filter(
+                    ScanResult.agent_id == agent_id
+                ).all()
+                if scan_results:
+                    logger.info(f"Deleting {len(scan_results)} scan_result(s) associated with agent {agent_name_for_log}")
+                    for scan in scan_results:
+                        session.delete(scan)
+            except Exception as e:
+                logger.warning(f"Error deleting scan_results: {e}")
+            
+            # Commit delle modifiche ai riferimenti
+            try:
+                session.commit()
+                logger.info("Foreign key references removed successfully")
+            except Exception as e:
+                logger.warning(f"Error committing reference removals: {e}")
+                session.rollback()
             
             # Verifica e chiudi connessione WebSocket se presente
             # Usa dude_agent_id o un identificatore univoco per trovare la connessione
@@ -1302,11 +1313,13 @@ class CustomerService:
                 return True
             except Exception as commit_error:
                 session.rollback()
-                logger.error(f"Error committing agent deletion for agent_id='{agent_id}': {commit_error}", exc_info=True)
+                # Usa repr() per evitare KeyError con {id} nel messaggio SQL
+                error_repr = repr(commit_error)
+                logger.error(f"Error committing agent deletion for agent_id='{agent_id}': {error_repr}")
                 # Se è un errore di foreign key, fornisci un messaggio più chiaro
                 error_str = str(commit_error)
                 if "foreign key" in error_str.lower() or "violates" in error_str.lower():
-                    logger.error(f"Foreign key constraint violation for agent_id='{agent_id}': {commit_error}")
+                    logger.error(f"Foreign key constraint violation for agent_id='{agent_id}'")
                     raise ValueError(f"Impossibile eliminare l'agent '{agent_name}': è ancora referenziato da altre entità. Verifica reti o altri agent che lo utilizzano.")
                 raise
             
@@ -1316,7 +1329,8 @@ class CustomerService:
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
-            logger.error(f"Error deleting agent agent_id='{agent_id}': {e}\nTraceback:\n{tb}")
+            # Usa repr() per evitare KeyError con {id} nel messaggio SQL
+            logger.error(f"Error deleting agent agent_id='{agent_id}': {repr(e)}\nTraceback:\n{tb}")
             if session:
                 session.rollback()
             return False
