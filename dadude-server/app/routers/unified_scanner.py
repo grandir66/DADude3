@@ -593,9 +593,8 @@ async def _save_unified_scan_to_inventory(
                 
                 # Recupera anche il nome della credenziale per credential_used
                 try:
-                    from ..services.customer_service import get_customer_service
-                    customer_service = get_customer_service()
-                    cred_obj = customer_service.get_credential(cred_used_value, include_secrets=False)
+                    cust_service = get_customer_service()
+                    cred_obj = cust_service.get_credential(cred_used_value, include_secrets=False)
                     if cred_obj:
                         update_field(device, "credential_used", cred_obj.name, summary)
                         logger.info(f"[SAVE_UNIFIED] Credential name: '{cred_obj.name}'")
@@ -750,12 +749,12 @@ async def _save_unified_scan_to_inventory(
                     
                     if device_customer_id:
                         # Recupera tutte le credenziali SSH del cliente
-                        customer_service = get_customer_service()
-                        all_creds = customer_service.list_credentials(customer_id=device_customer_id)
+                        cust_svc = get_customer_service()
+                        all_creds = cust_svc.list_credentials(customer_id=device_customer_id)
                         
                         for cred_safe in all_creds:
                             # Ottieni credenziale completa con secrets
-                            cred = customer_service.get_credential(cred_safe.id, include_secrets=True)
+                            cred = cust_svc.get_credential(cred_safe.id, include_secrets=True)
                             if cred and cred.credential_type in ['ssh', 'api']:
                                 working_creds.append({
                                     'id': cred.id,
