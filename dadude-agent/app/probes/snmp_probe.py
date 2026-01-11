@@ -301,59 +301,138 @@ async def probe(
     info = {}
     dispatcher = SnmpDispatcher()
     
-    async def query_oid(oid: str) -> Optional[str]:
-        """Query single OID and return value"""
+    async def safe_async_for_next_cmd(oid_base, timeout=15.0, max_iterations=100):
+        """Helper per eseguire async for su next_cmd con timeout totale per evitare blocchi
+        
+        Args:
+            oid_base: OID base da walkare
+            timeout: Timeout totale per il walk (secondi)
+            max_iterations: Numero massimo di iterazioni
+        
+        Yields:
+            (errorIndication, errorStatus, errorIndex, varBinds) per ogni iterazione
+        """
+        iterator = next_cmd(
+            dispatcher,
+            CommunityData(community, mpModel=1 if version == "2c" else 0),
+            transport,
+            ObjectType(ObjectIdentity(oid_base)),
+            lexicographicMode=False
+        )
+        
+        count = 0
+        start_time = asyncio.get_event_loop().time()
+        
         try:
-            errorIndication, errorStatus, errorIndex, varBinds = await get_cmd(
-                dispatcher,
-                CommunityData(community, mpModel=1 if version == "2c" else 0),
-                transport,
-                ObjectType(ObjectIdentity(oid))
+            while count < max_iterations:
+                # Controlla timeout totale
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed > timeout:
+                    logger.debug(f"SNMP safe_async_for timeout per {oid_base} dopo {elapsed:.1f}s")
+                    break
+                
+                # Prossima iterazione con timeout per singola iterazione
+                try:
+                    result = await asyncio.wait_for(
+                        iterator.__anext__(),
+                        timeout=5.0  # Timeout per singola iterazione: 5 secondi
+                    )
+                    yield result
+                    count += 1
+                except StopAsyncIteration:
+                    # Fine naturale dell'iterator
+                    break
+                except asyncio.TimeoutError:
+                    logger.debug(f"SNMP safe_async_for iterazione timeout per {oid_base} dopo 5s")
+                    break
+        except Exception as e:
+            logger.debug(f"SNMP safe_async_for error per {oid_base}: {e}")
+    
+    async def query_oid(oid: str) -> Optional[str]:
+        """Query single OID and return value con timeout per evitare blocchi"""
+        try:
+            # Timeout per singola query: 5 secondi (transport ha già timeout 3s + 1 retry = max 6s)
+            # Aggiungiamo un timeout esplicito per sicurezza
+            errorIndication, errorStatus, errorIndex, varBinds = await asyncio.wait_for(
+                get_cmd(
+                    dispatcher,
+                    CommunityData(community, mpModel=1 if version == "2c" else 0),
+                    transport,
+                    ObjectType(ObjectIdentity(oid))
+                ),
+                timeout=5.0  # Timeout esplicito: 5 secondi max per query
             )
             if not errorIndication and not errorStatus:
                 for varBind in varBinds:
                     value = str(varBind[1])
                     if value and "No Such" not in value and value != "":
                         return value
-        except:
-            pass
+        except asyncio.TimeoutError:
+            logger.debug(f"SNMP query_oid timeout for {oid} on {target}")
+        except Exception as e:
+            logger.debug(f"SNMP query_oid error for {oid} on {target}: {e}")
         return None
     
     async def query_table(oid_base: str, max_rows: int = 100) -> List[Dict[str, Any]]:
-        """Query SNMP table (walk) and return list of rows"""
+        """Query SNMP table (walk) and return list of rows con timeout per evitare blocchi"""
         results = []
         try:
             count = 0
             # next_cmd restituisce un async iterator
             # Deve essere chiamato correttamente per essere iterabile
-            async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
+            # Wrappiamo l'iteratore con timeout per ogni iterazione
+            iterator = next_cmd(
                 dispatcher,
                 CommunityData(community, mpModel=1 if version == "2c" else 0),
                 transport,
                 ObjectType(ObjectIdentity(oid_base)),
                 lexicographicMode=False
-            ):
+            )
+            
+            # Timeout totale per il walk: 30 secondi
+            walk_start = asyncio.get_event_loop().time()
+            walk_timeout = 30.0
+            
+            async for (errorIndication, errorStatus, errorIndex, varBinds) in iterator:
+                # Controlla timeout totale
+                elapsed = asyncio.get_event_loop().time() - walk_start
+                if elapsed > walk_timeout:
+                    logger.debug(f"SNMP query_table timeout for {oid_base} after {elapsed:.1f}s")
+                    break
+                
                 if errorIndication or errorStatus:
                     break
                 if count >= max_rows:
                     break
-                row = {}
-                for varBind in varBinds:
-                    oid_str = str(varBind[0])
-                    value = str(varBind[1])
-                    if value and "No Such" not in value and value != "":
-                        # Extract index from OID
-                        index = oid_str.split('.')[-1] if '.' in oid_str else oid_str
-                        row[oid_str] = value
-                if row:
-                    results.append(row)
-                count += 1
+                
+                # Timeout per ogni iterazione: 5 secondi
+                try:
+                    row = {}
+                    for varBind in varBinds:
+                        oid_str = str(varBind[0])
+                        value = str(varBind[1])
+                        if value and "No Such" not in value and value != "":
+                            # Extract index from OID
+                            index = oid_str.split('.')[-1] if '.' in oid_str else oid_str
+                            row[oid_str] = value
+                    if row:
+                        results.append(row)
+                    count += 1
+                except asyncio.TimeoutError:
+                    logger.debug(f"SNMP query_table iteration timeout for {oid_base}")
+                    break
+        except asyncio.TimeoutError:
+            logger.debug(f"SNMP query_table timeout for {oid_base}")
         except Exception as e:
             logger.debug(f"query_table error for {oid_base}: {e}")
         return results
     
-    async def walk_oid(oid_base: str, max_rows: int = 200) -> Dict[str, str]:
-        """Helper per walk SNMP che restituisce dict {oid: value}"""
+    async def walk_oid(oid_base: str, max_rows: int = 100) -> Dict[str, str]:
+        """Helper per walk SNMP che restituisce dict {oid: value}
+        
+        max_rows ridotto da 200 a 100 per evitare walk troppo lunghi
+        Timeout aggiunto per ogni next_cmd per evitare blocchi
+        """
         result_dict = {}
         try:
             # In pysnmp 7 v1arch.asyncio, next_cmd deve essere chiamato ripetutamente in un loop
@@ -361,15 +440,20 @@ async def probe(
             # L'OID viene aggiornato con l'ultimo OID ricevuto per continuare il walk
             current_oid = ObjectIdentity(oid_base)
             count = 0
+            walk_timeout = 30.0  # Timeout totale per walk: 30 secondi
             
             while count < max_rows:
                 try:
-                    errorIndication, errorStatus, errorIndex, varBinds = await next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(current_oid),
-                        lexicographicMode=False
+                    # Timeout per ogni next_cmd: 5 secondi (se non risponde, passa oltre)
+                    errorIndication, errorStatus, errorIndex, varBinds = await asyncio.wait_for(
+                        next_cmd(
+                            dispatcher,
+                            CommunityData(community, mpModel=1 if version == "2c" else 0),
+                            transport,
+                            ObjectType(current_oid),
+                            lexicographicMode=False
+                        ),
+                        timeout=5.0  # Timeout per ogni iterazione del walk
                     )
                     
                     if errorIndication:
@@ -462,6 +546,10 @@ async def probe(
                         break
                     
                     count += 1
+                except asyncio.TimeoutError:
+                    logger.debug(f"SNMP walk_oid timeout for {oid_base} on {target} at iteration {count}")
+                    # Se timeout, interrompi il walk invece di continuare
+                    break
                 except Exception as e:
                     logger.debug(f"walk_oid next_cmd error for {oid_base}: {e}")
                     break
@@ -470,10 +558,12 @@ async def probe(
         return result_dict
     
     try:
+        # Timeout ridotto: 3 secondi per query, 1 retry (totale max 6s per query invece di 20s)
+        # Questo evita blocchi lunghi quando il device non risponde
         transport = await UdpTransportTarget.create(
             (target, port),
-            timeout=10,
-            retries=2
+            timeout=3,  # Ridotto da 10 a 3 secondi
+            retries=1   # Ridotto da 2 a 1 retry
         )
         
         # ==========================================
@@ -683,14 +773,12 @@ async def probe(
                 volume_useds = {}
                 volume_frees = {}
                 
-                # Walk volume table
+                # Walk volume table con timeout per evitare blocchi
                 try:
-                    async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(ObjectIdentity(vendor_oids["synology_storage"]["volume_name"])),
-                        lexicographicMode=False
+                    async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                        vendor_oids["synology_storage"]["volume_name"],
+                        timeout=15.0,
+                        max_iterations=50
                     ):
                         if errorIndication or errorStatus:
                             break
@@ -704,41 +792,46 @@ async def probe(
                     logger.warning(f"SNMP probe: Synology volume name walk failed: {e}")
                 logger.info(f"SNMP probe: Synology volume names collected: {len(volume_names)}")
                 
-                # Walk volume status, total, used, free
+                # Walk volume status, total, used, free con timeout
                 for oid_type in ["volume_status", "volume_total", "volume_used", "volume_free"]:
                     oid = vendor_oids["synology_storage"][oid_type]
                     try:
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
+                        iterator = next_cmd(
                             dispatcher,
                             CommunityData(community, mpModel=1 if version == "2c" else 0),
                             transport,
                             ObjectType(ObjectIdentity(oid)),
                             lexicographicMode=False
-                        ):
-                            if errorIndication or errorStatus:
-                                break
-                            for varBind in varBinds:
-                                oid_str = str(varBind[0])
-                                value = str(varBind[1])
-                                if value and "No Such" not in value:
-                                    index = oid_str.split('.')[-1]
-                                    if oid_type == "volume_status":
-                                        volume_statuses[index] = value
-                                    elif oid_type == "volume_total":
-                                        try:
-                                            volume_totals[index] = int(value) / (1024 * 1024 * 1024)  # Converti bytes to GB
-                                        except:
-                                            pass
-                                    elif oid_type == "volume_used":
-                                        try:
-                                            volume_useds[index] = int(value) / (1024 * 1024 * 1024)
-                                        except:
-                                            pass
-                                    elif oid_type == "volume_free":
-                                        try:
-                                            volume_frees[index] = int(value) / (1024 * 1024 * 1024)
-                                        except:
-                                            pass
+                        )
+                        async def walk_with_timeout():
+                            async for (errorIndication, errorStatus, errorIndex, varBinds) in iterator:
+                                if errorIndication or errorStatus:
+                                    break
+                                for varBind in varBinds:
+                                    oid_str = str(varBind[0])
+                                    value = str(varBind[1])
+                                    if value and "No Such" not in value:
+                                        index = oid_str.split('.')[-1]
+                                        if oid_type == "volume_status":
+                                            volume_statuses[index] = value
+                                        elif oid_type == "volume_total":
+                                            try:
+                                                volume_totals[index] = int(value) / (1024 * 1024 * 1024)  # Converti bytes to GB
+                                            except:
+                                                pass
+                                        elif oid_type == "volume_used":
+                                            try:
+                                                volume_useds[index] = int(value) / (1024 * 1024 * 1024)
+                                            except:
+                                                pass
+                                        elif oid_type == "volume_free":
+                                            try:
+                                                volume_frees[index] = int(value) / (1024 * 1024 * 1024)
+                                            except:
+                                                pass
+                        await asyncio.wait_for(walk_with_timeout(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        logger.debug(f"SNMP probe: Synology {oid_type} walk timeout after 15s")
                     except Exception as e:
                         logger.debug(f"SNMP probe: Synology {oid_type} walk failed: {e}")
                 
@@ -770,14 +863,12 @@ async def probe(
                 disk_models = {}
                 disk_temperatures = {}
                 
-                # Walk disk table
+                # Walk disk table con timeout per evitare blocchi
                 try:
-                    async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(ObjectIdentity(vendor_oids["synology_storage"]["disk_name"])),
-                        lexicographicMode=False
+                    async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                        vendor_oids["synology_storage"]["disk_name"],
+                        timeout=15.0,
+                        max_iterations=50
                     ):
                         if errorIndication or errorStatus:
                             break
@@ -791,16 +882,14 @@ async def probe(
                     logger.warning(f"SNMP probe: Synology disk name walk failed: {e}")
                 logger.info(f"SNMP probe: Synology disk names collected: {len(disk_names)}")
                 
-                # Walk disk status, model, temperature
+                # Walk disk status, model, temperature con timeout
                 for oid_type in ["disk_status", "disk_model", "disk_temperature"]:
                     oid = vendor_oids["synology_storage"][oid_type]
                     try:
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                            dispatcher,
-                            CommunityData(community, mpModel=1 if version == "2c" else 0),
-                            transport,
-                            ObjectType(ObjectIdentity(oid)),
-                            lexicographicMode=False
+                        async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                            oid,
+                            timeout=15.0,
+                            max_iterations=50
                         ):
                             if errorIndication or errorStatus:
                                 break
@@ -839,14 +928,12 @@ async def probe(
                 raid_statuses = {}
                 raid_levels = {}
                 
-                # Walk RAID table
+                # Walk RAID table con timeout
                 try:
-                    async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(ObjectIdentity(vendor_oids["synology_storage"]["raid_name"])),
-                        lexicographicMode=False
+                    async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                        vendor_oids["synology_storage"]["raid_name"],
+                        timeout=15.0,
+                        max_iterations=50
                     ):
                         if errorIndication or errorStatus:
                             break
@@ -857,15 +944,13 @@ async def probe(
                                 index = oid_str.split('.')[-1]
                                 raid_names[index] = value
                     
-                    # Walk RAID status and level
+                    # Walk RAID status and level con timeout
                     for oid_type in ["raid_status", "raid_level"]:
                         oid = vendor_oids["synology_storage"][oid_type]
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                            dispatcher,
-                            CommunityData(community, mpModel=1 if version == "2c" else 0),
-                            transport,
-                            ObjectType(ObjectIdentity(oid)),
-                            lexicographicMode=False
+                        async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                            oid,
+                            timeout=15.0,
+                            max_iterations=50
                         ):
                             if errorIndication or errorStatus:
                                 break
@@ -921,14 +1006,12 @@ async def probe(
                 volume_useds = {}
                 volume_frees = {}
                 
-                # Walk volume table
+                # Walk volume table con timeout per evitare blocchi
                 try:
-                    async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(ObjectIdentity(vendor_oids["qnap_storage"]["volume_name"])),
-                        lexicographicMode=False
+                    async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                        vendor_oids["qnap_storage"]["volume_name"],
+                        timeout=15.0,
+                        max_iterations=50
                     ):
                         if errorIndication or errorStatus:
                             break
@@ -942,16 +1025,14 @@ async def probe(
                     logger.warning(f"SNMP probe: QNAP volume name walk failed: {e}")
                 logger.info(f"SNMP probe: QNAP volume names collected: {len(volume_names)}")
                 
-                # Walk volume status, total, used, free
+                # Walk volume status, total, used, free con timeout
                 for oid_type in ["volume_status", "volume_total", "volume_used", "volume_free"]:
                     oid = vendor_oids["qnap_storage"][oid_type]
                     try:
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                            dispatcher,
-                            CommunityData(community, mpModel=1 if version == "2c" else 0),
-                            transport,
-                            ObjectType(ObjectIdentity(oid)),
-                            lexicographicMode=False
+                        async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                            oid,
+                            timeout=15.0,
+                            max_iterations=50
                         ):
                             if errorIndication or errorStatus:
                                 break
@@ -1008,14 +1089,12 @@ async def probe(
                 disk_models = {}
                 disk_temperatures = {}
                 
-                # Walk disk table
+                # Walk disk table con timeout per evitare blocchi
                 try:
-                    async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(ObjectIdentity(vendor_oids["qnap_storage"]["disk_name"])),
-                        lexicographicMode=False
+                    async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                        vendor_oids["qnap_storage"]["disk_name"],
+                        timeout=15.0,
+                        max_iterations=50
                     ):
                         if errorIndication or errorStatus:
                             break
@@ -1029,16 +1108,14 @@ async def probe(
                     logger.warning(f"SNMP probe: QNAP disk name walk failed: {e}")
                 logger.info(f"SNMP probe: QNAP disk names collected: {len(disk_names)}")
                 
-                # Walk disk status, model, temperature
+                # Walk disk status, model, temperature con timeout
                 for oid_type in ["disk_status", "disk_model", "disk_temperature"]:
                     oid = vendor_oids["qnap_storage"][oid_type]
                     try:
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                            dispatcher,
-                            CommunityData(community, mpModel=1 if version == "2c" else 0),
-                            transport,
-                            ObjectType(ObjectIdentity(oid)),
-                            lexicographicMode=False
+                        async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                            oid,
+                            timeout=15.0,
+                            max_iterations=50
                         ):
                             if errorIndication or errorStatus:
                                 break
@@ -1077,14 +1154,12 @@ async def probe(
                 raid_statuses = {}
                 raid_levels = {}
                 
-                # Walk RAID table
+                # Walk RAID table con timeout
                 try:
-                    async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                        dispatcher,
-                        CommunityData(community, mpModel=1 if version == "2c" else 0),
-                        transport,
-                        ObjectType(ObjectIdentity(vendor_oids["qnap_storage"]["raid_name"])),
-                        lexicographicMode=False
+                    async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                        vendor_oids["qnap_storage"]["raid_name"],
+                        timeout=15.0,
+                        max_iterations=50
                     ):
                         if errorIndication or errorStatus:
                             break
@@ -1095,15 +1170,13 @@ async def probe(
                                 index = oid_str.split('.')[-1]
                                 raid_names[index] = value
                     
-                    # Walk RAID status and level
+                    # Walk RAID status and level con timeout
                     for oid_type in ["raid_status", "raid_level"]:
                         oid = vendor_oids["qnap_storage"][oid_type]
-                        async for (errorIndication, errorStatus, errorIndex, varBinds) in next_cmd(
-                            dispatcher,
-                            CommunityData(community, mpModel=1 if version == "2c" else 0),
-                            transport,
-                            ObjectType(ObjectIdentity(oid)),
-                            lexicographicMode=False
+                        async for (errorIndication, errorStatus, errorIndex, varBinds) in safe_async_for_next_cmd(
+                            oid,
+                            timeout=15.0,
+                            max_iterations=50
                         ):
                             if errorIndication or errorStatus:
                                 break
@@ -1274,7 +1347,7 @@ async def probe(
                     # Index suffix: timeMark.localPortNum.remoteIndex (last 3 parts)
                     local_ports = {}  # Key: full OID suffix after base, Value: port number
                     try:
-                        local_ports_raw = await walk_oid(lldp_oids["local_port"], max_rows=200)
+                        local_ports_raw = await walk_oid(lldp_oids["local_port"], max_rows=100)
                         base_oid_parts = lldp_oids["local_port"].split('.')
                         base_oid_len = len(base_oid_parts)
                         
@@ -1309,7 +1382,7 @@ async def probe(
                     # System names
                     logger.info(f"SNMP probe: [LLDP] Querying LLDP system names OID {lldp_oids['sys_name']}...")
                     try:
-                        sys_names_raw = await walk_oid(lldp_oids["sys_name"], max_rows=200)
+                        sys_names_raw = await walk_oid(lldp_oids["sys_name"], max_rows=100)
                         base_oid_parts = lldp_oids["sys_name"].split('.')
                         base_oid_len = len(base_oid_parts)
                         
@@ -1329,7 +1402,7 @@ async def probe(
                     
                     # Chassis IDs
                     try:
-                        chassis_ids_raw = await walk_oid(lldp_oids["chassis_id"], max_rows=200)
+                        chassis_ids_raw = await walk_oid(lldp_oids["chassis_id"], max_rows=100)
                         base_oid_parts = lldp_oids["chassis_id"].split('.')
                         base_oid_len = len(base_oid_parts)
                         
@@ -1348,7 +1421,7 @@ async def probe(
                     
                     # System descriptions
                     try:
-                        sys_descs_raw = await walk_oid(lldp_oids["sys_desc"], max_rows=200)
+                        sys_descs_raw = await walk_oid(lldp_oids["sys_desc"], max_rows=100)
                         base_oid_parts = lldp_oids["sys_desc"].split('.')
                         base_oid_len = len(base_oid_parts)
                         
@@ -1367,7 +1440,7 @@ async def probe(
                     
                     # Port IDs (remote port identifier)
                     try:
-                        port_ids_raw = await walk_oid(lldp_oids["port_id"], max_rows=200)
+                        port_ids_raw = await walk_oid(lldp_oids["port_id"], max_rows=100)
                         base_oid_parts = lldp_oids["port_id"].split('.')
                         base_oid_len = len(base_oid_parts)
                         
@@ -1386,7 +1459,7 @@ async def probe(
                     # Port descriptions
                     port_descs = {}
                     try:
-                        port_descs_raw = await walk_oid(lldp_oids["port_desc"], max_rows=200)
+                        port_descs_raw = await walk_oid(lldp_oids["port_desc"], max_rows=100)
                         base_oid_parts = lldp_oids["port_desc"].split('.')
                         base_oid_len = len(base_oid_parts)
                         
@@ -1560,9 +1633,9 @@ async def probe(
                     ip_route_type = "1.3.6.1.2.1.4.21.1.8"  # ipRouteType
                     ip_route_proto = "1.3.6.1.2.1.4.21.1.9"  # ipRouteProto
                     
-                    route_dests = await walk_oid(ip_route_dest, max_rows=200)
+                    route_dests = await walk_oid(ip_route_dest, max_rows=100)
                     
-                    next_hops = await walk_oid(ip_route_next_hop, max_rows=200)
+                    next_hops = await walk_oid(ip_route_next_hop, max_rows=100)
                     
                     # Build route list
                     for oid, dest in list(route_dests.items())[:100]:
@@ -1652,7 +1725,7 @@ async def probe(
                     if_phys_address = "1.3.6.1.2.1.2.2.1.6"   # ifPhysAddress
                     
                     logger.info(f"SNMP probe: Walking IF-MIB ifDescr OID {if_descr} for {target}...")
-                    if_descriptions_raw = await walk_oid(if_descr, max_rows=200)
+                    if_descriptions_raw = await walk_oid(if_descr, max_rows=100)
                     logger.info(f"SNMP probe: Collected {len(if_descriptions_raw)} interface descriptions")
                     
                     # Extract ifIndex from OID and build dict keyed by ifIndex
@@ -1679,7 +1752,7 @@ async def probe(
                     
                     # ifSpeed (bps) - per interfacce fino a 100Mbps
                     logger.info(f"SNMP probe: Walking IF-MIB ifSpeed OID {if_speed} for {target}...")
-                    if_speeds_raw = await walk_oid(if_speed, max_rows=200)
+                    if_speeds_raw = await walk_oid(if_speed, max_rows=100)
                     logger.info(f"SNMP probe: Collected {len(if_speeds_raw)} interface speeds")
                     if_speeds = {}  # Key: ifIndex, Value: speed_mbps
                     base_oid_parts = if_speed.split('.')
@@ -1708,7 +1781,7 @@ async def probe(
                     
                     # ifHighSpeed (Mbps) - per interfacce ad alta velocità (1.3.6.1.2.1.31.1.1.1.15)
                     if_high_speed = "1.3.6.1.2.1.31.1.1.1.15"
-                    if_high_speeds_raw = await walk_oid(if_high_speed, max_rows=200)
+                    if_high_speeds_raw = await walk_oid(if_high_speed, max_rows=100)
                     for oid_str, value in if_high_speeds_raw.items():
                         if value and "No Such" not in str(value):
                             try:
@@ -1724,7 +1797,7 @@ async def probe(
                     
                     # ifMtu (1.3.6.1.2.1.2.2.1.4)
                     if_mtu_oid = "1.3.6.1.2.1.2.2.1.4"
-                    if_mtus_raw = await walk_oid(if_mtu_oid, max_rows=200)
+                    if_mtus_raw = await walk_oid(if_mtu_oid, max_rows=100)
                     if_mtus = {}
                     for oid_str, value in if_mtus_raw.items():
                         if value and "No Such" not in str(value):
@@ -1738,7 +1811,7 @@ async def probe(
                     
                     # ifType (1.3.6.1.2.1.2.2.1.3) - e.g. 6=ethernet, 53=propVirtual, 131=tunnel
                     if_type_oid = "1.3.6.1.2.1.2.2.1.3"
-                    if_types_raw = await walk_oid(if_type_oid, max_rows=200)
+                    if_types_raw = await walk_oid(if_type_oid, max_rows=100)
                     if_types = {}
                     if_type_map = {
                         1: "other", 6: "ethernet", 23: "ppp", 24: "softwareLoopback",
@@ -1754,7 +1827,7 @@ async def probe(
                             except (ValueError, TypeError):
                                 pass
                     
-                    if_admin_statuses_raw = await walk_oid(if_admin_status, max_rows=200)
+                    if_admin_statuses_raw = await walk_oid(if_admin_status, max_rows=100)
                     if_admin_statuses = {}  # Key: ifIndex, Value: status
                     base_oid_parts = if_admin_status.split('.')
                     base_oid_len = len(base_oid_parts)
@@ -1781,7 +1854,7 @@ async def probe(
                                 except (ValueError, TypeError):
                                     pass
                     
-                    if_oper_statuses_raw = await walk_oid(if_oper_status, max_rows=200)
+                    if_oper_statuses_raw = await walk_oid(if_oper_status, max_rows=100)
                     if_oper_statuses = {}  # Key: ifIndex, Value: status
                     base_oid_parts = if_oper_status.split('.')
                     base_oid_len = len(base_oid_parts)
@@ -1808,7 +1881,7 @@ async def probe(
                                 except (ValueError, TypeError):
                                     pass
                     
-                    if_macs_raw = await walk_oid(if_phys_address, max_rows=200)
+                    if_macs_raw = await walk_oid(if_phys_address, max_rows=100)
                     if_macs = {}  # Key: ifIndex, Value: MAC address
                     base_oid_parts = if_phys_address.split('.')
                     base_oid_len = len(base_oid_parts)
