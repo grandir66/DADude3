@@ -129,7 +129,8 @@ async def unified_scan(request: UnifiedScanRequestModel):
             scan_id = str(uuid.uuid4())
         
         # Inizializza stato scansione IMMEDIATAMENTE prima di qualsiasi operazione
-        scanner._active_scans[scan_id] = {
+        # Usa file condiviso per comunicazione tra processi
+        initial_status = {
             "scan_id": scan_id,
             "device_id": request.device_id,
             "target": request.target_address,
@@ -142,6 +143,7 @@ async def unified_scan(request: UnifiedScanRequestModel):
             "save_summary": None,
             "error": None
         }
+        scanner.set_scan_status(scan_id, initial_status)
         
         # Se async_mode, esegui in background e ritorna immediatamente
         if request.async_mode:
@@ -258,26 +260,26 @@ async def _execute_scan_background(
             except Exception as e:
                 logger.error(f"Error setting up auto-save: {e}", exc_info=True)
         
-        # Aggiorna stato con risultato finale
-        if scan_id in scanner._active_scans:
-            scanner._active_scans[scan_id].update({
-                "status": "completed" if result.status in ["success", "partial"] else "failed",
-                "progress": 100,
-                "message": f"Scansione completata: {result.status}",
-                "result": result.to_dict(),
-                "save_summary": save_summary
-            })
-            logger.info(f"[BACKGROUND_SCAN] Scan {scan_id} completed: {result.status}")
+        # Aggiorna stato con risultato finale (usa file condiviso)
+        scanner._update_scan_status(
+            scan_id,
+            status="completed" if result.status in ["success", "partial"] else "failed",
+            progress=100,
+            message=f"Scansione completata: {result.status}",
+            result=result.to_dict(),
+            save_summary=save_summary
+        )
+        logger.info(f"[BACKGROUND_SCAN] Scan {scan_id} completed: {result.status}")
         
     except Exception as e:
         logger.error(f"[BACKGROUND_SCAN] Error in background scan {scan_id}: {e}", exc_info=True)
-        if scan_id in scanner._active_scans:
-            scanner._active_scans[scan_id].update({
-                "status": "failed",
-                "progress": 100,
-                "message": f"Errore: {str(e)}",
-                "error": str(e)
-            })
+        scanner._update_scan_status(
+            scan_id,
+            status="failed",
+            progress=100,
+            message=f"Errore: {str(e)}",
+            error=str(e)
+        )
 
 
 @router.get("/status/{scan_id}")

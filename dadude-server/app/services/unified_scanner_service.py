@@ -249,19 +249,56 @@ class UnifiedScannerService:
     4. Unifica risultati in formato standardizzato
     """
     
+    # Path per file di stato condiviso tra processi
+    SCAN_STATUS_FILE = "/tmp/dadude_scan_status.json"
+    
     def __init__(self):
         self._scan_cache: Dict[str, UnifiedScanResult] = {}
         self._active_scans: Dict[str, Dict[str, Any]] = {}  # scan_id -> {status, protocol, credential, progress}
     
+    def _load_shared_status(self) -> Dict[str, Any]:
+        """Carica stato scansioni dal file condiviso"""
+        import json
+        try:
+            if os.path.exists(self.SCAN_STATUS_FILE):
+                with open(self.SCAN_STATUS_FILE, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.debug(f"Error loading scan status file: {e}")
+        return {}
+    
+    def _save_shared_status(self, all_status: Dict[str, Any]):
+        """Salva stato scansioni nel file condiviso"""
+        import json
+        try:
+            with open(self.SCAN_STATUS_FILE, 'w') as f:
+                json.dump(all_status, f)
+        except Exception as e:
+            logger.debug(f"Error saving scan status file: {e}")
+    
     def get_scan_status(self, scan_id: str) -> Optional[Dict[str, Any]]:
-        """Ottiene lo stato corrente di una scansione"""
-        return self._active_scans.get(scan_id)
+        """Ottiene lo stato corrente di una scansione (da file condiviso)"""
+        all_status = self._load_shared_status()
+        return all_status.get(scan_id)
+    
+    def set_scan_status(self, scan_id: str, status: Dict[str, Any]):
+        """Imposta lo stato di una scansione (su file condiviso)"""
+        all_status = self._load_shared_status()
+        all_status[scan_id] = status
+        self._save_shared_status(all_status)
+        # Anche in memoria per compatibilità
+        self._active_scans[scan_id] = status
     
     def _update_scan_status(self, scan_id: str, **kwargs):
-        """Aggiorna lo stato di una scansione"""
+        """Aggiorna lo stato di una scansione (su file condiviso)"""
+        all_status = self._load_shared_status()
+        if scan_id in all_status:
+            all_status[scan_id].update(kwargs)
+            self._save_shared_status(all_status)
+            logger.debug(f"[SCAN_STATUS] {scan_id}: {kwargs}")
+        # Anche in memoria
         if scan_id in self._active_scans:
             self._active_scans[scan_id].update(kwargs)
-            logger.debug(f"[SCAN_STATUS] {scan_id}: {kwargs}")
     
     async def scan_device(
         self,
@@ -289,7 +326,8 @@ class UnifiedScannerService:
         
         # INIZIALIZZA STATO IMMEDIATAMENTE - prima di qualsiasi operazione
         # Questo permette al polling di vedere lo stato anche se la scansione è già iniziata
-        self._active_scans[scan_id] = {
+        # Usa file condiviso per comunicazione tra processi
+        self.set_scan_status(scan_id, {
             "scan_id": scan_id,
             "device_id": request.device_id,
             "target": request.target_address,
@@ -298,7 +336,7 @@ class UnifiedScannerService:
             "credential": None,
             "progress": 0,
             "message": "Inizializzazione scansione..."
-        }
+        })
         
         start_time = datetime.utcnow()
         result = UnifiedScanResult(
