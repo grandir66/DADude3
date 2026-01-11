@@ -1130,12 +1130,28 @@ document.getElementById('editAgentForm').addEventListener('submit', async (e) =>
 });
 
 async function deleteAgent(agentId, agentName) {
+    // Verifica che agentId sia valido
+    if (!agentId || agentId === 'undefined' || agentId === 'null') {
+        const errorMsg = `Errore: ID agent non valido (${agentId}). Impossibile eliminare.`;
+        console.error(errorMsg);
+        if (window.toastError) {
+            window.toastError(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
+        return;
+    }
+    
     if (!confirm(`⚠️ Eliminare l'agent "${agentName}"?\n\nL'agent verrà rimosso dal sistema.`)) {
         return;
     }
     
     try {
-        const response = await fetch(`/api/v1/customers/agents/${agentId}`, {
+        // Encode URL per sicurezza
+        const encodedAgentId = encodeURIComponent(agentId);
+        console.log(`Deleting agent: id='${agentId}' (encoded: '${encodedAgentId}')`);
+        
+        const response = await fetch(`/api/v1/customers/agents/${encodedAgentId}`, {
             method: 'DELETE'
         });
         

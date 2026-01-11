@@ -697,20 +697,29 @@ async def delete_agent(agent_id: str):
     service = get_customer_service()
     
     try:
+        # Decodifica URL se necessario
+        agent_id = agent_id.strip()
+        logger.info(f"Delete agent request: agent_id='{agent_id}' (type: {type(agent_id).__name__}, len: {len(agent_id)})")
+        
         # Recupera info agent prima di eliminare per includere nome nel messaggio
         agent_name = f"ID {agent_id}"
         try:
             agent = service.get_agent(agent_id)
             if agent:
                 agent_name = agent.name
-        except Exception:
+                logger.info(f"Found agent to delete: {agent_name} (id: {agent.id})")
+            else:
+                logger.warning(f"Agent not found by get_agent: {agent_id}")
+        except Exception as e:
+            logger.warning(f"Error retrieving agent info before deletion: {e}")
             # Se non riesce a recuperare, usa ID come fallback
             pass
         
         success = await service.delete_agent(agent_id)
         
         if not success:
-            raise HTTPException(status_code=404, detail="Sonda non trovata")
+            logger.error(f"Delete agent failed: agent_id='{agent_id}' not found in database")
+            raise HTTPException(status_code=404, detail=f"Sonda non trovata (ID: {agent_id})")
         
         return {
             "success": True,

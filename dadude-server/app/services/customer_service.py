@@ -1154,11 +1154,33 @@ class CustomerService:
         session = self._get_session()
         agent = None
         try:
+            # Normalizza ID (rimuovi spazi, trim)
+            agent_id = agent_id.strip() if agent_id else None
+            if not agent_id:
+                logger.error("delete_agent called with empty agent_id")
+                return False
+            
+            logger.info(f"Deleting agent: agent_id='{agent_id}' (type: {type(agent_id).__name__}, len: {len(agent_id)})")
+            
+            # Prova prima con match esatto
             agent = session.query(AgentAssignmentDB).filter(
                 AgentAssignmentDB.id == agent_id
             ).first()
             
+            # Se non trovato, prova a cercare anche per nome (fallback)
             if not agent:
+                logger.warning(f"Agent not found by ID '{agent_id}', trying by name...")
+                agent = session.query(AgentAssignmentDB).filter(
+                    AgentAssignmentDB.name == agent_id
+                ).first()
+                if agent:
+                    logger.info(f"Found agent by name: {agent.name} (id: {agent.id})")
+            
+            if not agent:
+                logger.error(f"Agent not found: agent_id='{agent_id}'")
+                # Log tutti gli agent disponibili per debug
+                all_agents = session.query(AgentAssignmentDB).all()
+                logger.debug(f"Available agents: {[(a.id, a.name) for a in all_agents]}")
                 return False
             
             # Verifica e chiudi connessione WebSocket se presente
