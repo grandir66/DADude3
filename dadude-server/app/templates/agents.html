@@ -770,7 +770,7 @@ async function loadActiveAgents() {
             // Aggiorna versione per tutti gli agent Docker (connessi o meno)
             if (a.agent_type === 'docker' && a.id) {
                 versionUpdatePromises.push(
-                    fetch(`/api/v1/admin/agents/${a.id}/verify-version`)
+                    fetch(getApiUrl(`/api/v1/admin/agents/${a.id}/verify-version`))
                         .then(res => res.ok ? res.json() : null)
                         .then(data => {
                             if (data && data.success) {
@@ -946,7 +946,7 @@ async function confirmApprove() {
     }
     
     try {
-        const response = await fetch(`/api/v1/agents/${agentId}/approve?customer_id=${customerId}`, {
+        const response = await fetch(getApiUrl(`/api/v1/agents/${agentId}/approve?customer_id=${customerId}`), {
             method: 'POST'
         });
         
@@ -1390,7 +1390,7 @@ async function testAgent(agentId, address, port) {
     try {
         // Usa l'API del server per verificare (supporta WebSocket e HTTP)
         // Use admin proxy endpoint for cross-process WebSocket Hub access
-        const response = await fetch(`/api/v1/admin/agents/${agentId}/verify-version`);
+        const response = await fetch(getApiUrl(`/api/v1/admin/agents/${agentId}/verify-version`));
         const data = await response.json();
         
         if (data.success && data.agent_online) {
@@ -1410,7 +1410,7 @@ async function testAgent(agentId, address, port) {
 
 async function showAgentCapabilities(agentId) {
     try {
-        const response = await fetch(`/api/v1/admin/customers/agents/${agentId}/test`, { method: 'POST' });
+        const response = await fetch(getApiUrl(`/api/v1/admin/customers/agents/${agentId}/test`), { method: 'POST' });
         const result = await response.json();
         
         if (result.success && result.results) {
@@ -1444,7 +1444,7 @@ async function restartAgent(agentId) {
     if (!confirm('Riavviare questo agent?')) return;
     
     try {
-        const response = await fetch(`/api/v1/agents/${agentId}/restart`, {
+        const response = await fetch(getApiUrl(`/api/v1/agents/${agentId}/restart`), {
             method: 'POST'
         });
         
@@ -1460,7 +1460,7 @@ async function restartAgent(agentId) {
 
 async function updateAgent(agentId) {
     try {
-        const response = await fetch(`/api/v1/agents/${agentId}/trigger-update`, {
+        const response = await fetch(getApiUrl(`/api/v1/agents/${agentId}/trigger-update`), {
             method: 'POST'
         });
         
@@ -1499,7 +1499,7 @@ async function updateAllAgents() {
 async function verifyAgentVersion(agentId, agentName) {
     try {
         // Use admin proxy endpoint for cross-process WebSocket Hub access
-        const response = await fetch(`/api/v1/admin/agents/${agentId}/verify-version`);
+        const response = await fetch(getApiUrl(`/api/v1/admin/agents/${agentId}/verify-version`));
         const data = await response.json();
         
         if (data.success) {
@@ -2020,7 +2020,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadDockerAgentsForMikrotik(customerId, selectedId) {
     if (!customerId) return;
     try {
-        const response = await fetch(`/api/v1/customers/${customerId}/agents?active_only=true`);
+        const response = await fetch(getApiUrl(`/api/v1/customers/${customerId}/agents?active_only=true`));
         const data = await response.json();
         const agents = Array.isArray(data) ? data : (data.agents || []);
         const dockerAgents = agents.filter(a => a.agent_type === 'docker');
@@ -2046,7 +2046,7 @@ async function loadDockerAgentsForMikrotik(customerId, selectedId) {
 async function loadArpGatewayOptions(customerId, selectedMikrotikId) {
     if (!customerId) return;
     try {
-        const response = await fetch(`/api/v1/customers/${customerId}/agents?active_only=true`);
+        const response = await fetch(getApiUrl(`/api/v1/customers/${customerId}/agents?active_only=true`));
         const data = await response.json();
         const agents = Array.isArray(data) ? data : (data.agents || []);
         const mikrotikAgents = agents.filter(a => a.agent_type === 'mikrotik' || !a.agent_type);
