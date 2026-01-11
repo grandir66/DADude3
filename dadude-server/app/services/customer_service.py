@@ -1304,7 +1304,7 @@ class CustomerService:
             # Re-raise ValueError senza modifiche
             raise
         except Exception as e:
-            logger.error(f"Error deleting agent {agent_id}: {e}", exc_info=True)
+            logger.error(f"Error deleting agent agent_id='{agent_id}': {e}", exc_info=True)
             if session:
                 session.rollback()
             return False
