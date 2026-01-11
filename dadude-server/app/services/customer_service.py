@@ -1214,26 +1214,34 @@ class CustomerService:
             
             # Verifica se l'agent è usato come gateway in reti o come riferimento in altri agent
             from ..models.database import Network
-            networks_using_agent = session.query(Network).filter(
-                Network.gateway_agent_id == agent_id
-            ).all()
-            
-            # Verifica se altri agent usano questo agent come docker_agent_id o arp_gateway_agent_id
-            agents_using_as_docker = session.query(AgentAssignmentDB).filter(
-                AgentAssignmentDB.docker_agent_id == agent_id
-            ).all()
-            agents_using_as_arp = session.query(AgentAssignmentDB).filter(
-                AgentAssignmentDB.arp_gateway_agent_id == agent_id
-            ).all()
-            
-            if networks_using_agent or agents_using_as_docker or agents_using_as_arp:
-                logger.warning(f"Agent {agent.name} (id: {agent_id}) is referenced by:")
-                if networks_using_agent:
-                    logger.warning(f"  - {len(networks_using_agent)} network(s): {[n.name for n in networks_using_agent]}")
-                if agents_using_as_docker:
-                    logger.warning(f"  - {len(agents_using_as_docker)} agent(s) as docker_agent: {[a.name for a in agents_using_as_docker]}")
-                if agents_using_as_arp:
-                    logger.warning(f"  - {len(agents_using_as_arp)} agent(s) as arp_gateway: {[a.name for a in agents_using_as_arp]}")
+            try:
+                networks_using_agent = session.query(Network).filter(
+                    Network.gateway_agent_id == agent_id
+                ).all()
+                
+                # Verifica se altri agent usano questo agent come docker_agent_id o arp_gateway_agent_id
+                agents_using_as_docker = session.query(AgentAssignmentDB).filter(
+                    AgentAssignmentDB.docker_agent_id == agent_id
+                ).all()
+                agents_using_as_arp = session.query(AgentAssignmentDB).filter(
+                    AgentAssignmentDB.arp_gateway_agent_id == agent_id
+                ).all()
+                
+                if networks_using_agent or agents_using_as_docker or agents_using_as_arp:
+                    agent_name = agent.name if agent else "Unknown"
+                    logger.warning(f"Agent {agent_name} (id: {agent_id}) is referenced by:")
+                    if networks_using_agent:
+                        logger.warning(f"  - {len(networks_using_agent)} network(s): {[n.name for n in networks_using_agent]}")
+                    if agents_using_as_docker:
+                        logger.warning(f"  - {len(agents_using_as_docker)} agent(s) as docker_agent: {[a.name for a in agents_using_as_docker]}")
+                    if agents_using_as_arp:
+                        logger.warning(f"  - {len(agents_using_as_arp)} agent(s) as arp_gateway: {[a.name for a in agents_using_as_arp]}")
+            except Exception as ref_error:
+                logger.error(f"Error checking references for agent_id='{agent_id}': {ref_error}", exc_info=True)
+                # Continua comunque con l'eliminazione
+                networks_using_agent = []
+                agents_using_as_docker = []
+                agents_using_as_arp = []
                 
                 # Rimuovi i riferimenti prima di eliminare
                 for network in networks_using_agent:
