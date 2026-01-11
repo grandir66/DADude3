@@ -719,11 +719,16 @@ async def delete_agent(agent_id: str):
             # Se non riesce a recuperare, usa ID come fallback
             pass
         
-        success = await service.delete_agent(agent_id)
-        
-        if not success:
-            logger.error(f"Delete agent failed: agent_id='{agent_id}' not found in database")
-            raise HTTPException(status_code=404, detail=f"Sonda non trovata (ID: {agent_id})")
+        try:
+            success = await service.delete_agent(agent_id)
+            
+            if not success:
+                logger.error(f"Delete agent failed: agent_id='{agent_id}' not found in database")
+                raise HTTPException(status_code=404, detail=f"Sonda non trovata (ID: {agent_id})")
+        except ValueError as e:
+            # Errore di validazione (es. foreign key constraint)
+            logger.error(f"Validation error deleting agent {agent_id}: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
         
         return {
             "success": True,
