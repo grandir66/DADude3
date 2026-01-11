@@ -1314,7 +1314,9 @@ class CustomerService:
             # Re-raise ValueError senza modifiche
             raise
         except Exception as e:
-            logger.error(f"Error deleting agent agent_id='{agent_id}': {e}", exc_info=True)
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Error deleting agent agent_id='{agent_id}': {e}\nTraceback:\n{tb}")
             if session:
                 session.rollback()
             return False
