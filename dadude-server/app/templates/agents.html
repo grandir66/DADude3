@@ -627,7 +627,7 @@ async function loadPendingAgents() {
     const container = document.getElementById('pending-agents');
     
     try {
-        const response = await fetch('/api/v1/agents/pending');
+        const response = await fetch(getApiUrl('/api/v1/agents/pending'));
         if (!response.ok) throw new Error('Failed to load pending agents');
         
         const data = await response.json();
@@ -699,7 +699,7 @@ async function loadActiveAgents() {
         let allAgents = [];
 
         for (const customer of customers) {
-            const agentsResp = await fetch(`/api/v1/customers/${customer.id}/agents`);
+            const agentsResp = await fetch(getApiUrl(`/api/v1/customers/${customer.id}/agents`));
             if (agentsResp.ok) {
                 const agents = await agentsResp.json();
                 agents.forEach(a => {
@@ -711,7 +711,7 @@ async function loadActiveAgents() {
         // Ottieni lista agent connessi via WebSocket (real-time)
         let wsConnectedIds = new Set();
         try {
-            const wsResp = await fetch('/api/v1/admin/agents/ws/connected');
+            const wsResp = await fetch(getApiUrl('/api/v1/admin/agents/ws/connected'));
             if (wsResp.ok) {
                 const wsData = await wsResp.json();
                 wsData.agents.forEach(wsAgent => {
@@ -755,7 +755,7 @@ async function loadActiveAgents() {
         // Recupera versione disponibile dal server
         let latestVersion = null;
         try {
-            const versionResp = await fetch('/api/v1/agents/server/version');
+            const versionResp = await fetch(getApiUrl('/api/v1/agents/server/version'));
             if (versionResp.ok) {
                 const versionData = await versionResp.json();
                 latestVersion = versionData.agent_version || versionData.version;
