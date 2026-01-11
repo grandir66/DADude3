@@ -960,12 +960,17 @@ class CustomerService:
         """Crea nuova sonda per cliente"""
         session = self._get_session()
         try:
+            logger.info(f"create_agent called: customer_id={data.customer_id}, name={data.name}, agent_type={getattr(data, 'agent_type', 'mikrotik')}")
+            
             # Verifica cliente
             customer = session.query(CustomerDB).filter(
                 CustomerDB.id == data.customer_id
             ).first()
             if not customer:
-                raise ValueError(f"Customer {data.customer_id} not found")
+                logger.error(f"Customer not found: {data.customer_id}")
+                raise ValueError(f"Cliente {data.customer_id} non trovato")
+            
+            logger.info(f"Customer found: {customer.name} (id: {customer.id})")
             
             # Encrypt password e ssh_key se presenti
             enc_service = get_encryption_service()
@@ -981,6 +986,17 @@ class CustomerService:
             agent_token = getattr(data, 'agent_token', None)
             if agent_token:
                 agent_token = enc_service.encrypt(agent_token)
+            
+            # Estrai agent_type (può essere Enum o string)
+            agent_type_value = getattr(data, 'agent_type', 'mikrotik')
+            if hasattr(agent_type_value, 'value'):
+                agent_type_value = agent_type_value.value
+            elif isinstance(agent_type_value, str):
+                agent_type_value = agent_type_value.lower()
+            else:
+                agent_type_value = 'mikrotik'
+            
+            logger.info(f"Creating agent with type: {agent_type_value}")
             
             # Crea sonda
             agent = AgentAssignmentDB(
@@ -998,7 +1014,7 @@ class CustomerService:
                 ssh_port=data.ssh_port,
                 ssh_key=ssh_key,
                 # Nuovi campi Docker Agent
-                agent_type=getattr(data, 'agent_type', 'mikrotik'),
+                agent_type=agent_type_value,
                 agent_api_port=getattr(data, 'agent_api_port', 8080),
                 agent_token=agent_token,
                 agent_url=getattr(data, 'agent_url', None),
@@ -1013,14 +1029,27 @@ class CustomerService:
             )
             
             session.add(agent)
-            session.commit()
-            session.refresh(agent)
+            try:
+                session.commit()
+                session.refresh(agent)
+                logger.info(f"Created agent successfully: id={agent.id}, name={agent.name}, address={agent.address}")
+                return AgentAssignment.model_validate(agent)
+            except Exception as commit_error:
+                session.rollback()
+                logger.error(f"Error committing agent to database: {commit_error}", exc_info=True)
+                raise ValueError(f"Errore durante salvataggio nel database: {str(commit_error)}")
             
-            logger.info(f"Created agent: {data.name} ({data.address})")
-            return AgentAssignment.model_validate(agent)
-            
+        except ValueError:
+            # Re-raise ValueError senza modifiche
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error creating agent: {e}", exc_info=True)
+            if session:
+                session.rollback()
+            raise ValueError(f"Errore durante creazione sonda: {str(e)}")
         finally:
-            session.close()
+            if session:
+                session.close()
     
     def get_agent(self, agent_id: str, include_password: bool = False) -> Optional[AgentAssignment]:
         """Ottiene sonda per ID"""

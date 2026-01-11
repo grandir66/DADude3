@@ -1940,8 +1940,15 @@ if (newAgentForm) {
                 resetNewAgentForm();
                 loadAgents();
             } else {
-                const error = await response.json();
-                const errorMsg = error.detail || error.error || 'Errore creazione agent';
+                let errorMsg = 'Errore creazione agent';
+                try {
+                    const error = await response.json();
+                    errorMsg = error.detail || error.error || error.message || errorMsg;
+                    console.error('Error creating agent:', error);
+                } catch (e) {
+                    errorMsg = `Errore ${response.status}: ${response.statusText}`;
+                    console.error('Error parsing response:', e);
+                }
                 if (window.toastError) {
                     window.toastError('Errore: ' + errorMsg);
                 } else {

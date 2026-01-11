@@ -651,13 +651,17 @@ async def create_customer_agent(customer_id: str, data: AgentAssignmentCreate):
                 f"agent_token={'***' if data.agent_token else None}")
     
     try:
+        logger.info(f"Creating agent: customer_id={customer_id}, data={data.model_dump(exclude={'password', 'agent_token', 'ssh_key'})}")
         service = get_customer_service()
-        return service.create_agent(data)
+        agent = service.create_agent(data)
+        logger.info(f"Agent created successfully: id={agent.id}, name={agent.name}")
+        return agent
     except ValueError as e:
+        logger.error(f"Validation error creating agent: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error creating agent: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error creating agent: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Errore durante creazione sonda: {str(e)}")
 
 
 @router.get("/agents/{agent_id}", response_model=AgentAssignment)
