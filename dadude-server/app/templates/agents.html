@@ -967,7 +967,7 @@ async function rejectAgent(agentId) {
     if (!confirm('Eliminare questo agent in attesa?')) return;
     
     try {
-        const response = await fetch(`/api/v1/customers/agents/${agentId}`, {
+        const response = await fetch(getApiUrl(`/api/v1/customers/agents/${agentId}`), {
             method: 'DELETE'
         });
         
@@ -985,7 +985,7 @@ async function rejectAgent(agentId) {
 async function showEditAgentModal(agentId) {
     try {
         // Carica i dati dell'agent CON password per permettere modifica
-        const response = await fetch(`/api/v1/customers/agents/${agentId}?include_password=true`);
+        const response = await fetch(getApiUrl(`/api/v1/customers/agents/${agentId}?include_password=true`));
         if (!response.ok) throw new Error('Agent non trovato');
         const agent = await response.json();
         
@@ -1110,7 +1110,7 @@ document.getElementById('editAgentForm').addEventListener('submit', async (e) =>
     }
     
     try {
-        const response = await fetch(`/api/v1/customers/agents/${agentId}`, {
+        const response = await fetch(getApiUrl(`/api/v1/customers/agents/${agentId}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -1151,17 +1151,7 @@ async function deleteAgent(agentId, agentName) {
         const encodedAgentId = encodeURIComponent(agentId);
         console.log(`Deleting agent: id='${agentId}' (encoded: '${encodedAgentId}')`);
         
-        // Usa URL relativo per evitare problemi con porta 8001
-        // Se window.location.port è 8001, usa porta 8000
-        let apiUrl = `/api/v1/customers/agents/${encodedAgentId}`;
-        if (window.location.port === '8001') {
-            // Costruisci URL con porta 8000 esplicitamente
-            const baseUrl = `${window.location.protocol}//${window.location.hostname}:8000`;
-            apiUrl = `${baseUrl}/api/v1/customers/agents/${encodedAgentId}`;
-            console.log(`Using explicit port 8000: ${apiUrl}`);
-        }
-        
-        const response = await fetch(apiUrl, {
+        const response = await fetch(getApiUrl(`/api/v1/customers/agents/${encodedAgentId}`), {
             method: 'DELETE'
         });
         
@@ -1227,7 +1217,7 @@ async function confirmReassign() {
     }
     
     try {
-        const response = await fetch(`/api/v1/customers/agents/${agentId}/reassign?new_customer_id=${newCustomerId}`, {
+        const response = await fetch(getApiUrl(`/api/v1/customers/agents/${agentId}/reassign?new_customer_id=${newCustomerId}`), {
             method: 'POST'
         });
         
@@ -1253,7 +1243,7 @@ async function unassignAgent() {
     }
     
     try {
-        const response = await fetch(`/api/v1/customers/agents/${agentId}/unassign`, {
+        const response = await fetch(getApiUrl(`/api/v1/customers/agents/${agentId}/unassign`), {
             method: 'POST'
         });
         
@@ -1932,7 +1922,7 @@ if (newAgentForm) {
         });
         
         try {
-            const response = await fetch(`/api/v1/customers/${data.customer_id}/agents`, {
+            const response = await fetch(getApiUrl(`/api/v1/customers/${data.customer_id}/agents`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -1974,6 +1964,17 @@ if (newAgentForm) {
             }
         }
     });
+}
+
+// Helper per costruire URL API corretto (usa porta 8000 se pagina è su 8001)
+function getApiUrl(path) {
+    // Se la pagina è servita sulla porta 8001, forza l'uso della porta 8000 per le API
+    if (window.location.port === '8001') {
+        const baseUrl = `${window.location.protocol}//${window.location.hostname}:8000`;
+        return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
+    }
+    // Altrimenti usa URL relativo
+    return path.startsWith('/') ? path : '/' + path;
 }
 
 // Carica al load
